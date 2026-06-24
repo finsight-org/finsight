@@ -9,58 +9,38 @@ import (
 )
 
 type Portfolio struct {
-	ID              pgtype.UUID
-	WorkspaceID     pgtype.UUID
-	Name            string
-	Description     string
-	BaseCurrency    string
-	IsDefault       bool
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	CreatedByUserID pgtype.UUID
-	UpdatedByUserID pgtype.UUID
-	DeletedAt       pgtype.Timestamptz
-	DeletedByUserID pgtype.UUID
-	Metadata        []byte
+	ID           pgtype.UUID
+	WorkspaceID  pgtype.UUID
+	Name         string
+	Description  string
+	BaseCurrency string
+	IsDefault    bool
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type User struct {
-	ID              pgtype.UUID
-	Email           string
-	DisplayName     string
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	CreatedByUserID pgtype.UUID
-	UpdatedByUserID pgtype.UUID
-	DeletedAt       pgtype.Timestamptz
-	DeletedByUserID pgtype.UUID
-	Metadata        []byte
+	ID          pgtype.UUID
+	Email       string
+	DisplayName string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type Workspace struct {
-	ID              pgtype.UUID
-	Name            string
-	BaseCurrency    string
-	AuthMode        string
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	CreatedByUserID pgtype.UUID
-	UpdatedByUserID pgtype.UUID
-	DeletedAt       pgtype.Timestamptz
-	DeletedByUserID pgtype.UUID
-	Metadata        []byte
+	ID           pgtype.UUID
+	Name         string
+	BaseCurrency string
+	AuthMode     string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type WorkspaceMembership struct {
-	ID              pgtype.UUID
-	WorkspaceID     pgtype.UUID
-	UserID          pgtype.UUID
-	Role            string
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	CreatedByUserID pgtype.UUID
-	UpdatedByUserID pgtype.UUID
-	DeletedAt       pgtype.Timestamptz
-	DeletedByUserID pgtype.UUID
-	Metadata        []byte
+	ID          pgtype.UUID
+	WorkspaceID pgtype.UUID
+	UserID      pgtype.UUID
+	Role        string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }

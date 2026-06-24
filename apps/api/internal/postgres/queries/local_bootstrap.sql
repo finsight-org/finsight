@@ -10,7 +10,6 @@ union all
 select id, email, display_name, false as created
 from users
 where lower(email) = lower(@email)
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1;
 
@@ -19,11 +18,9 @@ with inserted as (
     insert into workspaces (
         name,
         base_currency,
-        auth_mode,
-        created_by_user_id,
-        updated_by_user_id
+        auth_mode
     )
-    values (@name, @base_currency, @auth_mode, @user_id, @user_id)
+    values (@name, @base_currency, @auth_mode)
     on conflict do nothing
     returning id, name, base_currency, auth_mode, true as created
 )
@@ -32,7 +29,6 @@ union all
 select id, name, base_currency, auth_mode, false as created
 from workspaces
 where auth_mode = @auth_mode
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1;
 
@@ -41,11 +37,9 @@ with inserted as (
     insert into workspace_memberships (
         workspace_id,
         user_id,
-        role,
-        created_by_user_id,
-        updated_by_user_id
+        role
     )
-    values (@workspace_id, @user_id, @role, @user_id, @user_id)
+    values (@workspace_id, @user_id, @role)
     on conflict do nothing
     returning id, workspace_id, user_id, role, true as created
 )
@@ -55,7 +49,6 @@ select id, workspace_id, user_id, role, false as created
 from workspace_memberships
 where workspace_id = @workspace_id
     and user_id = @user_id
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1;
 
@@ -65,11 +58,9 @@ with inserted as (
         workspace_id,
         name,
         base_currency,
-        is_default,
-        created_by_user_id,
-        updated_by_user_id
+        is_default
     )
-    values (@workspace_id, @name, @base_currency, true, @user_id, @user_id)
+    values (@workspace_id, @name, @base_currency, true)
     on conflict do nothing
     returning id, workspace_id, name, base_currency, is_default, true as created
 )
@@ -79,6 +70,5 @@ select id, workspace_id, name, base_currency, is_default, false as created
 from portfolios
 where workspace_id = @workspace_id
     and is_default
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1;

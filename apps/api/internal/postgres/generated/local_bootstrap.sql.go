@@ -17,11 +17,9 @@ with inserted as (
         workspace_id,
         name,
         base_currency,
-        is_default,
-        created_by_user_id,
-        updated_by_user_id
+        is_default
     )
-    values ($1, $2, $3, true, $4, $4)
+    values ($1, $2, $3, true)
     on conflict do nothing
     returning id, workspace_id, name, base_currency, is_default, true as created
 )
@@ -31,7 +29,6 @@ select id, workspace_id, name, base_currency, is_default, false as created
 from portfolios
 where workspace_id = $1
     and is_default
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1
 `
@@ -40,7 +37,6 @@ type UpsertDefaultPortfolioParams struct {
 	WorkspaceID  pgtype.UUID
 	Name         string
 	BaseCurrency string
-	UserID       pgtype.UUID
 }
 
 type UpsertDefaultPortfolioRow struct {
@@ -53,12 +49,7 @@ type UpsertDefaultPortfolioRow struct {
 }
 
 func (q *Queries) UpsertDefaultPortfolio(ctx context.Context, arg UpsertDefaultPortfolioParams) (UpsertDefaultPortfolioRow, error) {
-	row := q.db.QueryRow(ctx, upsertDefaultPortfolio,
-		arg.WorkspaceID,
-		arg.Name,
-		arg.BaseCurrency,
-		arg.UserID,
-	)
+	row := q.db.QueryRow(ctx, upsertDefaultPortfolio, arg.WorkspaceID, arg.Name, arg.BaseCurrency)
 	var i UpsertDefaultPortfolioRow
 	err := row.Scan(
 		&i.ID,
@@ -83,7 +74,6 @@ union all
 select id, email, display_name, false as created
 from users
 where lower(email) = lower($1)
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1
 `
@@ -117,11 +107,9 @@ with inserted as (
     insert into workspaces (
         name,
         base_currency,
-        auth_mode,
-        created_by_user_id,
-        updated_by_user_id
+        auth_mode
     )
-    values ($1, $2, $3, $4, $4)
+    values ($1, $2, $3)
     on conflict do nothing
     returning id, name, base_currency, auth_mode, true as created
 )
@@ -130,7 +118,6 @@ union all
 select id, name, base_currency, auth_mode, false as created
 from workspaces
 where auth_mode = $3
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1
 `
@@ -139,7 +126,6 @@ type UpsertLocalWorkspaceParams struct {
 	Name         string
 	BaseCurrency string
 	AuthMode     string
-	UserID       pgtype.UUID
 }
 
 type UpsertLocalWorkspaceRow struct {
@@ -151,12 +137,7 @@ type UpsertLocalWorkspaceRow struct {
 }
 
 func (q *Queries) UpsertLocalWorkspace(ctx context.Context, arg UpsertLocalWorkspaceParams) (UpsertLocalWorkspaceRow, error) {
-	row := q.db.QueryRow(ctx, upsertLocalWorkspace,
-		arg.Name,
-		arg.BaseCurrency,
-		arg.AuthMode,
-		arg.UserID,
-	)
+	row := q.db.QueryRow(ctx, upsertLocalWorkspace, arg.Name, arg.BaseCurrency, arg.AuthMode)
 	var i UpsertLocalWorkspaceRow
 	err := row.Scan(
 		&i.ID,
@@ -173,11 +154,9 @@ with inserted as (
     insert into workspace_memberships (
         workspace_id,
         user_id,
-        role,
-        created_by_user_id,
-        updated_by_user_id
+        role
     )
-    values ($1, $2, $3, $2, $2)
+    values ($1, $2, $3)
     on conflict do nothing
     returning id, workspace_id, user_id, role, true as created
 )
@@ -187,7 +166,6 @@ select id, workspace_id, user_id, role, false as created
 from workspace_memberships
 where workspace_id = $1
     and user_id = $2
-    and deleted_at is null
     and not exists (select 1 from inserted)
 limit 1
 `

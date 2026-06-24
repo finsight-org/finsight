@@ -41,7 +41,7 @@ func (r PostgresRepository) BootstrapLocal(ctx context.Context, defaults LocalDe
 	if err != nil {
 		return Result{}, err
 	}
-	workspace, workspaceCreated, err := upsertLocalWorkspace(ctx, queries, defaults, user.ID)
+	workspace, workspaceCreated, err := upsertLocalWorkspace(ctx, queries, defaults)
 	if err != nil {
 		return Result{}, err
 	}
@@ -49,7 +49,7 @@ func (r PostgresRepository) BootstrapLocal(ctx context.Context, defaults LocalDe
 	if err != nil {
 		return Result{}, err
 	}
-	portfolio, portfolioCreated, err := upsertDefaultPortfolio(ctx, queries, defaults, workspace.ID, user.ID)
+	portfolio, portfolioCreated, err := upsertDefaultPortfolio(ctx, queries, defaults, workspace.ID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -88,12 +88,11 @@ func upsertLocalUser(ctx context.Context, queries *db.Queries, defaults LocalDef
 	}, row.Created, nil
 }
 
-func upsertLocalWorkspace(ctx context.Context, queries *db.Queries, defaults LocalDefaults, userID uuid.UUID) (identity.Workspace, bool, error) {
+func upsertLocalWorkspace(ctx context.Context, queries *db.Queries, defaults LocalDefaults) (identity.Workspace, bool, error) {
 	row, err := queries.UpsertLocalWorkspace(ctx, db.UpsertLocalWorkspaceParams{
 		Name:         defaults.WorkspaceName,
 		BaseCurrency: defaults.WorkspaceBaseCurrency,
 		AuthMode:     defaults.WorkspaceAuthMode,
-		UserID:       pgUUID(userID),
 	})
 	if err != nil {
 		return identity.Workspace{}, false, fmt.Errorf("upsert local workspace: %w", err)
@@ -143,12 +142,11 @@ func upsertLocalMembership(ctx context.Context, queries *db.Queries, defaults Lo
 	}, row.Created, nil
 }
 
-func upsertDefaultPortfolio(ctx context.Context, queries *db.Queries, defaults LocalDefaults, workspaceID uuid.UUID, userID uuid.UUID) (portfolio.Portfolio, bool, error) {
+func upsertDefaultPortfolio(ctx context.Context, queries *db.Queries, defaults LocalDefaults, workspaceID uuid.UUID) (portfolio.Portfolio, bool, error) {
 	row, err := queries.UpsertDefaultPortfolio(ctx, db.UpsertDefaultPortfolioParams{
 		WorkspaceID:  pgUUID(workspaceID),
 		Name:         defaults.PortfolioName,
 		BaseCurrency: defaults.WorkspaceBaseCurrency,
-		UserID:       pgUUID(userID),
 	})
 	if err != nil {
 		return portfolio.Portfolio{}, false, fmt.Errorf("upsert default portfolio: %w", err)
