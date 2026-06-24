@@ -18,7 +18,7 @@ AI product names are examples only unless explicitly listed as supported integra
 
 Users own their data.
 
-Finsight supports cloud, self-hosted, and local deployments, allowing users to choose where their data lives and which AI systems can access it.
+Finsight supports user-operated and managed deployments, allowing users to choose where their data lives and which AI systems can access it.
 
 ### Open Platform
 

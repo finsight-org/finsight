@@ -102,11 +102,10 @@ Users can connect AI agents such as:
 
 MVP agent access is read-only, workspace-scoped, token-based, and audited. Fine-grained agent permissions are deferred.
 
-### Deployment Modes
+### Deployment Models
 
-- Cloud
-- Self-hosted
-- Local
+- User-operated deployment
+- Managed deployment
 
 ---
 

@@ -390,7 +390,7 @@ Allow the user to connect an AI agent through MCP.
 - Agent requests an unavailable tool.
 - Agent requests data before imports exist.
 - Local mode requires localhost connection instructions.
-- Cloud mode requires authenticated connection instructions.
+- Managed deployments require authenticated connection instructions.
 
 ---
 
@@ -452,7 +452,7 @@ Allow users to run Finsight locally and keep their data on their own machine.
 
 ## Success State
 
-- User can use Finsight without a cloud account.
+- User can use Finsight without a managed-service account.
 - User owns their data locally.
 - Local AI agents can access Finsight through MCP.
 
@@ -587,5 +587,5 @@ Show a clear non-technical error and offer a safe retry action.
 ## Security
 
 - Sensitive data must not be exposed to other users.
-- Local mode should not require a cloud account.
-- Cloud mode must require authentication.
+- Local mode should not require a managed-service account.
+- Managed deployments must require authentication.
