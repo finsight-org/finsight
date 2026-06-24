@@ -13,3 +13,32 @@ Open-source investment data platform for humans and AI agents. Import portfolio 
 ## Project Reference
 
 These documents are the current source of truth for Finsight's MVP product scope, domain model, and technical architecture.
+
+## Local Development
+
+Run the backend and PostgreSQL from the repository root:
+
+```bash
+docker compose up --build
+```
+
+PostgreSQL is exposed locally on port `5432`. The API is exposed locally on port `8080`.
+
+Check the application health endpoint:
+
+```bash
+curl -i http://localhost:8080/health
+```
+
+Check the database readiness endpoint:
+
+```bash
+curl -i http://localhost:8080/ready
+```
+
+Run backend tests from the API module:
+
+```bash
+cd apps/api
+go test ./...
+```
