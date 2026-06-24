@@ -8,7 +8,8 @@ Open-source investment data platform for humans and AI agents. Import portfolio 
 - [MVP](docs/mvp.md): MVP scope, screens, success criteria, example AI questions, and non-goals.
 - [Use Cases](docs/use-cases.md): MVP user flows, UX principles, edge cases, and business rules.
 - [Domain Model](docs/domain-model.md): core entities, transaction model, imports, market data, and connected-agent assumptions.
+- [Architecture](docs/architecture.md): technical boundaries, runtime components, data flows, and deployment models.
 
-## Current Documentation Status
+## Project Reference
 
-These documents define the MVP scope and domain assumptions that should be treated as the source of truth before architecture definition starts.
+These documents are the current source of truth for Finsight's MVP product scope, domain model, and technical architecture.
