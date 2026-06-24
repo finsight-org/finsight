@@ -1,0 +1,206 @@
+openapi: 3.0.3
+info:
+  title: Finsight API
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check API liveness.
+      responses:
+        "200":
+          description: API is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      operationId: getReady
+      summary: Check API dependency readiness.
+      responses:
+        "200":
+          description: API dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: API dependencies are not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+  /api/local/bootstrap:
+    post:
+      operationId: postLocalBootstrap
+      summary: Create or return the local development identity context.
+      responses:
+        "200":
+          description: Local identity context already existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalBootstrapResponse"
+        "201":
+          description: Local identity context was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocalBootstrapResponse"
+        "500":
+          description: Bootstrap failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    CheckState:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - error
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        service:
+          type: string
+        version:
+          type: string
+    LocalBootstrapResponse:
+      type: object
+      required:
+        - created
+        - user
+        - workspace
+        - membership
+        - portfolio
+      properties:
+        created:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/BootstrapUser"
+        workspace:
+          $ref: "#/components/schemas/BootstrapWorkspace"
+        membership:
+          $ref: "#/components/schemas/BootstrapWorkspaceMembership"
+        portfolio:
+          $ref: "#/components/schemas/BootstrapPortfolio"
+    BootstrapPortfolio:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - name
+        - base_currency
+        - is_default
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        base_currency:
+          type: string
+        is_default:
+          type: boolean
+    BootstrapUser:
+      type: object
+      required:
+        - id
+        - email
+        - display_name
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+    BootstrapWorkspace:
+      type: object
+      required:
+        - id
+        - name
+        - base_currency
+        - auth_mode
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        base_currency:
+          type: string
+        auth_mode:
+          type: string
+    BootstrapWorkspaceMembership:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - user_id
+        - role
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+    ReadyResponse:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not_ready
+        checks:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CheckState"

@@ -2,78 +2,50 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-	"time"
+
+	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 )
 
-type healthHandler struct {
-	serviceName  string
-	version      string
-	readyTimeout time.Duration
-	database     DatabasePinger
-}
-
-type healthResponse struct {
-	Status  string `json:"status"`
-	Service string `json:"service"`
-	Version string `json:"version"`
-}
-
-type readyResponse struct {
-	Status string                `json:"status"`
-	Checks map[string]checkState `json:"checks"`
-}
-
-type checkState struct {
-	Status string `json:"status"`
-}
-
-func (h healthHandler) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, healthResponse{
-		Status:  "ok",
-		Service: h.serviceName,
-		Version: h.version,
+func (s apiServer) GetHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, generated.HealthResponse{
+		Status:  generated.HealthResponseStatusOk,
+		Service: s.serviceName,
+		Version: s.version,
 	})
 }
 
-func (h healthHandler) ready(w http.ResponseWriter, r *http.Request) {
-	if h.database == nil {
+func (s apiServer) GetReady(w http.ResponseWriter, r *http.Request) {
+	if s.database == nil {
 		writeJSON(w, http.StatusServiceUnavailable, notReadyResponse())
 		return
 	}
 
 	ctx := r.Context()
-	if h.readyTimeout > 0 {
+	if s.readyTimeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, h.readyTimeout)
+		ctx, cancel = context.WithTimeout(ctx, s.readyTimeout)
 		defer cancel()
 	}
 
-	if err := h.database.Ping(ctx); err != nil {
+	if err := s.database.Ping(ctx); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, notReadyResponse())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, readyResponse{
-		Status: "ready",
-		Checks: map[string]checkState{
-			"postgres": {Status: "ok"},
+	writeJSON(w, http.StatusOK, generated.ReadyResponse{
+		Status: generated.Ready,
+		Checks: map[string]generated.CheckState{
+			"postgres": {Status: generated.CheckStateStatusOk},
 		},
 	})
 }
 
-func notReadyResponse() readyResponse {
-	return readyResponse{
-		Status: "not_ready",
-		Checks: map[string]checkState{
-			"postgres": {Status: "error"},
+func notReadyResponse() generated.ReadyResponse {
+	return generated.ReadyResponse{
+		Status: generated.NotReady,
+		Checks: map[string]generated.CheckState{
+			"postgres": {Status: generated.CheckStateStatusError},
 		},
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
 }
