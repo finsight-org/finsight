@@ -4,10 +4,17 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
+	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 )
 
 type DatabasePinger interface {
 	Ping(context.Context) error
+}
+
+type LocalBootstrapper interface {
+	BootstrapLocal(context.Context) (bootstrap.Result, error)
 }
 
 type Options struct {
@@ -15,19 +22,17 @@ type Options struct {
 	Version      string
 	ReadyTimeout time.Duration
 	Database     DatabasePinger
+	Bootstrap    LocalBootstrapper
 }
 
 func NewRouter(options Options) http.Handler {
-	handler := healthHandler{
+	handler := apiServer{
 		serviceName:  options.ServiceName,
 		version:      options.Version,
 		readyTimeout: options.ReadyTimeout,
 		database:     options.Database,
+		bootstrap:    options.Bootstrap,
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handler.health)
-	mux.HandleFunc("GET /ready", handler.ready)
-
-	return mux
+	return generated.Handler(handler)
 }

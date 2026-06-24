@@ -1,0 +1,7 @@
+package: generated
+output: internal/openapi/generated/server.gen.go
+generate:
+  models: true
+  std-http-server: true
+output-options:
+  skip-prune: true

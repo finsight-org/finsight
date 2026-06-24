@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 )
 
 func TestHealth(t *testing.T) {
@@ -27,11 +29,11 @@ func TestHealth(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 
-	var body healthResponse
+	var body generated.HealthResponse
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Status != "ok" {
+	if body.Status != generated.HealthResponseStatusOk {
 		t.Fatalf("status field = %q, want ok", body.Status)
 	}
 	if body.Service != "finsight-api" {
@@ -58,14 +60,14 @@ func TestReadyWhenDatabasePingSucceeds(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 
-	var body readyResponse
+	var body generated.ReadyResponse
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Status != "ready" {
+	if body.Status != generated.Ready {
 		t.Fatalf("status field = %q, want ready", body.Status)
 	}
-	if body.Checks["postgres"].Status != "ok" {
+	if body.Checks["postgres"].Status != generated.CheckStateStatusOk {
 		t.Fatalf("postgres status = %q, want ok", body.Checks["postgres"].Status)
 	}
 }
