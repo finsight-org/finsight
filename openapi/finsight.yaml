@@ -31,6 +31,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadyResponse"
+  /api/accounts:
+    post:
+      operationId: postAccount
+      summary: Create an account in the local default portfolio.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid account request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Account name already exists in the default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Account creation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: getAccounts
+      summary: List accounts in the local default portfolio.
+      responses:
+        "200":
+          description: Accounts in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountListResponse"
+        "500":
+          description: Account listing failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/accounts/{id}:
+    get:
+      operationId: getAccount
+      summary: Get an account from the local default portfolio.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "404":
+          description: Account was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Account lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/local/bootstrap:
     post:
       operationId: postLocalBootstrap
@@ -56,6 +137,81 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
+    AccountType:
+      type: string
+      enum:
+        - BROKERAGE
+        - BANK
+        - CRYPTO_EXCHANGE
+        - RETIREMENT
+        - MANUAL
+    CreateAccountRequest:
+      type: object
+      required:
+        - name
+        - type
+        - base_currency
+      properties:
+        name:
+          type: string
+          minLength: 1
+        institution_name:
+          type: string
+          nullable: true
+        type:
+          $ref: "#/components/schemas/AccountType"
+        base_currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          minLength: 3
+          maxLength: 3
+        external_reference:
+          type: string
+          nullable: true
+    Account:
+      type: object
+      required:
+        - id
+        - portfolio_id
+        - name
+        - type
+        - base_currency
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        portfolio_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        institution_name:
+          type: string
+          nullable: true
+        type:
+          $ref: "#/components/schemas/AccountType"
+        base_currency:
+          type: string
+        external_reference:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AccountListResponse:
+      type: object
+      required:
+        - accounts
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
     CheckState:
       type: object
       required:

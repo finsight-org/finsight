@@ -47,6 +47,34 @@ curl -i -X POST http://localhost:8080/api/local/bootstrap
 
 Local bootstrap is idempotent. It creates or returns the local user, local workspace, owner workspace membership, and internal default portfolio used by the backend until authentication and workspace selection are added.
 
+Create an account in the local default portfolio:
+
+```bash
+curl -i -X POST http://localhost:8080/api/accounts \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Questrade Margin",
+    "institution_name": "Questrade",
+    "type": "BROKERAGE",
+    "base_currency": "CAD",
+    "external_reference": "local-demo-margin"
+  }'
+```
+
+List accounts in the local default portfolio:
+
+```bash
+curl -i http://localhost:8080/api/accounts
+```
+
+Get an account by ID from the local default portfolio:
+
+```bash
+curl -i http://localhost:8080/api/accounts/{id}
+```
+
+Account endpoints do not use authentication yet. They resolve the local bootstrap context internally, scope all reads and writes to the local default portfolio, and return `409 Conflict` for duplicate account names in that portfolio.
+
 Run backend tests from the API module:
 
 ```bash

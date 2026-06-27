@@ -8,8 +8,19 @@ package generated
 import (
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+)
+
+// Defines values for AccountType.
+const (
+	BANK           AccountType = "BANK"
+	BROKERAGE      AccountType = "BROKERAGE"
+	CRYPTOEXCHANGE AccountType = "CRYPTO_EXCHANGE"
+	MANUAL         AccountType = "MANUAL"
+	RETIREMENT     AccountType = "RETIREMENT"
 )
 
 // Defines values for CheckStateStatus.
@@ -28,6 +39,27 @@ const (
 	NotReady ReadyResponseStatus = "not_ready"
 	Ready    ReadyResponseStatus = "ready"
 )
+
+// Account defines model for Account.
+type Account struct {
+	BaseCurrency      string             `json:"base_currency"`
+	CreatedAt         time.Time          `json:"created_at"`
+	ExternalReference *string            `json:"external_reference"`
+	Id                openapi_types.UUID `json:"id"`
+	InstitutionName   *string            `json:"institution_name"`
+	Name              string             `json:"name"`
+	PortfolioId       openapi_types.UUID `json:"portfolio_id"`
+	Type              AccountType        `json:"type"`
+	UpdatedAt         time.Time          `json:"updated_at"`
+}
+
+// AccountListResponse defines model for AccountListResponse.
+type AccountListResponse struct {
+	Accounts []Account `json:"accounts"`
+}
+
+// AccountType defines model for AccountType.
+type AccountType string
 
 // BootstrapPortfolio defines model for BootstrapPortfolio.
 type BootstrapPortfolio struct {
@@ -69,6 +101,15 @@ type CheckState struct {
 // CheckStateStatus defines model for CheckState.Status.
 type CheckStateStatus string
 
+// CreateAccountRequest defines model for CreateAccountRequest.
+type CreateAccountRequest struct {
+	BaseCurrency      string      `json:"base_currency"`
+	ExternalReference *string     `json:"external_reference"`
+	InstitutionName   *string     `json:"institution_name"`
+	Name              string      `json:"name"`
+	Type              AccountType `json:"type"`
+}
+
 // ErrorDetail defines model for ErrorDetail.
 type ErrorDetail struct {
 	Code    string `json:"code"`
@@ -108,8 +149,20 @@ type ReadyResponse struct {
 // ReadyResponseStatus defines model for ReadyResponse.Status.
 type ReadyResponseStatus string
 
+// PostAccountJSONRequestBody defines body for PostAccount for application/json ContentType.
+type PostAccountJSONRequestBody = CreateAccountRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List accounts in the local default portfolio.
+	// (GET /api/accounts)
+	GetAccounts(w http.ResponseWriter, r *http.Request)
+	// Create an account in the local default portfolio.
+	// (POST /api/accounts)
+	PostAccount(w http.ResponseWriter, r *http.Request)
+	// Get an account from the local default portfolio.
+	// (GET /api/accounts/{id})
+	GetAccount(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Create or return the local development identity context.
 	// (POST /api/local/bootstrap)
 	PostLocalBootstrap(w http.ResponseWriter, r *http.Request)
@@ -129,6 +182,59 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetAccounts operation middleware
+func (siw *ServerInterfaceWrapper) GetAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAccount operation middleware
+func (siw *ServerInterfaceWrapper) PostAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // PostLocalBootstrap operation middleware
 func (siw *ServerInterfaceWrapper) PostLocalBootstrap(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +398,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("GET "+options.BaseURL+"/api/accounts", wrapper.GetAccounts)
+	m.HandleFunc("POST "+options.BaseURL+"/api/accounts", wrapper.PostAccount)
+	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}", wrapper.GetAccount)
 	m.HandleFunc("POST "+options.BaseURL+"/api/local/bootstrap", wrapper.PostLocalBootstrap)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc("GET "+options.BaseURL+"/ready", wrapper.GetReady)
