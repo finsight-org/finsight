@@ -12,6 +12,7 @@ type apiServer struct {
 	readyTimeout time.Duration
 	database     DatabasePinger
 	bootstrap    LocalBootstrapper
+	accounts     AccountService
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

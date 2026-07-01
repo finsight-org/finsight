@@ -8,6 +8,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Account struct {
+	ID                pgtype.UUID
+	PortfolioID       pgtype.UUID
+	Name              string
+	InstitutionName   pgtype.Text
+	Type              string
+	BaseCurrency      string
+	ExternalReference pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type Portfolio struct {
 	ID           pgtype.UUID
 	WorkspaceID  pgtype.UUID

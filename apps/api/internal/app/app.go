@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/httpapi"
@@ -33,6 +34,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	bootstrapRepository := bootstrap.NewPostgresRepository(db)
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
+	accountRepository := account.NewPostgresRepository(db)
+	accountService := account.NewService(bootstrapService, accountRepository)
 
 	handler := httpapi.NewRouter(httpapi.Options{
 		ServiceName:  cfg.ServiceName,
@@ -40,6 +43,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		ReadyTimeout: cfg.ReadyTimeout,
 		Database:     db,
 		Bootstrap:    bootstrapService,
+		Accounts:     accountService,
 	})
 
 	return &App{
