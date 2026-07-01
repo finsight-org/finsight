@@ -12,6 +12,7 @@ Open-source investment data platform for humans and AI agents. Import portfolio 
 - [OpenAPI Workflow](docs/openapi-workflow.md): OpenAPI-first contract workflow, generated Go code, and HTTP boundary rules.
 - [Database Migrations](docs/database-migrations.md): Goose migration workflow, startup behavior, and local database reset notes.
 - [Database Access](docs/database-access.md): pgx, sqlc, query generation, and persistence boundary rules.
+- [Go API](apps/api/README.md): backend setup, checks, tests, and API-specific docs.
 
 ## Project Reference
 
@@ -24,68 +25,3 @@ Run the backend and PostgreSQL from the repository root:
 ```bash
 docker compose up --build
 ```
-
-PostgreSQL is exposed locally on port `5432`. The API is exposed locally on port `8080`.
-
-Check the application health endpoint:
-
-```bash
-curl -i http://localhost:8080/health
-```
-
-Check the database readiness endpoint:
-
-```bash
-curl -i http://localhost:8080/ready
-```
-
-Create or return the local development identity context:
-
-```bash
-curl -i -X POST http://localhost:8080/api/local/bootstrap
-```
-
-Local bootstrap is idempotent. It creates or returns the local user, local workspace, owner workspace membership, and internal default portfolio used by the backend until authentication and workspace selection are added.
-
-Create an account in the local default portfolio:
-
-```bash
-curl -i -X POST http://localhost:8080/api/accounts \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "Questrade Margin",
-    "institution_name": "Questrade",
-    "type": "BROKERAGE",
-    "base_currency": "CAD",
-    "external_reference": "local-demo-margin"
-  }'
-```
-
-List accounts in the local default portfolio:
-
-```bash
-curl -i http://localhost:8080/api/accounts
-```
-
-Get an account by ID from the local default portfolio:
-
-```bash
-curl -i http://localhost:8080/api/accounts/{id}
-```
-
-Account endpoints do not use authentication yet. They resolve the local bootstrap context internally, scope all reads and writes to the local default portfolio, and return `409 Conflict` for duplicate account names in that portfolio.
-
-Run backend tests from the API module:
-
-```bash
-cd apps/api
-go test ./...
-```
-
-## OpenAPI Workflow
-
-Finsight is OpenAPI-first. See [OpenAPI Workflow](docs/openapi-workflow.md) for contract, generation, and HTTP boundary rules.
-
-## Database Migrations
-
-Finsight uses Goose for PostgreSQL migrations. See [Database Migrations](docs/database-migrations.md) for migration commands, startup behavior, and local database reset notes.
