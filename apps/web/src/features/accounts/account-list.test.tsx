@@ -28,6 +28,8 @@ describe('AccountList', () => {
 
     expect(screen.getByRole('heading', { name: 'Wealthsimple' })).toBeInTheDocument()
     expect(screen.getByText(/CAD/)).toBeInTheDocument()
+    expect(screen.getByText(/Updated Jul 1, 2026/)).toBeInTheDocument()
+    expect(screen.queryByText(/Updated today/)).not.toBeInTheDocument()
     expect(screen.getByText(/Value pending/i)).toBeInTheDocument()
   })
 })

@@ -3,6 +3,15 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 
+const updatedAtFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeZone: 'UTC',
+})
+
+function formatUpdatedAt(updatedAt: string) {
+  return updatedAtFormatter.format(new Date(updatedAt))
+}
+
 type AccountListProps = {
   accounts: Account[]
   isLoading?: boolean
@@ -53,7 +62,7 @@ export function AccountList({ accounts, isLoading = false, error = null }: Accou
               <Badge variant="secondary">{account.type.replaceAll('_', ' ').toLowerCase()}</Badge>
             </div>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {account.institution_name || 'No institution'} - {account.base_currency} - Updated today
+              {account.institution_name || 'No institution'} - {account.base_currency} - Updated {formatUpdatedAt(account.updated_at)}
             </p>
           </div>
           <div className="text-left sm:text-right">
