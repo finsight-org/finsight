@@ -45,6 +45,30 @@ Make the review easy to evaluate:
 - State which checks passed and which were not run.
 - Include setup notes when validation needs local services.
 
+## Validation
+
+Run the smallest useful check first, then broaden as risk increases:
+
+- Documentation-only: link and consistency inspection is usually sufficient.
+- Backend service or handler changes: run `cd apps/api && go test ./...`.
+- OpenAPI changes: regenerate backend and frontend types, then run backend tests
+  and frontend typecheck.
+- SQL or migration changes: run backend tests and any migration-specific tests.
+- Frontend component or route changes: run typecheck, frontend tests, and build.
+- End-to-end workflow changes: add or run Playwright tests.
+
+Useful commands:
+
+```bash
+make test
+make web-build
+cd apps/api && go test ./...
+pnpm -C apps/web typecheck
+pnpm -C apps/web test
+pnpm -C apps/web build
+pnpm -C apps/web test:e2e
+```
+
 ## Documentation-Only Pull Requests
 
 For docs-only changes:

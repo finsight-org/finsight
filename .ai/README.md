@@ -12,22 +12,9 @@ guidance.
 ```text
 .ai/
   README.md
-  ci-cd.md
   code-review.md
   git.md
-    merge-requests.md
-  principles/
-    README.md
-    manifest.yml
-    distilled/
-      api.md
-      architecture.md
-      backend.md
-      database.md
-      documentation.md
-      frontend.md
-      security.md
-      testing.md
+  pull-requests.md
 ```
 
 ## How To Use These Files
@@ -36,17 +23,17 @@ Use the root playbooks for task-specific work:
 
 - `code-review.md`: review methodology and blocker criteria.
 - `git.md`: branch, commit, staging, and generated-file guidance.
-- `merge-requests.md`: pull request preparation checklist.
-- `ci-cd.md`: validation commands and failure investigation.
+- `pull-requests.md`: pull request preparation and validation checklist.
 
-Use `principles/distilled/*.md` for implementation guidance by area.
-These files summarize the current Finsight docs for agent consumption. They do
-not replace the source-of-truth docs in `docs/`.
+Use `docs/` for product, domain, architecture, and implementation direction.
+This directory should stay focused on task-specific agent workflows rather than
+duplicating project documentation.
 
 ## Relationship To `AGENTS.md`
 
-`AGENTS.md` defines repository-wide rules for AI coding agents. It should link
-to these files when a task needs more specific context.
+`AGENTS.md` defines repository-wide rules for AI coding agents. Codex reads
+`AGENTS.md` automatically, so it should link to these files when a task needs
+more specific context.
 
 When guidance conflicts, use this precedence:
 

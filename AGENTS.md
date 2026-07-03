@@ -18,23 +18,35 @@ Do not rewrite or duplicate those documents in new work. Link to them when produ
 
 ## Task-Specific AI Instructions
 
-Use the modular `.ai` instructions when a task matches one of these areas:
+Codex automatically reads this `AGENTS.md` file. The modular `.ai` files are not standalone Codex instruction-discovery files; they are required playbooks that agents must read when a task matches one of these areas:
 
 - Code review: [Code Review Guidelines](.ai/code-review.md).
 - Git, commits, branches, or staging: [Git Workflow Guidelines](.ai/git.md).
-- Pull request preparation: [Pull Request Guidelines](.ai/merge-requests.md).
-- CI, checks, or validation failures: [CI/CD and Validation Guidelines](.ai/ci-cd.md).
-- Implementation work: read the relevant files in [Finsight Agent Principles](.ai/principles/README.md), especially:
-  - [Architecture Principles](.ai/principles/distilled/architecture.md)
-  - [Backend Principles](.ai/principles/distilled/backend.md)
-  - [Frontend Principles](.ai/principles/distilled/frontend.md)
-  - [API Principles](.ai/principles/distilled/api.md)
-  - [Database Principles](.ai/principles/distilled/database.md)
-  - [Security Principles](.ai/principles/distilled/security.md)
-  - [Testing Principles](.ai/principles/distilled/testing.md)
-  - [Documentation Principles](.ai/principles/distilled/documentation.md)
+- Pull request preparation: [Pull Request Guidelines](.ai/pull-requests.md).
+- Implementation work: read the relevant source-of-truth docs in `docs/`, especially [Technical Direction](docs/technical-direction.md), [Codebase Structure](docs/codebase-structure.md), [Engineering Principles](docs/engineering-principles.md), [Backend Guidelines](docs/backend-guidelines.md), [Frontend Guidelines](docs/frontend-guidelines.md), [API Guidelines](docs/api-guidelines.md), [Database Access](docs/database-access.md), and [OpenAPI Workflow](docs/openapi-workflow.md).
 
-The `.ai` files summarize and route agent behavior. The source-of-truth documents in `docs/` still define product, domain, architecture, and implementation direction.
+The `.ai` files define task-specific agent behavior. The source-of-truth documents in `docs/` define product, domain, architecture, and implementation direction.
+
+## Review guidelines
+
+When acting as a code reviewer, including as the Codex GitHub review agent, read and follow [Code Review Guidelines](.ai/code-review.md) before reviewing.
+
+Review priority:
+
+- Focus on correctness, security, data integrity, behavioral regressions, architecture boundary violations, and missing tests.
+- Treat hand-edited generated files, stale generated code after contract changes, database boundary bypasses, and weakened workspace scoping as blockers.
+- Keep comments high-signal and grounded in changed lines.
+- Do not spend review attention on style preferences unless they hide a real maintainability or correctness issue.
+- For documentation-only changes, check link validity, consistency with source-of-truth docs, and whether the change duplicates product/domain documentation.
+
+## Git and pull request guidelines
+
+For branch, staging, commit, push, or pull request work, read and follow:
+
+- [Git Workflow Guidelines](.ai/git.md)
+- [Pull Request Guidelines](.ai/pull-requests.md)
+
+Branch names should follow the project prefixes in `.ai/git.md`, such as `docs/<description>` for documentation-only changes.
 
 ## How To Work Safely
 
