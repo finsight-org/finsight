@@ -1,6 +1,6 @@
 # Backend Guidelines
 
-This document explains how to implement backend changes in the Go modular monolith. Read it with [Architecture](architecture.md), [Database Access](database-access.md), [Database Migrations](database-migrations.md), and [OpenAPI Workflow](openapi-workflow.md).
+This document explains how to implement backend changes in the Go modular monolith. Read it with [Architecture](../architecture.md), [Database Guidelines](database-guidelines.md), and [OpenAPI Guidelines](openapi-guidelines.md).
 
 ## Layering
 
@@ -59,7 +59,7 @@ Handlers should not enforce financial business rules beyond transport-level deco
 
 ## Persistence
 
-PostgreSQL access should follow [Database Access](database-access.md).
+PostgreSQL access should follow [Database Guidelines](database-guidelines.md).
 
 Use:
 

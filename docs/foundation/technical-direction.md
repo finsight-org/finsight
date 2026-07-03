@@ -2,10 +2,10 @@
 
 This document describes how the implementation should evolve. It does not replace the product, MVP, domain, or architecture sources of truth:
 
-- [Architecture](architecture.md)
-- [Domain Model](domain-model.md)
-- [MVP](mvp.md)
-- [Use Cases](use-cases.md)
+- [Architecture](../architecture.md)
+- [Domain Model](../domain-model.md)
+- [MVP](../mvp.md)
+- [Use Cases](../use-cases.md)
 
 ## Stable Direction
 

@@ -1,6 +1,6 @@
 # Engineering Principles
 
-This document defines how contributors should make implementation decisions. It is intentionally about engineering practice, not product scope. Product and domain direction live in [Vision](vision.md), [MVP](mvp.md), [Use Cases](use-cases.md), and [Domain Model](domain-model.md).
+This document defines how contributors should make implementation decisions. It is intentionally about engineering practice, not product scope. Product and domain direction live in [Vision](../vision.md), [MVP](../mvp.md), [Use Cases](../use-cases.md), and [Domain Model](../domain-model.md).
 
 ## Coding Philosophy
 

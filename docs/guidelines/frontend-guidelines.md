@@ -1,6 +1,6 @@
 # Frontend Guidelines
 
-This document explains how to implement frontend changes in the React/Vite app. Read it with [Frontend Architecture](frontend.md), [OpenAPI Workflow](openapi-workflow.md), and [API Guidelines](api-guidelines.md).
+This document explains how to implement frontend changes in the React/Vite app. Read it with [Architecture](../architecture.md) and [OpenAPI Guidelines](openapi-guidelines.md).
 
 ## Frontend Boundary
 

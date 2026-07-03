@@ -76,5 +76,5 @@ When source files change, regenerate through the documented workflow:
 Docs-only changes should stay documentation-only. Do not run formatters or
 generators that rewrite code unless the documentation explicitly requires it.
 
-For `.ai/` documentation changes, update `AGENTS.md` or `README.md` only when
-the entry points need to mention the new or changed instructions.
+For agent instruction documentation changes, update `AGENTS.md` or `README.md`
+only when the entry points need to mention the new or changed instructions.

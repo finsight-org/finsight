@@ -1,6 +1,6 @@
 # Codebase Structure
 
-This document maps the current repository layout and where new implementation work should live. It complements [Architecture](architecture.md), [Frontend Architecture](frontend.md), [Database Access](database-access.md), and [OpenAPI Workflow](openapi-workflow.md).
+This document maps the current repository layout and where new implementation work should live. It complements [Architecture](../architecture.md), [Database Guidelines](../guidelines/database-guidelines.md), and [OpenAPI Guidelines](../guidelines/openapi-guidelines.md).
 
 ## Repository Map
 

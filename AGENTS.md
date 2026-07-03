@@ -2,134 +2,34 @@
 
 This file is for AI coding agents working in this repository, including Codex, ChatGPT, Claude Code, Gemini, and similar tools.
 
-Before changing code, read the project documentation that defines current direction:
+AI agents automatically read `AGENTS.md`. Keep this file as a routing guide and avoid duplicating project documentation.
 
-- [Architecture](docs/architecture.md)
-- [Domain Model](docs/domain-model.md)
-- [MVP](docs/mvp.md)
-- [Frontend Architecture](docs/frontend.md)
-- [OpenAPI Workflow](docs/openapi-workflow.md)
-- [Database Access](docs/database-access.md)
-- [Database Migrations](docs/database-migrations.md)
-- [Technical Direction](docs/technical-direction.md)
-- [Engineering Principles](docs/engineering-principles.md)
+## Source Of Truth
 
-Do not rewrite or duplicate those documents in new work. Link to them when product, domain, or architecture context is needed.
+Before changing code or documentation, read the relevant source documents:
 
-## Task-Specific AI Instructions
+- Product and domain context: [Vision](docs/vision.md), [MVP](docs/mvp.md), [Use Cases](docs/use-cases.md), [Domain Model](docs/domain-model.md).
+- Architecture and technical foundation: [Architecture](docs/architecture.md), [Technical Direction](docs/foundation/technical-direction.md), [Codebase Structure](docs/foundation/codebase-structure.md), [Engineering Principles](docs/foundation/engineering-principles.md).
+- Implementation guidelines: [Backend Guidelines](docs/guidelines/backend-guidelines.md), [Frontend Guidelines](docs/guidelines/frontend-guidelines.md), [OpenAPI Guidelines](docs/guidelines/openapi-guidelines.md), [Database Guidelines](docs/guidelines/database-guidelines.md).
+- Git and review workflows: [Code Review Guidelines](docs/git/code-review.md), [Git Workflow Guidelines](docs/git/git.md), [Pull Request Guidelines](docs/git/pull-requests.md).
 
-Codex automatically reads this `AGENTS.md` file. The modular `.ai` files are not standalone Codex instruction-discovery files; they are required playbooks that agents must read when a task matches one of these areas:
+Do not rewrite or duplicate existing architecture, MVP, product, domain, or implementation documentation. Link to the relevant source document instead.
 
-- Code review: [Code Review Guidelines](.ai/code-review.md).
-- Git, commits, branches, or staging: [Git Workflow Guidelines](.ai/git.md).
-- Pull request preparation: [Pull Request Guidelines](.ai/pull-requests.md).
-- Implementation work: read the relevant source-of-truth docs in `docs/`, especially [Technical Direction](docs/technical-direction.md), [Codebase Structure](docs/codebase-structure.md), [Engineering Principles](docs/engineering-principles.md), [Backend Guidelines](docs/backend-guidelines.md), [Frontend Guidelines](docs/frontend-guidelines.md), [API Guidelines](docs/api-guidelines.md), [Database Access](docs/database-access.md), and [OpenAPI Workflow](docs/openapi-workflow.md).
+## Task Routing
 
-The `.ai` files define task-specific agent behavior. The source-of-truth documents in `docs/` define product, domain, architecture, and implementation direction.
+- For implementation work, read the relevant files in `docs/foundation` and `docs/guidelines`.
+- For code review, read [Code Review Guidelines](docs/git/code-review.md).
+- For branch, staging, commit, or push work, read [Git Workflow Guidelines](docs/git/git.md).
+- For pull request preparation, read [Pull Request Guidelines](docs/git/pull-requests.md).
 
 ## Review guidelines
 
-When acting as a code reviewer, including as the Codex GitHub review agent, read and follow [Code Review Guidelines](.ai/code-review.md) before reviewing.
+When acting as a code reviewer, including as the Codex GitHub review agent, follow [Code Review Guidelines](docs/git/code-review.md).
 
-Review priority:
+Focus on correctness, security, data integrity, behavioral regressions, architecture boundary violations, and missing tests. Keep comments high-signal and grounded in changed lines.
 
-- Focus on correctness, security, data integrity, behavioral regressions, architecture boundary violations, and missing tests.
-- Treat hand-edited generated files, stale generated code after contract changes, database boundary bypasses, and weakened workspace scoping as blockers.
-- Keep comments high-signal and grounded in changed lines.
-- Do not spend review attention on style preferences unless they hide a real maintainability or correctness issue.
-- For documentation-only changes, check link validity, consistency with source-of-truth docs, and whether the change duplicates product/domain documentation.
+## Operating Rules
 
-## Git and pull request guidelines
-
-For branch, staging, commit, push, or pull request work, read and follow:
-
-- [Git Workflow Guidelines](.ai/git.md)
-- [Pull Request Guidelines](.ai/pull-requests.md)
-
-Branch names should follow the project prefixes in `.ai/git.md`, such as `docs/<description>` for documentation-only changes.
-
-## How To Work Safely
-
-- Make small, focused changes that match the existing implementation style.
-- Preserve the modular monolith. Do not introduce service boundaries, queues, background platforms, deployment models, or infrastructure unless explicitly requested and already aligned with the docs.
-- Keep HTTP handlers, MCP tools, and frontend code thin. Business logic belongs in backend application/domain services.
-- Keep dependencies flowing inward: adapters depend on services and domain types; services do not depend on HTTP, generated OpenAPI types, React code, or provider-specific response shapes.
-- Prefer explicit code over hidden magic. Avoid broad abstractions unless they remove real repeated complexity.
-- Do not add third-party dependencies unless the repository cannot reasonably solve the problem with its current stack.
-- Treat generated files as build artifacts. Do not edit generated OpenAPI or sqlc files by hand.
-- Do not bypass documented workflows for OpenAPI, migrations, sqlc, or frontend API type generation.
-- Respect existing user changes in the working tree. Never revert unrelated changes.
-
-## Generated Files
-
-These files are generated and must not be edited manually:
-
-- `apps/api/internal/openapi/generated`
-- `apps/api/internal/postgres/generated`
-- `apps/web/src/api/generated`
-- `apps/web/src/routeTree.gen.ts`
-
-When a contract or query changes, update the source of truth and regenerate with the documented command:
-
-- HTTP contract: edit `openapi/finsight.yaml`, then run `cd apps/api && go generate ./...`.
-- SQL queries: edit `apps/api/internal/postgres/queries`, then run `cd apps/api && go generate ./...`.
-- Frontend API types: run `pnpm -C apps/web openapi:gen` after OpenAPI changes.
-
-## Backend Rules
-
-- Put domain/application behavior in feature packages under `apps/api/internal`.
-- Keep handlers in `apps/api/internal/httpapi` focused on decoding, invoking services, mapping responses, and translating errors.
-- Keep persistence behind repositories. Services should not depend on SQL rows, pgx row scanning, or sqlc generated types.
-- Use migrations in `apps/api/migrations` for schema changes.
-- Put non-trivial SQL in `apps/api/internal/postgres/queries` for sqlc generation.
-- Add focused Go tests beside the package being changed.
-
-## Frontend Rules
-
-- The React app lives in `apps/web` and calls only the OpenAPI HTTP API.
-- Put feature UI under `apps/web/src/features/<feature>`.
-- Put shared UI primitives under `apps/web/src/components/ui` only when they are broadly reusable.
-- Use generated OpenAPI types from `apps/web/src/api/generated`.
-- Use TanStack Query for server state, loading, errors, mutations, and invalidation.
-- Put user-facing text in i18n resources instead of inline labels.
-- Do not implement financial business rules in the browser. Client-side validation is only for usability.
-
-## API Rules
-
-- `openapi/finsight.yaml` is the source of truth for HTTP paths, request shapes, responses, and status codes.
-- New or changed endpoints must be reflected in generated Go and TypeScript types.
-- Error responses should use the existing `ErrorResponse` shape unless there is a deliberate contract change.
-- HTTP handlers adapt OpenAPI types to service inputs and service outputs back to OpenAPI responses.
-
-## Pull Request Standard
-
-A change is ready for review when:
-
-- It matches the documented architecture and implementation boundaries.
-- It is smaller than the broadest possible solution.
-- It includes tests proportional to the risk.
-- It updates docs only when behavior, workflow, or contributor expectations change.
-- It does not include hand-edited generated code.
-- Relevant checks have been run, or the final response clearly states why they were not run.
-
-Useful checks:
-
-```bash
-make test
-make web-build
-cd apps/api && go test ./...
-pnpm -C apps/web typecheck
-pnpm -C apps/web test
-pnpm -C apps/web build
-```
-
-## Things Agents Must Never Do
-
-- Do not replace the modular monolith with microservices.
-- Do not add a new framework, datastore, job system, auth provider, or deployment platform without explicit direction.
-- Do not duplicate financial calculations across handlers, MCP tools, frontend components, or database queries.
-- Do not query PostgreSQL from the frontend or MCP boundary.
-- Do not let provider-specific market data shapes leak into the core domain, HTTP API, or MCP responses.
-- Do not make MCP mutation-capable for the MVP.
-- Do not hide important behavior behind reflection, global state, code generation, or clever abstractions when straightforward code works.
-- Do not make speculative product changes while implementing infrastructure or contributor documentation.
+- Respect user changes in the working tree. Do not revert unrelated changes.
+- Follow the linked source documents instead of restating or overriding them.
+- If instructions conflict, follow this order: current user request, this `AGENTS.md`, source documents in `docs/`, then local judgment.
