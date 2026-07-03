@@ -29,7 +29,7 @@ cd apps/api
 go generate ./...
 ```
 
-The generator is invoked by `go generate` with a pinned `go run ...@version` command, so the CLI does not become an application runtime dependency. The same command also regenerates sqlc database query code; see [Database Access](database-access.md).
+The generator is invoked by `go generate` with a pinned `go run ...@version` command, so the CLI does not become an application runtime dependency. The same command also regenerates sqlc database query code; see [Database Guidelines](database-guidelines.md).
 
 The underlying OpenAPI generation command is:
 
