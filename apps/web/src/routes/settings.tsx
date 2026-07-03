@@ -6,8 +6,8 @@ import { PlaceholderPage } from '@/features/portfolio/placeholder-page'
 export const Route = createFileRoute('/settings')({
   component: () => (
     <PlaceholderPage
-      title="Settings"
-      description="Workspace, local mode, and deployment settings will live here as the product grows."
+      titleKey="placeholders.settings.title"
+      descriptionKey="placeholders.settings.description"
       icon={Settings}
     />
   ),

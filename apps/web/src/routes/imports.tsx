@@ -6,10 +6,10 @@ import { PlaceholderPage } from '@/features/portfolio/placeholder-page'
 export const Route = createFileRoute('/imports')({
   component: () => (
     <PlaceholderPage
-      title="Imports"
-      description="Upload, review, and confirm investment data. This skeleton leaves extraction and review workflows for the next MVP feature pass."
+      titleKey="placeholders.imports.title"
+      descriptionKey="placeholders.imports.description"
       icon={Upload}
-      action="Start import"
+      actionKey="placeholders.imports.action"
     />
   ),
 })

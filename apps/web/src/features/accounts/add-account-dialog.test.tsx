@@ -18,6 +18,20 @@ function renderWithQueryClient() {
 }
 
 describe('AddAccountDialog', () => {
+  it('renders account type options from the generated API enum', async () => {
+    const user = userEvent.setup()
+    renderWithQueryClient()
+
+    await user.click(screen.getByRole('button', { name: /add an account/i }))
+    await user.click(screen.getByRole('combobox', { name: /type/i }))
+
+    expect(await screen.findByRole('option', { name: 'Brokerage' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Bank' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Crypto exchange' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Retirement' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Manual' })).toBeInTheDocument()
+  })
+
   it('validates required account fields', async () => {
     const user = userEvent.setup()
     renderWithQueryClient()

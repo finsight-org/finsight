@@ -1,9 +1,3 @@
-export const mockPortfolioSummary = {
-  value: '$2,000.00 CAD',
-  dailyChange: '+$18.00 CAD (+0.90%) past day',
-  baseline: '$0.00',
-}
-
 // Temporary data until portfolio summary/performance endpoints exist.
 export const mockPortfolioPerformance = [
   { label: '09:30', value: 0 },
@@ -24,4 +18,12 @@ export const mockPortfolioPerformance = [
   { label: '17:00', value: 520 },
 ]
 
-export const timeRanges = ['1D', '1W', '1M', '3M', 'YTD', '1Y', 'ALL'] as const
+export const timeRanges = [
+  { value: '1D', labelKey: 'portfolio.tabs.ranges.oneDay' },
+  { value: '1W', labelKey: 'portfolio.tabs.ranges.oneWeek' },
+  { value: '1M', labelKey: 'portfolio.tabs.ranges.oneMonth' },
+  { value: '3M', labelKey: 'portfolio.tabs.ranges.threeMonths' },
+  { value: 'YTD', labelKey: 'portfolio.tabs.ranges.yearToDate' },
+  { value: '1Y', labelKey: 'portfolio.tabs.ranges.oneYear' },
+  { value: 'ALL', labelKey: 'portfolio.tabs.ranges.all' },
+] as const

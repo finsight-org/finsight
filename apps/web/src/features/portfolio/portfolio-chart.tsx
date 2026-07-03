@@ -1,8 +1,11 @@
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import { useTranslation } from 'react-i18next'
 
-import { mockPortfolioPerformance, mockPortfolioSummary } from '@/features/portfolio/mock-portfolio'
+import { mockPortfolioPerformance } from '@/features/portfolio/mock-portfolio'
 
 export function PortfolioChart() {
+  const { t } = useTranslation()
+
   return (
     <div className="relative h-[300px] w-full sm:h-[360px]" data-testid="portfolio-chart">
       <ResponsiveContainer width="100%" height="100%">
@@ -35,7 +38,7 @@ export function PortfolioChart() {
         </AreaChart>
       </ResponsiveContainer>
       <div className="absolute right-3 top-1/2 rounded-full border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
-        {mockPortfolioSummary.baseline}
+        {t('portfolio.summary.baseline')}
       </div>
     </div>
   )

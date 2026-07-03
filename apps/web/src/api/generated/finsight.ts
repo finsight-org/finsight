@@ -95,7 +95,7 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
-        AccountType: "BROKERAGE" | "BANK" | "CRYPTO_EXCHANGE" | "RETIREMENT" | "MANUAL";
+        AccountType: AccountType;
         CreateAccountRequest: {
             name: string;
             institution_name?: string | null;
@@ -123,7 +123,7 @@ export interface components {
         };
         CheckState: {
             /** @enum {string} */
-            status: "ok" | "error";
+            status: CheckStateStatus;
         };
         ErrorDetail: {
             code: string;
@@ -134,7 +134,7 @@ export interface components {
         };
         HealthResponse: {
             /** @enum {string} */
-            status: "ok";
+            status: HealthResponseStatus;
             service: string;
             version: string;
         };
@@ -179,7 +179,7 @@ export interface components {
         };
         ReadyResponse: {
             /** @enum {string} */
-            status: "ready" | "not_ready";
+            status: ReadyResponseStatus;
             checks: {
                 [key: string]: components["schemas"]["CheckState"];
             };
@@ -400,4 +400,22 @@ export interface operations {
             };
         };
     };
+}
+export enum AccountType {
+    BROKERAGE = "BROKERAGE",
+    BANK = "BANK",
+    CRYPTO_EXCHANGE = "CRYPTO_EXCHANGE",
+    RETIREMENT = "RETIREMENT",
+    MANUAL = "MANUAL"
+}
+export enum CheckStateStatus {
+    ok = "ok",
+    error = "error"
+}
+export enum HealthResponseStatus {
+    ok = "ok"
+}
+export enum ReadyResponseStatus {
+    ready = "ready",
+    not_ready = "not_ready"
 }

@@ -6,10 +6,10 @@ import { PlaceholderPage } from '@/features/portfolio/placeholder-page'
 export const Route = createFileRoute('/agents')({
   component: () => (
     <PlaceholderPage
-      title="Connected agents"
-      description="Manage read-only MCP agent access, connection status, and available portfolio tools."
+      titleKey="placeholders.agents.title"
+      descriptionKey="placeholders.agents.description"
       icon={Bot}
-      action="Connect agent"
+      actionKey="placeholders.agents.action"
     />
   ),
 })

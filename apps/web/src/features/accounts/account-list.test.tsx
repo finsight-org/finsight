@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { Account } from '@/api/accounts'
+import { AccountType, type Account } from '@/api/accounts'
 import { AccountList } from '@/features/accounts/account-list'
 
 const account: Account = {
@@ -9,7 +9,7 @@ const account: Account = {
   portfolio_id: '22222222-2222-2222-2222-222222222222',
   name: 'Wealthsimple',
   institution_name: 'Wealthsimple',
-  type: 'BROKERAGE',
+  type: AccountType.BROKERAGE,
   base_currency: 'CAD',
   external_reference: null,
   created_at: '2026-07-01T00:00:00Z',

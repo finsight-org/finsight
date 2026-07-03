@@ -4,32 +4,37 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { Account } from '@/api/accounts'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const columnHelper = createColumnHelper<Account>()
 
-const columns = [
-  columnHelper.accessor('name', {
-    header: 'Account',
-    cell: (info) => info.getValue(),
-  }),
-  columnHelper.accessor('institution_name', {
-    header: 'Institution',
-    cell: (info) => info.getValue() || 'None',
-  }),
-  columnHelper.accessor('type', {
-    header: 'Type',
-    cell: (info) => info.getValue().replaceAll('_', ' ').toLowerCase(),
-  }),
-  columnHelper.accessor('base_currency', {
-    header: 'Currency',
-    cell: (info) => info.getValue(),
-  }),
-]
-
 export function AccountsTable({ accounts }: { accounts: Account[] }) {
+  const { t } = useTranslation()
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor('name', {
+        header: t('accounts.table.account'),
+        cell: (info) => info.getValue(),
+      }),
+      columnHelper.accessor('institution_name', {
+        header: t('accounts.table.institution'),
+        cell: (info) => info.getValue() || t('accounts.table.none'),
+      }),
+      columnHelper.accessor('type', {
+        header: t('accounts.table.type'),
+        cell: (info) => t(`accounts.type.${info.getValue()}`),
+      }),
+      columnHelper.accessor('base_currency', {
+        header: t('accounts.table.currency'),
+        cell: (info) => info.getValue(),
+      }),
+    ],
+    [t],
+  )
   const table = useReactTable({
     data: accounts,
     columns,

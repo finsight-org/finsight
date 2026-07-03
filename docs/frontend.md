@@ -6,4 +6,6 @@ The frontend calls only the OpenAPI HTTP API. It must not query PostgreSQL, call
 
 OpenAPI types are generated from `openapi/finsight.yaml` with `openapi-typescript`, and API requests use `openapi-fetch`. TanStack Query owns server-state caching, loading states, mutations, and refetching.
 
+User-facing text goes through `react-i18next`. Components should use translation keys instead of inline labels, while API payload values remain the backend-defined OpenAPI values.
+
 The first portfolio screen uses real account API data and temporary mock chart/summary data. Replace the mock portfolio module when portfolio summary and performance endpoints are added.

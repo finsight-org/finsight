@@ -8,6 +8,7 @@ React + TypeScript + Vite frontend for Finsight.
 - TanStack Router for file-based routing
 - TanStack Query for server state
 - `openapi-typescript` and `openapi-fetch` for typed API access
+- `react-i18next` and `i18next` for UI translations
 - Tailwind CSS and shadcn/ui with Radix primitives
 - React Hook Form and Zod for forms
 - TanStack Table for data tables
@@ -43,6 +44,7 @@ pnpm -C apps/web openapi:gen
 ```
 
 Generated files live in `src/api/generated` and should not be edited manually.
+Runtime enum values are emitted from OpenAPI so UI option lists can be derived from the backend contract.
 
 ## Checks
 

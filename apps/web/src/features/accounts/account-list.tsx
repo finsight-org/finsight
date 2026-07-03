@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 import type { Account } from '@/api/accounts'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -19,9 +21,11 @@ type AccountListProps = {
 }
 
 export function AccountList({ accounts, isLoading = false, error = null }: AccountListProps) {
+  const { t } = useTranslation()
+
   if (isLoading) {
     return (
-      <div className="space-y-3" aria-label="Loading accounts">
+      <div className="space-y-3" aria-label={t('accounts.loading')}>
         <Skeleton className="h-20 rounded-2xl" />
         <Skeleton className="h-20 rounded-2xl" />
       </div>
@@ -31,7 +35,7 @@ export function AccountList({ accounts, isLoading = false, error = null }: Accou
   if (error) {
     return (
       <Alert variant="destructive">
-        <AlertTitle>Accounts could not load</AlertTitle>
+        <AlertTitle>{t('accounts.loadErrorTitle')}</AlertTitle>
         <AlertDescription>{error.message}</AlertDescription>
       </Alert>
     )
@@ -40,10 +44,9 @@ export function AccountList({ accounts, isLoading = false, error = null }: Accou
   if (accounts.length === 0) {
     return (
       <div className="rounded-2xl border bg-card p-6 text-card-foreground shadow-sm">
-        <h3 className="text-lg font-semibold">No accounts yet</h3>
+        <h3 className="text-lg font-semibold">{t('accounts.emptyTitle')}</h3>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Create the first account before importing investment data. Portfolio insights will appear after confirmed
-          imports create transactions.
+          {t('accounts.emptyDescription')}
         </p>
       </div>
     )
@@ -59,15 +62,16 @@ export function AccountList({ accounts, isLoading = false, error = null }: Accou
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold">{account.name}</h3>
-              <Badge variant="secondary">{account.type.replaceAll('_', ' ').toLowerCase()}</Badge>
+              <Badge variant="secondary">{t(`accounts.type.${account.type}`)}</Badge>
             </div>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              {account.institution_name || 'No institution'} - {account.base_currency} - Updated {formatUpdatedAt(account.updated_at)}
+              {account.institution_name || t('accounts.noInstitution')} - {account.base_currency} -{' '}
+              {t('accounts.updatedAt', { date: formatUpdatedAt(account.updated_at) })}
             </p>
           </div>
           <div className="text-left sm:text-right">
-            <p className="text-base font-semibold">Value pending</p>
-            <p className="text-xs text-muted-foreground">Import transactions to calculate value</p>
+            <p className="text-base font-semibold">{t('accounts.valuePending')}</p>
+            <p className="text-xs text-muted-foreground">{t('accounts.valuePendingDescription')}</p>
           </div>
         </article>
       ))}
