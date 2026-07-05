@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
+	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/httpapi"
@@ -36,6 +37,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
 	accountRepository := account.NewPostgresRepository(db)
 	accountService := account.NewService(bootstrapService, accountRepository)
+	assetFinder := asset.NewFinder(asset.NewYahooProvider())
 
 	handler := httpapi.NewRouter(httpapi.Options{
 		ServiceName:  cfg.ServiceName,
@@ -44,6 +46,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Database:     db,
 		Bootstrap:    bootstrapService,
 		Accounts:     accountService,
+		Assets:       assetFinder,
 	})
 
 	return &App{

@@ -12,6 +12,19 @@ export const en = {
   search: {
     label: 'Search name or symbol',
     placeholder: 'Search name or symbol',
+    loading: 'Loading asset search results',
+    empty: 'No assets found',
+    provider: '{{provider}} provider',
+  },
+  asset: {
+    type: {
+      EQUITY: 'Equity',
+      ETF: 'ETF',
+      MUTUAL_FUND: 'Mutual fund',
+      CRYPTO: 'Crypto',
+      CASH: 'Cash',
+      OTHER: 'Other',
+    },
   },
   accountMenu: {
     open: 'Open account menu',
@@ -105,5 +118,6 @@ export const en = {
     accountsLoad: 'Could not load accounts.',
     accountCreate: 'Could not create the account.',
     accountCreateNoData: 'The account was created, but the API returned no account data.',
+    assetSearch: 'Could not search assets.',
   },
 } as const

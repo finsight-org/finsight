@@ -112,6 +112,50 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/assets/search:
+    get:
+      operationId: searchAssets
+      summary: Search provider-backed asset candidates.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 2
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        "200":
+          description: Provider-normalized asset candidates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetSearchResponse"
+        "400":
+          description: Invalid asset search request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Asset provider could not complete the search.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Asset search failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/local/bootstrap:
     post:
       operationId: postLocalBootstrap
@@ -212,6 +256,51 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Account"
+    AssetType:
+      type: string
+      enum:
+        - EQUITY
+        - ETF
+        - MUTUAL_FUND
+        - CRYPTO
+        - CASH
+        - OTHER
+    AssetSearchResult:
+      type: object
+      required:
+        - name
+        - symbol
+        - asset_type
+        - currency
+        - provider_id
+        - provider_symbol
+        - exchange
+      properties:
+        name:
+          type: string
+        symbol:
+          type: string
+        asset_type:
+          $ref: "#/components/schemas/AssetType"
+        currency:
+          type: string
+          nullable: true
+        provider_id:
+          type: string
+        provider_symbol:
+          type: string
+        exchange:
+          type: string
+          nullable: true
+    AssetSearchResponse:
+      type: object
+      required:
+        - assets
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetSearchResult"
     CheckState:
       type: object
       required:

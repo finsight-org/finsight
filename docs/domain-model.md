@@ -22,6 +22,7 @@ This schema is a conceptual entity-relationship model for the MVP. It is intende
 erDiagram
     WORKSPACE ||--o{ USER : has
     WORKSPACE ||--o{ PORTFOLIO : owns
+    WORKSPACE ||--o{ ASSET : owns
     WORKSPACE ||--o{ IMPORT : owns
     WORKSPACE ||--o{ CONNECTED_AGENT : authorizes
 
@@ -34,13 +35,10 @@ erDiagram
     ACCOUNT ||--o{ POSITION : derives
     ACCOUNT ||--o{ CASH_BALANCE : derives
 
-    ASSET ||--o{ LISTING : trades_as
     ASSET ||--o{ LEDGER_ENTRY : referenced_by
     ASSET ||--o{ POSITION : held_as
     ASSET ||--o{ CASH_BALANCE : cash_asset
     ASSET ||--o{ MARKET_PRICE : priced_by
-
-    LISTING ||--o{ MARKET_PRICE : has_prices
 
     IMPORT ||--o{ IMPORT_ITEM : extracts
     IMPORT ||--o{ TRANSACTION : creates_after_confirmation
@@ -86,27 +84,18 @@ erDiagram
 
     ASSET {
         string id PK
+        string workspace_id FK
         string name
         string asset_type
         string currency
-        string isin
-        string cusip
-        string ticker
+        string symbol
+        string provider_id
         string provider_symbol
+        string exchange
+        string isin
         string country
         string sector
         boolean is_active
-    }
-
-    LISTING {
-        string id PK
-        string asset_id FK
-        string exchange
-        string mic
-        string ticker
-        string currency
-        string provider_symbol
-        string timezone
     }
 
     TRANSACTION {
@@ -158,11 +147,10 @@ erDiagram
     MARKET_PRICE {
         string id PK
         string asset_id FK
-        string listing_id FK
         date date
         decimal price
         string currency
-        string provider
+        string provider_id
         string source_quality
     }
 
@@ -217,10 +205,11 @@ erDiagram
 
 - `Workspace -> Portfolio -> Account` is the ownership path for MVP investment data. The MVP uses one default internal portfolio per workspace.
 - `Import` belongs to a workspace and targets one account. The portfolio is inferred through the account.
+- `Asset` belongs to a workspace in the MVP. Assets are created or reused when an import item or manual transaction is confirmed, not merely because a provider search returned a possible match.
 - `Transaction` is the durable source of truth after import confirmation.
 - `Ledger Entry` records normalized financial effects for a transaction and is used to derive positions, cash balances, allocations, and summaries. It can preserve original foreign-currency amounts and transaction exchange rates.
 - `Position` and `Cash Balance` are derived models, not manually maintained records.
-- `Listing` keeps assets usable across countries, exchanges, currencies, and market data providers.
+- `Asset` stores the selected provider reference used to refresh prices for that asset. Separate listing/provider-reference tables are deferred until the product needs multiple tradable identities for the same asset.
 - `Connected Agent` is read-only and workspace-scoped in the MVP.
 
 ## Design Principles
@@ -349,7 +338,9 @@ Broker names are examples only unless explicitly listed as supported integration
 
 ## Asset
 
-Represents a financial instrument.
+Represents a readable, normalized financial instrument in a workspace.
+
+Assets are discovered through market data providers during import review or manual transaction entry, then persisted only when the user confirms the transaction data that needs them.
 
 Examples:
 
@@ -362,26 +353,27 @@ Examples:
 ### Fields
 
 - id
+- workspace_id
 - name
 - asset_type
 - currency
-- isin
-- cusip
-- ticker
+- symbol
+- provider_id
 - provider_symbol
+- exchange
+- isin
 - country
 - sector
 - is_active
 
 ### Asset Types
 
-- STOCK
+- EQUITY
 - ETF
-- FUND
+- MUTUAL_FUND
 - CRYPTO
 - CASH
-- BOND
-- CUSTOM
+- OTHER
 
 ### Notes
 
@@ -393,37 +385,19 @@ Examples:
 - USD
 - EUR
 
----
+For investment assets, `provider_id` and `provider_symbol` identify the market data provider record selected during import review. Finsight uses those values later to retrieve current and historical prices.
 
-## Listing
+The provider reference is intentionally stored on `Asset` for the MVP. A separate listing or provider-reference model can be introduced later if Finsight needs to support multiple provider identifiers, exchanges, or currencies for one economic instrument.
 
-Represents where an asset trades.
+## Deferred Listing Model
 
-Listings are useful for the France and Canada use case because the same financial instrument can have multiple tradable identities across exchanges, currencies, and providers. The asset represents the economic instrument; the listing represents the market-specific symbol used for prices, broker statements, and provider lookups.
+`Listing` is not an MVP entity.
 
-Example:
+The MVP treats the selected provider record as part of `Asset`. This keeps imports and manual transaction entry simple: the user chooses the readable asset match, and Finsight stores the provider identifier needed for price lookup.
 
-Apple Inc.
+Finsight may add listings later if the same economic instrument must be represented across multiple exchanges, provider identifiers, or trading currencies.
 
-- AAPL / NASDAQ / USD
-- APC / XETRA / EUR
-
-### Fields
-
-- id
-- asset_id
-- exchange
-- mic
-- ticker
-- currency
-- provider_symbol
-- timezone
-
-### Notes
-
-Finsight keeps `Listing` in the domain model even for the MVP because cross-country portfolios need stable identifiers for assets listed in different markets.
-
-Examples:
+Future examples:
 
 - A Canadian ETF listed on TSX in CAD.
 - A French ETF listed on Euronext Paris in EUR.
@@ -569,11 +543,10 @@ Historical and current asset prices.
 
 - id
 - asset_id
-- listing_id
 - date
 - price
 - currency
-- provider
+- provider_id
 - source_quality
 
 ---
@@ -604,13 +577,15 @@ This keeps the domain model simple while allowing self-hosted users and organiza
 Provider adapters are responsible for:
 
 - Searching assets
-- Resolving listings and provider symbols
+- Resolving provider symbols
 - Retrieving asset profiles
 - Retrieving latest prices
 - Retrieving historical prices
 - Retrieving FX rates
 
-Provider responses may use different identifiers, currencies, symbols, and payload shapes. Adapter code should normalize those responses into Finsight's `Asset`, `Listing`, `Market Price`, and `FX Rate` models before persistence.
+Provider responses may use different identifiers, currencies, symbols, and payload shapes. Adapter code should normalize those responses into Finsight's `Asset`, `Market Price`, and `FX Rate` models before persistence.
+
+Multiple providers may be configured by a deployment to improve the chance of finding a matching asset. During import review, Finsight can show provider matches and ask the user to select the correct asset when no confident match exists.
 
 ---
 
@@ -671,7 +646,6 @@ Represents extracted data before becoming a transaction.
 
 - TRANSACTION
 - ASSET
-- LISTING
 - MARKET_PRICE
 - FX_RATE
 - SKIPPED
@@ -688,16 +662,18 @@ Represents extracted data before becoming a transaction.
 
 `Import Item` preserves both the original extracted payload and the normalized candidate data. This is important for AI-assisted import review because the user needs to understand what was read, what Finsight inferred, and why a row needs attention.
 
-`validation_errors` should be structured data, not a single string, so the UI and AI agents can explain missing assets, ambiguous listings, missing currencies, duplicate rows, or unsupported transaction types.
+`validation_errors` should be structured data, not a single string, so the UI and AI agents can explain missing assets, ambiguous provider matches, missing currencies, duplicate rows, or unsupported transaction types.
 
 ### Import Flow
 
 ```text
 Upload File
 → Extraction
+→ Provider Asset Matching
 → Import Items
 → User Review
 → Confirmation
+→ Assets
 → Transactions
 → Ledger Entries
 ```

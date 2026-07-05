@@ -34,4 +34,4 @@ go test ./...
 ## Docs
 
 - [Accounts](docs/accounts.md)
-
+- [Assets](docs/assets.md)

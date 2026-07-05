@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
+	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 )
@@ -26,6 +27,10 @@ type AccountService interface {
 	GetAccount(context.Context, uuid.UUID) (account.Account, error)
 }
 
+type AssetFinder interface {
+	SearchAssets(context.Context, asset.SearchInput) ([]asset.AssetCandidate, error)
+}
+
 type Options struct {
 	ServiceName  string
 	Version      string
@@ -33,6 +38,7 @@ type Options struct {
 	Database     DatabasePinger
 	Bootstrap    LocalBootstrapper
 	Accounts     AccountService
+	Assets       AssetFinder
 }
 
 func NewRouter(options Options) http.Handler {
@@ -43,7 +49,24 @@ func NewRouter(options Options) http.Handler {
 		database:     options.Database,
 		bootstrap:    options.Bootstrap,
 		accounts:     options.Accounts,
+		assets:       options.Assets,
 	}
 
-	return generated.Handler(handler)
+	return generated.HandlerWithOptions(handler, generated.StdHTTPServerOptions{
+		ErrorHandlerFunc: generatedParameterError,
+	})
+}
+
+func generatedParameterError(w http.ResponseWriter, r *http.Request, _ error) {
+	if r.URL.Path == "/api/assets/search" {
+		writeAssetError(w, http.StatusBadRequest, "invalid_asset_search_query", "asset search query is invalid")
+		return
+	}
+
+	writeJSON(w, http.StatusBadRequest, generated.ErrorResponse{
+		Error: generated.ErrorDetail{
+			Code:    "invalid_request",
+			Message: "request parameters are invalid",
+		},
+	})
 }
