@@ -92,14 +92,11 @@ func TestSearchAssetsProviderError(t *testing.T) {
 	}
 }
 
-func TestYahooProviderSearchAssetsMapsAndEnrichesResults(t *testing.T) {
+func TestYahooProviderSearchAssetsMapsResults(t *testing.T) {
 	provider := YahooProvider{
 		client: fakeYahooClient{
 			results: []yahooSearchResult{
 				{Symbol: " AAPL ", Name: " Apple Inc. ", Type: "EQUITY", Exchange: "NMS"},
-			},
-			info: map[string]yahooInfo{
-				"AAPL": {Currency: "USD"},
 			},
 		},
 	}
@@ -115,21 +112,21 @@ func TestYahooProviderSearchAssetsMapsAndEnrichesResults(t *testing.T) {
 	if result.Name != "Apple Inc." || result.Symbol != "AAPL" || result.Type != TypeEquity || result.ProviderID != YahooProviderID || result.ProviderSymbol != "AAPL" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
-	if result.Currency == nil || *result.Currency != "USD" {
-		t.Fatalf("currency = %#v, want USD", result.Currency)
+	if result.Currency != nil {
+		t.Fatalf("currency = %#v, want nil", result.Currency)
 	}
 	if result.Exchange == nil || *result.Exchange != "NMS" {
 		t.Fatalf("exchange = %#v, want NMS", result.Exchange)
 	}
 }
 
-func TestYahooProviderSearchAssetsKeepsResultWhenInfoFails(t *testing.T) {
+func TestYahooProviderSearchAssetsSkipsBlankSymbols(t *testing.T) {
 	provider := YahooProvider{
 		client: fakeYahooClient{
 			results: []yahooSearchResult{
+				{Symbol: "   ", Name: "Blank Inc.", Type: "EQUITY"},
 				{Symbol: "AAPL", Name: "Apple Inc.", Type: "EQUITY"},
 			},
-			infoErr: errors.New("boom"),
 		},
 	}
 
@@ -140,8 +137,8 @@ func TestYahooProviderSearchAssetsKeepsResultWhenInfoFails(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("results length = %d, want 1", len(results))
 	}
-	if results[0].Currency != nil {
-		t.Fatalf("currency = %#v, want nil", results[0].Currency)
+	if results[0].Symbol != "AAPL" {
+		t.Fatalf("symbol = %q, want AAPL", results[0].Symbol)
 	}
 }
 
@@ -192,20 +189,11 @@ func (p *fakeProvider) SearchAssets(_ context.Context, query string, limit int) 
 
 type fakeYahooClient struct {
 	results   []yahooSearchResult
-	info      map[string]yahooInfo
 	searchErr error
-	infoErr   error
 }
 
 func (c fakeYahooClient) Search(string, int) ([]yahooSearchResult, error) {
 	return c.results, c.searchErr
-}
-
-func (c fakeYahooClient) Info(symbol string) (yahooInfo, error) {
-	if c.infoErr != nil {
-		return yahooInfo{}, c.infoErr
-	}
-	return c.info[symbol], nil
 }
 
 func intPtr(value int) *int {

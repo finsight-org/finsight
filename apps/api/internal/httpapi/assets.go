@@ -14,13 +14,8 @@ func (s apiServer) SearchAssets(w http.ResponseWriter, r *http.Request, params g
 		return
 	}
 
-	query := ""
-	if params.Q != nil {
-		query = *params.Q
-	}
-
 	results, err := s.assets.SearchAssets(r.Context(), asset.SearchInput{
-		Query: query,
+		Query: params.Q,
 		Limit: params.Limit,
 	})
 	if err != nil {

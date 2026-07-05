@@ -395,8 +395,8 @@ export interface operations {
     };
     searchAssets: {
         parameters: {
-            query?: {
-                q?: string;
+            query: {
+                q: string;
                 limit?: number;
             };
             header?: never;

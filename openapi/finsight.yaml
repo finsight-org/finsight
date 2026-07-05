@@ -119,7 +119,7 @@ paths:
       parameters:
         - name: q
           in: query
-          required: false
+          required: true
           schema:
             type: string
             minLength: 2

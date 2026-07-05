@@ -180,8 +180,8 @@ type ReadyResponseStatus string
 
 // SearchAssetsParams defines parameters for SearchAssets.
 type SearchAssetsParams struct {
-	Q     *string `form:"q,omitempty" json:"q,omitempty"`
-	Limit *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Q     string `form:"q" json:"q"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // PostAccountJSONRequestBody defines body for PostAccount for application/json ContentType.
@@ -282,9 +282,16 @@ func (siw *ServerInterfaceWrapper) SearchAssets(w http.ResponseWriter, r *http.R
 	// Parameter object where we will unmarshal all parameters from the context
 	var params SearchAssetsParams
 
-	// ------------- Optional query parameter "q" -------------
+	// ------------- Required query parameter "q" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
+	if paramValue := r.URL.Query().Get("q"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "q", r.URL.Query(), &params.Q)
 	if err != nil {
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
 		return

@@ -68,7 +68,8 @@ func TestSearchAssetsInvalidQuery(t *testing.T) {
 }
 
 func TestSearchAssetsMissingQuery(t *testing.T) {
-	router := NewRouter(Options{Assets: &fakeAssetService{err: asset.ErrInvalidSearchQuery}})
+	finder := &fakeAssetService{}
+	router := NewRouter(Options{Assets: finder})
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/assets/search", nil)
@@ -78,6 +79,9 @@ func TestSearchAssetsMissingQuery(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 	assertErrorCode(t, response, "invalid_asset_search_query")
+	if finder.called {
+		t.Fatal("asset finder was called for missing query")
+	}
 }
 
 func TestSearchAssetsInvalidLimit(t *testing.T) {

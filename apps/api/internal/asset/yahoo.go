@@ -15,7 +15,6 @@ type YahooProvider struct {
 
 type yahooClient interface {
 	Search(query string, limit int) ([]yahooSearchResult, error)
-	Info(symbol string) (yahooInfo, error)
 }
 
 type yahooSearchResult struct {
@@ -23,10 +22,6 @@ type yahooSearchResult struct {
 	Name     string
 	Type     string
 	Exchange string
-}
-
-type yahooInfo struct {
-	Currency string
 }
 
 func NewYahooProvider() YahooProvider {
@@ -64,12 +59,6 @@ func (p YahooProvider) SearchAssets(_ context.Context, query string, limit int) 
 			ProviderSymbol: symbol,
 			Exchange:       normalizedOptional(result.Exchange),
 		}
-
-		info, err := client.Info(symbol)
-		if err == nil {
-			candidate.Currency = normalizedOptional(info.Currency)
-		}
-
 		candidates = append(candidates, candidate)
 	}
 
@@ -95,14 +84,6 @@ func (c yahooFinanceClient) Search(query string, limit int) ([]yahooSearchResult
 	}
 
 	return mapped, nil
-}
-
-func (c yahooFinanceClient) Info(symbol string) (yahooInfo, error) {
-	info, err := yahoo.NewTicker(symbol).Info()
-	if err != nil {
-		return yahooInfo{}, err
-	}
-	return yahooInfo{Currency: info.Currency}, nil
 }
 
 func yahooQuoteType(value string) Type {

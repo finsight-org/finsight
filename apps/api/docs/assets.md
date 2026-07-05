@@ -22,7 +22,7 @@ type Provider interface {
 }
 ```
 
-Providers should return the richest normalized candidate data they can. For example, if a provider search response already includes currency, the adapter maps it directly. If it does not, the adapter may call a provider-specific detail endpoint. Missing optional fields such as `currency` may be returned as `nil`.
+Providers should return the richest normalized candidate data they can from their search implementation. For example, if a provider search response already includes currency, the adapter maps it directly. Missing optional fields such as `currency` may be returned as `nil`.
 
 ## Data Shape
 
@@ -71,18 +71,17 @@ flowchart LR
     HTTP --> UI
 ```
 
-The provider interface intentionally has one method. Provider-specific lookup steps, enrichment calls, batching, caching, retries, or fallback behavior belong inside each adapter. The asset finder should not know whether a provider needed one external call or several.
+The provider interface intentionally has one method. Provider-specific lookup steps, batching, caching, retries, or fallback behavior belong inside each adapter. The asset finder should not know whether a provider needed one external call or several.
 
 ## Current Yahoo Adapter
 
-Yahoo search does not include every field Finsight wants to display. The Yahoo adapter handles that internally:
+Yahoo search does not include every field Finsight wants to display. The Yahoo adapter currently returns only the data available from symbol search and leaves unavailable optional fields as `nil`.
 
 1. Search Yahoo symbols.
 2. Map Yahoo quote types into Finsight asset types.
-3. Fetch ticker info for each candidate when needed to resolve currency.
-4. Return normalized `asset.AssetCandidate` values.
+3. Return normalized `asset.AssetCandidate` values.
 
-If Yahoo symbol search fails, the whole provider call fails. If one ticker info lookup fails, that candidate is still returned with `Currency: nil`.
+If Yahoo symbol search fails, the whole provider call fails. Currency is currently returned as `nil` because the pinned Yahoo package's ticker info path is not used by this adapter.
 
 Yahoo quote type mapping:
 
