@@ -6,7 +6,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/oapi-codegen/runtime v1.1.2
-	github.com/oscarli916/yahoo-finance-api v0.1.3
 	github.com/pressly/goose/v3 v3.26.0
 )
 

@@ -3,6 +3,8 @@ package asset
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -153,6 +155,60 @@ func TestYahooProviderSearchAssetsFailsWhenSearchFails(t *testing.T) {
 	}
 }
 
+func TestYahooFinanceClientSearch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Context().Err() != nil {
+			t.Fatalf("request context error = %v", r.Context().Err())
+		}
+		if r.URL.Query().Get("q") != "AAPL" {
+			t.Fatalf("q = %q, want AAPL", r.URL.Query().Get("q"))
+		}
+		if r.URL.Query().Get("quotesCount") != "5" {
+			t.Fatalf("quotesCount = %q, want 5", r.URL.Query().Get("quotesCount"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"quotes":[{"symbol":"AAPL","shortname":"Apple Inc.","quoteType":"EQUITY","exchange":"NMS"}]}`))
+	}))
+	defer server.Close()
+
+	client := yahooFinanceClient{
+		httpClient: server.Client(),
+		searchURL:  server.URL,
+	}
+
+	results, err := client.Search(context.Background(), "AAPL", 5)
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("results length = %d, want 1", len(results))
+	}
+	result := results[0]
+	if result.Symbol != "AAPL" || result.Name != "Apple Inc." || result.Type != "EQUITY" || result.Exchange != "NMS" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestYahooFinanceClientSearchHonorsContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client := yahooFinanceClient{
+		httpClient: server.Client(),
+		searchURL:  server.URL,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.Search(ctx, "AAPL", 5)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Search() error = %v, want %v", err, context.Canceled)
+	}
+}
+
 func TestYahooQuoteTypeMapping(t *testing.T) {
 	tests := []struct {
 		value string
@@ -192,7 +248,7 @@ type fakeYahooClient struct {
 	searchErr error
 }
 
-func (c fakeYahooClient) Search(string, int) ([]yahooSearchResult, error) {
+func (c fakeYahooClient) Search(context.Context, string, int) ([]yahooSearchResult, error) {
 	return c.results, c.searchErr
 }
 

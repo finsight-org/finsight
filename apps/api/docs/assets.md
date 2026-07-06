@@ -75,13 +75,13 @@ The provider interface intentionally has one method. Provider-specific lookup st
 
 ## Current Yahoo Adapter
 
-Yahoo search does not include every field Finsight wants to display. The Yahoo adapter currently returns only the data available from symbol search and leaves unavailable optional fields as `nil`.
+Yahoo search does not include every field Finsight wants to display. The Yahoo adapter currently calls Yahoo's public search endpoint directly, returns only the data available from symbol search, and leaves unavailable optional fields as `nil`.
 
 1. Search Yahoo symbols.
 2. Map Yahoo quote types into Finsight asset types.
 3. Return normalized `asset.AssetCandidate` values.
 
-If Yahoo symbol search fails, the whole provider call fails. Currency is currently returned as `nil` because the pinned Yahoo package's ticker info path is not used by this adapter.
+The Yahoo HTTP request uses the incoming request context and an adapter-owned timeout so cancelled or slow searches do not keep the backend handler waiting indefinitely. If Yahoo symbol search fails, the whole provider call fails. Currency is currently returned as `nil` because this adapter does not call Yahoo's ticker detail endpoint.
 
 Yahoo quote type mapping:
 
