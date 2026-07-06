@@ -13,6 +13,7 @@ type apiServer struct {
 	database     DatabasePinger
 	bootstrap    LocalBootstrapper
 	accounts     AccountService
+	assets       AssetFinder
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

@@ -112,7 +112,7 @@ The MCP server must not bypass authorization, workspace scoping, domain validati
 
 PostgreSQL is the durable source of truth.
 
-It stores workspace, account, asset, listing, import, transaction, ledger entry, market price, FX rate, and connected-agent records. Derived data is computed from those source records.
+It stores workspace, account, asset, import, transaction, ledger entry, market price, FX rate, and connected-agent records. Derived data is computed from those source records.
 
 Application code should access PostgreSQL through backend persistence boundaries. Frontend and MCP code should not query the database directly.
 
@@ -120,7 +120,7 @@ Application code should access PostgreSQL through backend persistence boundaries
 
 Market data providers are external dependencies behind provider adapters.
 
-Provider adapters translate provider-specific formats into Finsight concepts such as assets, listings, market prices, and FX rates. Provider-specific response shapes must not leak into the core domain model, HTTP API, MCP tools, or portfolio calculation logic.
+Provider adapters translate provider-specific formats into Finsight concepts such as assets, market prices, and FX rates. Provider-specific response shapes must not leak into the core domain model, HTTP API, MCP tools, or portfolio calculation logic.
 
 Missing market prices or FX rates should produce incomplete-data warnings. They should not corrupt transactions, ledger entries, or portfolio state.
 
@@ -136,9 +136,9 @@ Other backend areas may depend on this boundary to resolve the current workspace
 
 ### Accounts & Assets
 
-Owns accounts, assets, listings, and asset/listing matching.
+Owns accounts, assets, and provider-backed asset matching.
 
-This boundary is responsible for keeping assets separate from market-specific listings so portfolios can contain instruments from multiple countries, exchanges, providers, and currencies.
+This boundary is responsible for keeping assets readable and normalized while preserving the provider identifier needed to refresh prices. Separate listing/provider-reference models are deferred until the product needs multiple tradable identities for the same asset.
 
 ### Imports
 
@@ -164,7 +164,7 @@ This boundary reads transactions, ledger entries, prices, and FX rates. It shoul
 
 ### Market Data
 
-Owns provider adapter integration, asset/listing lookup support, market prices, and FX rates.
+Owns provider adapter integration, asset lookup support, market prices, and FX rates.
 
 This boundary hides provider-specific APIs and normalizes external data before persistence or calculation.
 

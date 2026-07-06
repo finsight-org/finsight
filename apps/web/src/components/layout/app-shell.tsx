@@ -1,8 +1,9 @@
 import { Link, Outlet } from '@tanstack/react-router'
-import { ChevronDown, Search, UserRound } from 'lucide-react'
+import { ChevronDown, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { AssetSearch } from '@/components/layout/asset-search'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +12,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -49,14 +49,7 @@ export function AppShell() {
         </div>
 
         <div className="flex w-full items-center gap-2.5 lg:w-auto">
-          <div className="relative min-w-0 flex-1 lg:w-[320px]">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              aria-label={t('search.label')}
-              placeholder={t('search.placeholder')}
-              className="h-10 rounded-full pl-10 text-sm shadow-sm"
-            />
-          </div>
+          <AssetSearch />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

@@ -23,6 +23,16 @@ const (
 	RETIREMENT     AccountType = "RETIREMENT"
 )
 
+// Defines values for AssetType.
+const (
+	CASH       AssetType = "CASH"
+	CRYPTO     AssetType = "CRYPTO"
+	EQUITY     AssetType = "EQUITY"
+	ETF        AssetType = "ETF"
+	MUTUALFUND AssetType = "MUTUAL_FUND"
+	OTHER      AssetType = "OTHER"
+)
+
 // Defines values for CheckStateStatus.
 const (
 	CheckStateStatusError CheckStateStatus = "error"
@@ -60,6 +70,25 @@ type AccountListResponse struct {
 
 // AccountType defines model for AccountType.
 type AccountType string
+
+// AssetSearchResponse defines model for AssetSearchResponse.
+type AssetSearchResponse struct {
+	Assets []AssetSearchResult `json:"assets"`
+}
+
+// AssetSearchResult defines model for AssetSearchResult.
+type AssetSearchResult struct {
+	AssetType      AssetType `json:"asset_type"`
+	Currency       *string   `json:"currency"`
+	Exchange       *string   `json:"exchange"`
+	Name           string    `json:"name"`
+	ProviderId     string    `json:"provider_id"`
+	ProviderSymbol string    `json:"provider_symbol"`
+	Symbol         string    `json:"symbol"`
+}
+
+// AssetType defines model for AssetType.
+type AssetType string
 
 // BootstrapPortfolio defines model for BootstrapPortfolio.
 type BootstrapPortfolio struct {
@@ -149,6 +178,12 @@ type ReadyResponse struct {
 // ReadyResponseStatus defines model for ReadyResponse.Status.
 type ReadyResponseStatus string
 
+// SearchAssetsParams defines parameters for SearchAssets.
+type SearchAssetsParams struct {
+	Q     string `form:"q" json:"q"`
+	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // PostAccountJSONRequestBody defines body for PostAccount for application/json ContentType.
 type PostAccountJSONRequestBody = CreateAccountRequest
 
@@ -163,6 +198,9 @@ type ServerInterface interface {
 	// Get an account from the local default portfolio.
 	// (GET /api/accounts/{id})
 	GetAccount(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Search provider-backed asset candidates.
+	// (GET /api/assets/search)
+	SearchAssets(w http.ResponseWriter, r *http.Request, params SearchAssetsParams)
 	// Create or return the local development identity context.
 	// (POST /api/local/bootstrap)
 	PostLocalBootstrap(w http.ResponseWriter, r *http.Request)
@@ -227,6 +265,48 @@ func (siw *ServerInterfaceWrapper) GetAccount(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchAssets operation middleware
+func (siw *ServerInterfaceWrapper) SearchAssets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchAssetsParams
+
+	// ------------- Required query parameter "q" -------------
+
+	if paramValue := r.URL.Query().Get("q"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchAssets(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -401,6 +481,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/accounts", wrapper.GetAccounts)
 	m.HandleFunc("POST "+options.BaseURL+"/api/accounts", wrapper.PostAccount)
 	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}", wrapper.GetAccount)
+	m.HandleFunc("GET "+options.BaseURL+"/api/assets/search", wrapper.SearchAssets)
 	m.HandleFunc("POST "+options.BaseURL+"/api/local/bootstrap", wrapper.PostLocalBootstrap)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc("GET "+options.BaseURL+"/ready", wrapper.GetReady)

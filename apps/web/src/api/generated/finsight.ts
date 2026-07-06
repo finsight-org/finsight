@@ -73,6 +73,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search provider-backed asset candidates. */
+        get: operations["searchAssets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/local/bootstrap": {
         parameters: {
             query?: never;
@@ -120,6 +137,20 @@ export interface components {
         };
         AccountListResponse: {
             accounts: components["schemas"]["Account"][];
+        };
+        /** @enum {string} */
+        AssetType: AssetType;
+        AssetSearchResult: {
+            name: string;
+            symbol: string;
+            asset_type: components["schemas"]["AssetType"];
+            currency: string | null;
+            provider_id: string;
+            provider_symbol: string;
+            exchange: string | null;
+        };
+        AssetSearchResponse: {
+            assets: components["schemas"]["AssetSearchResult"][];
         };
         CheckState: {
             /** @enum {string} */
@@ -362,6 +393,56 @@ export interface operations {
             };
         };
     };
+    searchAssets: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider-normalized asset candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetSearchResponse"];
+                };
+            };
+            /** @description Invalid asset search request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Asset search failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Asset provider could not complete the search. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     postLocalBootstrap: {
         parameters: {
             query?: never;
@@ -407,6 +488,14 @@ export enum AccountType {
     CRYPTO_EXCHANGE = "CRYPTO_EXCHANGE",
     RETIREMENT = "RETIREMENT",
     MANUAL = "MANUAL"
+}
+export enum AssetType {
+    EQUITY = "EQUITY",
+    ETF = "ETF",
+    MUTUAL_FUND = "MUTUAL_FUND",
+    CRYPTO = "CRYPTO",
+    CASH = "CASH",
+    OTHER = "OTHER"
 }
 export enum CheckStateStatus {
     ok = "ok",
