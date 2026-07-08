@@ -90,6 +90,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current read-only portfolio value overview. */
+        get: operations["getPortfolioOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/value-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get portfolio value history for a selected range. */
+        get: operations["getPortfolioValueHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/account-values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get current read-only value by account. */
+        get: operations["getPortfolioAccountValues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/local/bootstrap": {
         parameters: {
             query?: never;
@@ -155,6 +206,44 @@ export interface components {
         CheckState: {
             /** @enum {string} */
             status: CheckStateStatus;
+        };
+        /** @enum {string} */
+        PortfolioRange: PortfolioRange;
+        PortfolioWarning: {
+            code: string;
+            message: string;
+        };
+        PortfolioOverviewResponse: {
+            base_currency: string;
+            total_value: string;
+            /** Format: date */
+            valuation_date: string;
+            warnings: components["schemas"]["PortfolioWarning"][];
+        };
+        PortfolioValuePoint: {
+            /** Format: date */
+            date: string;
+            value: string;
+        };
+        PortfolioValueHistoryResponse: {
+            base_currency: string;
+            range: components["schemas"]["PortfolioRange"];
+            points: components["schemas"]["PortfolioValuePoint"][];
+            warnings: components["schemas"]["PortfolioWarning"][];
+        };
+        PortfolioAccountValue: {
+            /** Format: uuid */
+            account_id: string;
+            account_name: string;
+            value: string;
+            allocation_percent: string;
+        };
+        PortfolioAccountValuesResponse: {
+            base_currency: string;
+            /** Format: date */
+            valuation_date: string;
+            accounts: components["schemas"]["PortfolioAccountValue"][];
+            warnings: components["schemas"]["PortfolioWarning"][];
         };
         ErrorDetail: {
             code: string;
@@ -443,6 +532,104 @@ export interface operations {
             };
         };
     };
+    getPortfolioOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current portfolio overview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioOverviewResponse"];
+                };
+            };
+            /** @description Portfolio overview calculation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPortfolioValueHistory: {
+        parameters: {
+            query: {
+                range: components["schemas"]["PortfolioRange"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Portfolio value history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioValueHistoryResponse"];
+                };
+            };
+            /** @description Invalid portfolio value history range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Portfolio value history calculation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPortfolioAccountValues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current account values. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioAccountValuesResponse"];
+                };
+            };
+            /** @description Account value calculation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     postLocalBootstrap: {
         parameters: {
             query?: never;
@@ -500,6 +687,15 @@ export enum AssetType {
 export enum CheckStateStatus {
     ok = "ok",
     error = "error"
+}
+export enum PortfolioRange {
+    Value1D = "1D",
+    Value1W = "1W",
+    Value1M = "1M",
+    Value3M = "3M",
+    YTD = "YTD",
+    Value1Y = "1Y",
+    ALL = "ALL"
 }
 export enum HealthResponseStatus {
     ok = "ok"

@@ -6,12 +6,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/finsight-org/finsight/apps/api/internal/identity"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
 
 type PostgresRepository struct {
@@ -76,7 +76,7 @@ func upsertLocalUser(ctx context.Context, queries *db.Queries, defaults LocalDef
 		return identity.User{}, false, fmt.Errorf("upsert local user: %w", err)
 	}
 
-	id, err := domainUUID(row.ID)
+	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return identity.User{}, false, fmt.Errorf("map local user id: %w", err)
 	}
@@ -98,7 +98,7 @@ func upsertLocalWorkspace(ctx context.Context, queries *db.Queries, defaults Loc
 		return identity.Workspace{}, false, fmt.Errorf("upsert local workspace: %w", err)
 	}
 
-	id, err := domainUUID(row.ID)
+	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return identity.Workspace{}, false, fmt.Errorf("map local workspace id: %w", err)
 	}
@@ -113,23 +113,23 @@ func upsertLocalWorkspace(ctx context.Context, queries *db.Queries, defaults Loc
 
 func upsertLocalMembership(ctx context.Context, queries *db.Queries, defaults LocalDefaults, workspaceID uuid.UUID, userID uuid.UUID) (identity.WorkspaceMembership, bool, error) {
 	row, err := queries.UpsertLocalWorkspaceMembership(ctx, db.UpsertLocalWorkspaceMembershipParams{
-		WorkspaceID: pgUUID(workspaceID),
-		UserID:      pgUUID(userID),
+		WorkspaceID: pgconv.UUID(workspaceID),
+		UserID:      pgconv.UUID(userID),
 		Role:        defaults.MembershipRole,
 	})
 	if err != nil {
 		return identity.WorkspaceMembership{}, false, fmt.Errorf("upsert local workspace membership: %w", err)
 	}
 
-	id, err := domainUUID(row.ID)
+	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return identity.WorkspaceMembership{}, false, fmt.Errorf("map local workspace membership id: %w", err)
 	}
-	rowWorkspaceID, err := domainUUID(row.WorkspaceID)
+	rowWorkspaceID, err := pgconv.DomainUUID(row.WorkspaceID)
 	if err != nil {
 		return identity.WorkspaceMembership{}, false, fmt.Errorf("map local workspace membership workspace id: %w", err)
 	}
-	rowUserID, err := domainUUID(row.UserID)
+	rowUserID, err := pgconv.DomainUUID(row.UserID)
 	if err != nil {
 		return identity.WorkspaceMembership{}, false, fmt.Errorf("map local workspace membership user id: %w", err)
 	}
@@ -144,7 +144,7 @@ func upsertLocalMembership(ctx context.Context, queries *db.Queries, defaults Lo
 
 func upsertDefaultPortfolio(ctx context.Context, queries *db.Queries, defaults LocalDefaults, workspaceID uuid.UUID) (portfolio.Portfolio, bool, error) {
 	row, err := queries.UpsertDefaultPortfolio(ctx, db.UpsertDefaultPortfolioParams{
-		WorkspaceID:  pgUUID(workspaceID),
+		WorkspaceID:  pgconv.UUID(workspaceID),
 		Name:         defaults.PortfolioName,
 		BaseCurrency: defaults.WorkspaceBaseCurrency,
 	})
@@ -152,11 +152,11 @@ func upsertDefaultPortfolio(ctx context.Context, queries *db.Queries, defaults L
 		return portfolio.Portfolio{}, false, fmt.Errorf("upsert default portfolio: %w", err)
 	}
 
-	id, err := domainUUID(row.ID)
+	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return portfolio.Portfolio{}, false, fmt.Errorf("map default portfolio id: %w", err)
 	}
-	rowWorkspaceID, err := domainUUID(row.WorkspaceID)
+	rowWorkspaceID, err := pgconv.DomainUUID(row.WorkspaceID)
 	if err != nil {
 		return portfolio.Portfolio{}, false, fmt.Errorf("map default portfolio workspace id: %w", err)
 	}
@@ -168,18 +168,4 @@ func upsertDefaultPortfolio(ctx context.Context, queries *db.Queries, defaults L
 		BaseCurrency: row.BaseCurrency,
 		IsDefault:    row.IsDefault,
 	}, row.Created, nil
-}
-
-func pgUUID(value uuid.UUID) pgtype.UUID {
-	return pgtype.UUID{
-		Bytes: [16]byte(value),
-		Valid: true,
-	}
-}
-
-func domainUUID(value pgtype.UUID) (uuid.UUID, error) {
-	if !value.Valid {
-		return uuid.Nil, fmt.Errorf("uuid is null")
-	}
-	return uuid.UUID(value.Bytes), nil
 }

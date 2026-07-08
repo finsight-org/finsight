@@ -20,6 +20,52 @@ type Account struct {
 	UpdatedAt         pgtype.Timestamptz
 }
 
+type Asset struct {
+	ID             pgtype.UUID
+	WorkspaceID    pgtype.UUID
+	Name           string
+	AssetType      string
+	Currency       string
+	Symbol         string
+	ProviderID     string
+	ProviderSymbol string
+	Exchange       pgtype.Text
+	Isin           pgtype.Text
+	Country        pgtype.Text
+	Sector         pgtype.Text
+	IsActive       bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type LedgerEntry struct {
+	ID               pgtype.UUID
+	TransactionID    pgtype.UUID
+	AccountID        pgtype.UUID
+	AssetID          pgtype.UUID
+	EntryType        string
+	Quantity         pgtype.Numeric
+	Amount           pgtype.Numeric
+	Currency         string
+	OriginalAmount   pgtype.Numeric
+	OriginalCurrency pgtype.Text
+	ExchangeRate     pgtype.Numeric
+	Direction        string
+	CreatedAt        pgtype.Timestamptz
+}
+
+type MarketPrice struct {
+	ID            pgtype.UUID
+	AssetID       pgtype.UUID
+	Date          pgtype.Date
+	Price         pgtype.Numeric
+	Currency      string
+	ProviderID    string
+	SourceQuality string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type Portfolio struct {
 	ID           pgtype.UUID
 	WorkspaceID  pgtype.UUID
@@ -29,6 +75,22 @@ type Portfolio struct {
 	IsDefault    bool
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
+}
+
+type Transaction struct {
+	ID             pgtype.UUID
+	PortfolioID    pgtype.UUID
+	AccountID      pgtype.UUID
+	ImportID       pgtype.UUID
+	Type           string
+	TradeDate      pgtype.Date
+	SettlementDate pgtype.Date
+	Description    string
+	Source         string
+	ExternalID     pgtype.Text
+	Status         string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type User struct {

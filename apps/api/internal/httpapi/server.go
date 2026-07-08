@@ -14,6 +14,7 @@ type apiServer struct {
 	bootstrap    LocalBootstrapper
 	accounts     AccountService
 	assets       AssetFinder
+	portfolio    PortfolioService
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

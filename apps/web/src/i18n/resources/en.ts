@@ -32,15 +32,27 @@ export const en = {
   },
   portfolio: {
     summary: {
-      value: '$2,000.00 CAD',
-      dailyChange: '+$18.00 CAD (+0.90%) past day',
-      baseline: '$0.00',
+      emptyValue: '$0.00',
+      loading: 'Loading portfolio value',
+      valuationDate: 'Value as of {{date}}',
+      baseline: '{{value}}',
+      loadErrorTitle: 'Portfolio value could not load',
     },
     valueNote: 'Portfolio value note',
-    valueTooltip: 'Temporary mock summary until portfolio endpoints are available.',
+    valueTooltip: 'Portfolio values are derived from confirmed transactions, ledger entries, and market prices.',
+    chart: {
+      loadErrorTitle: 'Portfolio history could not load',
+      empty: 'No portfolio value history is available yet.',
+    },
+    accounts: {
+      loading: 'Loading account values',
+      loadErrorTitle: 'Account values could not load',
+      emptyTitle: 'No account values yet',
+      emptyDescription: 'Seed demo data or import transactions to calculate account values.',
+      allocation: '{{value}}% allocation',
+    },
     tabs: {
       accountValue: 'Account value',
-      returns: 'Returns',
       ranges: {
         oneDay: '1D',
         oneWeek: '1W',
@@ -119,5 +131,11 @@ export const en = {
     accountCreate: 'Could not create the account.',
     accountCreateNoData: 'The account was created, but the API returned no account data.',
     assetSearch: 'Could not search assets.',
+    portfolioOverview: 'Could not load portfolio value.',
+    portfolioOverviewNoData: 'The portfolio value API returned no data.',
+    portfolioValueHistory: 'Could not load portfolio value history.',
+    portfolioValueHistoryNoData: 'The portfolio value history API returned no data.',
+    portfolioAccountValues: 'Could not load account values.',
+    portfolioAccountValuesNoData: 'The account values API returned no data.',
   },
 } as const

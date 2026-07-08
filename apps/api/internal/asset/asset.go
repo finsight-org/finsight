@@ -1,6 +1,14 @@
 package asset
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/finsight-org/finsight/apps/api/internal/textutil"
+)
 
 type Type string
 
@@ -34,6 +42,53 @@ type AssetCandidate struct {
 	Exchange       *string
 }
 
+type Asset struct {
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	Name           string
+	Type           Type
+	Currency       string
+	Symbol         string
+	ProviderID     string
+	ProviderSymbol string
+	Exchange       *string
+	ISIN           *string
+	Country        *string
+	Sector         *string
+	IsActive       bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type UpsertInput struct {
+	Name           string
+	Type           Type
+	Currency       string
+	Symbol         string
+	ProviderID     string
+	ProviderSymbol string
+	Exchange       *string
+	ISIN           *string
+	Country        *string
+	Sector         *string
+}
+
+type upsertRepositoryInput struct {
+	WorkspaceID    uuid.UUID
+	Name           string
+	Type           Type
+	Currency       string
+	Symbol         string
+	ProviderID     string
+	ProviderSymbol string
+	Exchange       *string
+	ISIN           *string
+	Country        *string
+	Sector         *string
+}
+
+var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+
 func normalizeSearchInput(input SearchInput) SearchInput {
 	input.Query = strings.TrimSpace(input.Query)
 	if input.Limit == nil {
@@ -43,10 +98,24 @@ func normalizeSearchInput(input SearchInput) SearchInput {
 	return input
 }
 
-func normalizedOptional(value string) *string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil
+func normalizeUpsertInput(input UpsertInput) UpsertInput {
+	input.Name = strings.TrimSpace(input.Name)
+	input.Currency = strings.TrimSpace(input.Currency)
+	input.Symbol = strings.TrimSpace(input.Symbol)
+	input.ProviderID = strings.ToLower(strings.TrimSpace(input.ProviderID))
+	input.ProviderSymbol = strings.ToLower(strings.TrimSpace(input.ProviderSymbol))
+	input.Exchange = textutil.TrimmedOptional(input.Exchange)
+	input.ISIN = textutil.TrimmedOptional(input.ISIN)
+	input.Country = textutil.TrimmedOptional(input.Country)
+	input.Sector = textutil.TrimmedOptional(input.Sector)
+	return input
+}
+
+func validType(value Type) bool {
+	switch value {
+	case TypeEquity, TypeETF, TypeMutualFund, TypeCrypto, TypeCash, TypeOther:
+		return true
+	default:
+		return false
 	}
-	return &trimmed
 }

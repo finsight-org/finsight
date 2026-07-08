@@ -1,4 +1,4 @@
-.PHONY: dev dev-api dev-web dev-down test web-build
+.PHONY: dev dev-api dev-web dev-down seed-demo test web-build
 
 dev:
 	docker compose up --build -d
@@ -14,6 +14,9 @@ dev-web:
 
 dev-down:
 	docker compose down
+
+seed-demo:
+	cd apps/api && FINSIGHT_DATABASE_URL=$${FINSIGHT_DATABASE_URL:-postgres://finsight:finsight@localhost:5432/finsight?sslmode=disable} go run ./cmd/finsight-seed-demo
 
 test:
 	cd apps/api && go test ./...
