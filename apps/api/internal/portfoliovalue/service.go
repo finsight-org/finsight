@@ -42,10 +42,12 @@ type valuationEntry struct {
 }
 
 type marketPrice struct {
-	AssetID  uuid.UUID
-	Date     time.Time
-	Price    decimal.Decimal
-	Currency string
+	AssetID       uuid.UUID
+	Date          time.Time
+	Price         decimal.Decimal
+	Currency      string
+	ProviderID    string
+	SourceQuality string
 }
 
 type valuationData struct {
@@ -248,7 +250,7 @@ func latestPrices(prices []marketPrice, valuationDate time.Time, warnings warnin
 			continue
 		}
 		current, ok := latest[price.AssetID]
-		if !ok || price.Date.After(current.Date) {
+		if !ok || preferredPrice(price, current) {
 			latest[price.AssetID] = price
 		}
 	}
@@ -258,6 +260,37 @@ func latestPrices(prices []marketPrice, valuationDate time.Time, warnings warnin
 		result[assetID] = price.Price
 	}
 	return result
+}
+
+func preferredPrice(candidate marketPrice, current marketPrice) bool {
+	if candidate.Date.After(current.Date) {
+		return true
+	}
+	if !candidate.Date.Equal(current.Date) {
+		return false
+	}
+	candidateRank := sourceQualityRank(candidate.SourceQuality)
+	currentRank := sourceQualityRank(current.SourceQuality)
+	if candidateRank != currentRank {
+		return candidateRank > currentRank
+	}
+	if candidate.ProviderID != current.ProviderID {
+		return candidate.ProviderID < current.ProviderID
+	}
+	return candidate.Price.String() < current.Price.String()
+}
+
+func sourceQualityRank(value string) int {
+	switch value {
+	case "DEMO":
+		return 3
+	case "PROVIDER":
+		return 2
+	case "MANUAL":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func historyStartDate(valueRange portfolio.Range, valuationDate time.Time, entries []valuationEntry) time.Time {

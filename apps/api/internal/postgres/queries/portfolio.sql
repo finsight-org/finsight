@@ -31,7 +31,9 @@ select
     mp.asset_id,
     mp.date,
     mp.price,
-    mp.currency
+    mp.currency,
+    mp.provider_id,
+    mp.source_quality
 from market_prices mp
 where mp.date <= @end_date
     and exists (
@@ -41,4 +43,4 @@ where mp.date <= @end_date
         where tx.portfolio_id = @portfolio_id
             and le.asset_id = mp.asset_id
     )
-order by mp.asset_id, mp.date;
+order by mp.asset_id, mp.date, mp.source_quality, mp.provider_id;

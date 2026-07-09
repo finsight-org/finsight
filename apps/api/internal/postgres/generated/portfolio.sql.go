@@ -122,7 +122,9 @@ select
     mp.asset_id,
     mp.date,
     mp.price,
-    mp.currency
+    mp.currency,
+    mp.provider_id,
+    mp.source_quality
 from market_prices mp
 where mp.date <= $1
     and exists (
@@ -132,7 +134,7 @@ where mp.date <= $1
         where tx.portfolio_id = $2
             and le.asset_id = mp.asset_id
     )
-order by mp.asset_id, mp.date
+order by mp.asset_id, mp.date, mp.source_quality, mp.provider_id
 `
 
 type ListPortfolioMarketPricesForValuationParams struct {
@@ -141,10 +143,12 @@ type ListPortfolioMarketPricesForValuationParams struct {
 }
 
 type ListPortfolioMarketPricesForValuationRow struct {
-	AssetID  pgtype.UUID
-	Date     pgtype.Date
-	Price    pgtype.Numeric
-	Currency string
+	AssetID       pgtype.UUID
+	Date          pgtype.Date
+	Price         pgtype.Numeric
+	Currency      string
+	ProviderID    string
+	SourceQuality string
 }
 
 func (q *Queries) ListPortfolioMarketPricesForValuation(ctx context.Context, arg ListPortfolioMarketPricesForValuationParams) ([]ListPortfolioMarketPricesForValuationRow, error) {
@@ -161,6 +165,8 @@ func (q *Queries) ListPortfolioMarketPricesForValuation(ctx context.Context, arg
 			&i.Date,
 			&i.Price,
 			&i.Currency,
+			&i.ProviderID,
+			&i.SourceQuality,
 		); err != nil {
 			return nil, err
 		}

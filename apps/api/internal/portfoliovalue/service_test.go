@@ -61,6 +61,43 @@ func TestGetOverviewWarnsAndExcludesMissingPrice(t *testing.T) {
 	}
 }
 
+func TestGetOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
+	accountID := uuid.New()
+	assetID := uuid.New()
+	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+		data: valuationData{
+			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
+			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
+			Prices: []marketPrice{
+				{
+					AssetID:       assetID,
+					Date:          date("2026-07-01"),
+					Price:         decimal.RequireFromString("50"),
+					Currency:      "CAD",
+					ProviderID:    "provider",
+					SourceQuality: "PROVIDER",
+				},
+				{
+					AssetID:       assetID,
+					Date:          date("2026-07-01"),
+					Price:         decimal.RequireFromString("42"),
+					Currency:      "CAD",
+					ProviderID:    "demo",
+					SourceQuality: "DEMO",
+				},
+			},
+		},
+	}, fixedClock("2026-07-07"))
+
+	overview, err := service.GetOverview(context.Background())
+	if err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if !overview.TotalValue.Equal(decimal.RequireFromString("42")) {
+		t.Fatalf("total value = %s, want demo price 42", overview.TotalValue)
+	}
+}
+
 func TestGetOverviewWarnsAndExcludesNonCADRecords(t *testing.T) {
 	accountID := uuid.New()
 	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{

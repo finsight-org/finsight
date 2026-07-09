@@ -129,5 +129,12 @@ func mapMarketPrice(row db.ListPortfolioMarketPricesForValuationRow) (marketPric
 	if err != nil {
 		return marketPrice{}, fmt.Errorf("price: %w", err)
 	}
-	return marketPrice{AssetID: assetID, Date: date, Price: price, Currency: row.Currency}, nil
+	return marketPrice{
+		AssetID:       assetID,
+		Date:          date,
+		Price:         price,
+		Currency:      row.Currency,
+		ProviderID:    row.ProviderID,
+		SourceQuality: row.SourceQuality,
+	}, nil
 }
