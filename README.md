@@ -48,3 +48,9 @@ Run useful checks:
 make test
 make web-build
 ```
+
+Seed deterministic local portfolio demo data after PostgreSQL is running:
+
+```bash
+make seed-demo
+```

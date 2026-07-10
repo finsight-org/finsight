@@ -25,6 +25,12 @@ Create or return the local development identity context:
 curl -i -X POST http://localhost:8080/api/local/bootstrap
 ```
 
+Seed deterministic local portfolio demo data:
+
+```bash
+make seed-demo
+```
+
 Run backend tests from this module:
 
 ```bash
@@ -35,3 +41,4 @@ go test ./...
 
 - [Accounts](docs/accounts.md)
 - [Assets](docs/assets.md)
+- [Portfolio Values](docs/portfolio.md)

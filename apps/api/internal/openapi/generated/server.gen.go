@@ -44,6 +44,17 @@ const (
 	HealthResponseStatusOk HealthResponseStatus = "ok"
 )
 
+// Defines values for PortfolioRange.
+const (
+	ALL PortfolioRange = "ALL"
+	N1D PortfolioRange = "1D"
+	N1M PortfolioRange = "1M"
+	N1W PortfolioRange = "1W"
+	N1Y PortfolioRange = "1Y"
+	N3M PortfolioRange = "3M"
+	YTD PortfolioRange = "YTD"
+)
+
 // Defines values for ReadyResponseStatus.
 const (
 	NotReady ReadyResponseStatus = "not_ready"
@@ -169,6 +180,53 @@ type LocalBootstrapResponse struct {
 	Workspace  BootstrapWorkspace           `json:"workspace"`
 }
 
+// PortfolioAccountValue defines model for PortfolioAccountValue.
+type PortfolioAccountValue struct {
+	AccountId         openapi_types.UUID `json:"account_id"`
+	AccountName       string             `json:"account_name"`
+	AllocationPercent string             `json:"allocation_percent"`
+	Value             string             `json:"value"`
+}
+
+// PortfolioAccountValuesResponse defines model for PortfolioAccountValuesResponse.
+type PortfolioAccountValuesResponse struct {
+	Accounts      []PortfolioAccountValue `json:"accounts"`
+	BaseCurrency  string                  `json:"base_currency"`
+	ValuationDate openapi_types.Date      `json:"valuation_date"`
+	Warnings      []PortfolioWarning      `json:"warnings"`
+}
+
+// PortfolioOverviewResponse defines model for PortfolioOverviewResponse.
+type PortfolioOverviewResponse struct {
+	BaseCurrency  string             `json:"base_currency"`
+	TotalValue    string             `json:"total_value"`
+	ValuationDate openapi_types.Date `json:"valuation_date"`
+	Warnings      []PortfolioWarning `json:"warnings"`
+}
+
+// PortfolioRange defines model for PortfolioRange.
+type PortfolioRange string
+
+// PortfolioValueHistoryResponse defines model for PortfolioValueHistoryResponse.
+type PortfolioValueHistoryResponse struct {
+	BaseCurrency string                `json:"base_currency"`
+	Points       []PortfolioValuePoint `json:"points"`
+	Range        PortfolioRange        `json:"range"`
+	Warnings     []PortfolioWarning    `json:"warnings"`
+}
+
+// PortfolioValuePoint defines model for PortfolioValuePoint.
+type PortfolioValuePoint struct {
+	Date  openapi_types.Date `json:"date"`
+	Value string             `json:"value"`
+}
+
+// PortfolioWarning defines model for PortfolioWarning.
+type PortfolioWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 // ReadyResponse defines model for ReadyResponse.
 type ReadyResponse struct {
 	Checks map[string]CheckState `json:"checks"`
@@ -182,6 +240,11 @@ type ReadyResponseStatus string
 type SearchAssetsParams struct {
 	Q     string `form:"q" json:"q"`
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPortfolioValueHistoryParams defines parameters for GetPortfolioValueHistory.
+type GetPortfolioValueHistoryParams struct {
+	Range PortfolioRange `form:"range" json:"range"`
 }
 
 // PostAccountJSONRequestBody defines body for PostAccount for application/json ContentType.
@@ -204,6 +267,15 @@ type ServerInterface interface {
 	// Create or return the local development identity context.
 	// (POST /api/local/bootstrap)
 	PostLocalBootstrap(w http.ResponseWriter, r *http.Request)
+	// Get current read-only value by account.
+	// (GET /api/portfolio/account-values)
+	GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request)
+	// Get the current read-only portfolio value overview.
+	// (GET /api/portfolio/overview)
+	GetPortfolioOverview(w http.ResponseWriter, r *http.Request)
+	// Get portfolio value history for a selected range.
+	// (GET /api/portfolio/value-history)
+	GetPortfolioValueHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioValueHistoryParams)
 	// Check API liveness.
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -321,6 +393,68 @@ func (siw *ServerInterfaceWrapper) PostLocalBootstrap(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostLocalBootstrap(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioAccountValues operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioAccountValues(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioOverview operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioOverview(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioOverview(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioValueHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioValueHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPortfolioValueHistoryParams
+
+	// ------------- Required query parameter "range" -------------
+
+	if paramValue := r.URL.Query().Get("range"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "range"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "range", r.URL.Query(), &params.Range)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "range", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioValueHistory(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -483,6 +617,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}", wrapper.GetAccount)
 	m.HandleFunc("GET "+options.BaseURL+"/api/assets/search", wrapper.SearchAssets)
 	m.HandleFunc("POST "+options.BaseURL+"/api/local/bootstrap", wrapper.PostLocalBootstrap)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/account-values", wrapper.GetPortfolioAccountValues)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/overview", wrapper.GetPortfolioOverview)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/value-history", wrapper.GetPortfolioValueHistory)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc("GET "+options.BaseURL+"/ready", wrapper.GetReady)
 

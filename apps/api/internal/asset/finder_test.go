@@ -60,7 +60,7 @@ func TestSearchAssetsReturnsProviderResults(t *testing.T) {
 				Currency:       &usd,
 				ProviderID:     YahooProviderID,
 				ProviderSymbol: "AAPL",
-				Exchange:       normalizedOptional("NMS"),
+				Exchange:       stringPtr("NMS"),
 			},
 		},
 	}
@@ -253,5 +253,9 @@ func (c fakeYahooClient) Search(context.Context, string, int) ([]yahooSearchResu
 }
 
 func intPtr(value int) *int {
+	return &value
+}
+
+func stringPtr(value string) *string {
 	return &value
 }

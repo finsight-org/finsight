@@ -11,6 +11,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
 type DatabasePinger interface {
@@ -31,6 +32,12 @@ type AssetFinder interface {
 	SearchAssets(context.Context, asset.SearchInput) ([]asset.AssetCandidate, error)
 }
 
+type PortfolioService interface {
+	GetOverview(context.Context) (portfolio.Overview, error)
+	GetValueHistory(context.Context, portfolio.Range) (portfolio.ValueHistory, error)
+	GetAccountValues(context.Context) (portfolio.AccountValues, error)
+}
+
 type Options struct {
 	ServiceName  string
 	Version      string
@@ -39,6 +46,7 @@ type Options struct {
 	Bootstrap    LocalBootstrapper
 	Accounts     AccountService
 	Assets       AssetFinder
+	Portfolio    PortfolioService
 }
 
 func NewRouter(options Options) http.Handler {
@@ -50,6 +58,7 @@ func NewRouter(options Options) http.Handler {
 		bootstrap:    options.Bootstrap,
 		accounts:     options.Accounts,
 		assets:       options.Assets,
+		portfolio:    options.Portfolio,
 	}
 
 	return generated.HandlerWithOptions(handler, generated.StdHTTPServerOptions{
@@ -60,6 +69,10 @@ func NewRouter(options Options) http.Handler {
 func generatedParameterError(w http.ResponseWriter, r *http.Request, _ error) {
 	if r.URL.Path == "/api/assets/search" {
 		writeAssetError(w, http.StatusBadRequest, "invalid_asset_search_query", "asset search query is invalid")
+		return
+	}
+	if r.URL.Path == "/api/portfolio/value-history" {
+		writePortfolioError(w, http.StatusBadRequest, "invalid_portfolio_range", "portfolio range is invalid")
 		return
 	}
 

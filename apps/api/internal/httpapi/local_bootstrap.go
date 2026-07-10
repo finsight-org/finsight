@@ -3,8 +3,6 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/google/uuid"
-
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -68,8 +66,4 @@ func localBootstrapResponse(value bootstrap.Result) generated.LocalBootstrapResp
 			IsDefault:    value.Portfolio.IsDefault,
 		},
 	}
-}
-
-func openapiUUID(value uuid.UUID) openapi_types.UUID {
-	return openapi_types.UUID(value)
 }

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/finsight-org/finsight/apps/api/internal/textutil"
 )
 
 const YahooProviderID = "yahoo"
@@ -64,7 +66,7 @@ func (p YahooProvider) SearchAssets(ctx context.Context, query string, limit int
 			Type:           yahooQuoteType(result.Type),
 			ProviderID:     YahooProviderID,
 			ProviderSymbol: symbol,
-			Exchange:       normalizedOptional(result.Exchange),
+			Exchange:       textutil.TrimmedOptional(&result.Exchange),
 		}
 		candidates = append(candidates, candidate)
 	}

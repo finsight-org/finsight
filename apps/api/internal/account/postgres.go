@@ -4,15 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
 
 const accountsPortfolioNameConstraint = "accounts_portfolio_name_uidx"
@@ -31,12 +30,12 @@ func (r PostgresRepository) Create(ctx context.Context, input createRepositoryIn
 	}
 
 	row, err := db.New(r.db).CreateAccount(ctx, db.CreateAccountParams{
-		PortfolioID:       pgUUID(input.PortfolioID),
+		PortfolioID:       pgconv.UUID(input.PortfolioID),
 		Name:              input.Name,
-		InstitutionName:   pgText(input.InstitutionName),
+		InstitutionName:   pgconv.Text(input.InstitutionName),
 		Type:              string(input.Type),
 		BaseCurrency:      input.BaseCurrency,
-		ExternalReference: pgText(input.ExternalReference),
+		ExternalReference: pgconv.Text(input.ExternalReference),
 	})
 	if err != nil {
 		if isUniqueViolation(err, accountsPortfolioNameConstraint) {
@@ -57,7 +56,7 @@ func (r PostgresRepository) ListByPortfolio(ctx context.Context, portfolioID uui
 		return nil, fmt.Errorf("postgres pool is required")
 	}
 
-	rows, err := db.New(r.db).ListAccountsByPortfolio(ctx, pgUUID(portfolioID))
+	rows, err := db.New(r.db).ListAccountsByPortfolio(ctx, pgconv.UUID(portfolioID))
 	if err != nil {
 		return nil, fmt.Errorf("select accounts: %w", err)
 	}
@@ -78,8 +77,8 @@ func (r PostgresRepository) GetByPortfolioAndID(ctx context.Context, portfolioID
 	}
 
 	row, err := db.New(r.db).GetAccountByPortfolioAndID(ctx, db.GetAccountByPortfolioAndIDParams{
-		PortfolioID: pgUUID(portfolioID),
-		ID:          pgUUID(id),
+		PortfolioID: pgconv.UUID(portfolioID),
+		ID:          pgconv.UUID(id),
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -96,19 +95,19 @@ func (r PostgresRepository) GetByPortfolioAndID(ctx context.Context, portfolioID
 }
 
 func mapAccount(row db.Account) (Account, error) {
-	id, err := domainUUID(row.ID)
+	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return Account{}, fmt.Errorf("id: %w", err)
 	}
-	portfolioID, err := domainUUID(row.PortfolioID)
+	portfolioID, err := pgconv.DomainUUID(row.PortfolioID)
 	if err != nil {
 		return Account{}, fmt.Errorf("portfolio id: %w", err)
 	}
-	createdAt, err := domainTime(row.CreatedAt)
+	createdAt, err := pgconv.Time(row.CreatedAt)
 	if err != nil {
 		return Account{}, fmt.Errorf("created at: %w", err)
 	}
-	updatedAt, err := domainTime(row.UpdatedAt)
+	updatedAt, err := pgconv.Time(row.UpdatedAt)
 	if err != nil {
 		return Account{}, fmt.Errorf("updated at: %w", err)
 	}
@@ -116,45 +115,13 @@ func mapAccount(row db.Account) (Account, error) {
 		ID:                id,
 		PortfolioID:       portfolioID,
 		Name:              row.Name,
-		InstitutionName:   stringPointer(row.InstitutionName),
+		InstitutionName:   pgconv.StringPointer(row.InstitutionName),
 		Type:              Type(row.Type),
 		BaseCurrency:      row.BaseCurrency,
-		ExternalReference: stringPointer(row.ExternalReference),
+		ExternalReference: pgconv.StringPointer(row.ExternalReference),
 		CreatedAt:         createdAt,
 		UpdatedAt:         updatedAt,
 	}, nil
-}
-
-func pgUUID(value uuid.UUID) pgtype.UUID {
-	return pgtype.UUID{Bytes: [16]byte(value), Valid: true}
-}
-
-func domainUUID(value pgtype.UUID) (uuid.UUID, error) {
-	if !value.Valid {
-		return uuid.Nil, fmt.Errorf("uuid is null")
-	}
-	return uuid.UUID(value.Bytes), nil
-}
-
-func pgText(value *string) pgtype.Text {
-	if value == nil {
-		return pgtype.Text{}
-	}
-	return pgtype.Text{String: *value, Valid: true}
-}
-
-func stringPointer(value pgtype.Text) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
-}
-
-func domainTime(value pgtype.Timestamptz) (time.Time, error) {
-	if !value.Valid {
-		return time.Time{}, fmt.Errorf("timestamp is null")
-	}
-	return value.Time, nil
 }
 
 func isUniqueViolation(err error, constraint string) bool {

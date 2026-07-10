@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/finsight-org/finsight/apps/api/internal/textutil"
 )
 
 type Type string
@@ -51,20 +53,9 @@ type createRepositoryInput struct {
 
 func normalizeCreateInput(input CreateInput) CreateInput {
 	input.Name = strings.TrimSpace(input.Name)
-	input.InstitutionName = trimmedOptional(input.InstitutionName)
-	input.ExternalReference = trimmedOptional(input.ExternalReference)
+	input.InstitutionName = textutil.TrimmedOptional(input.InstitutionName)
+	input.ExternalReference = textutil.TrimmedOptional(input.ExternalReference)
 	return input
-}
-
-func trimmedOptional(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
 }
 
 func validType(value Type) bool {

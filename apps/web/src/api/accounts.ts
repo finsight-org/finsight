@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, errorMessage } from '@/api/client'
 import { AccountType as GeneratedAccountType, type components } from '@/api/generated/finsight'
+import { portfolioAccountValuesQueryKey } from '@/api/portfolio'
 import { i18n } from '@/i18n/i18n'
 
 export type Account = components['schemas']['Account']
@@ -52,7 +53,10 @@ export function useCreateAccountMutation() {
   return useMutation({
     mutationFn: createAccount,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: accountsQueryKey })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: accountsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey }),
+      ])
     },
   })
 }
