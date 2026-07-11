@@ -38,6 +38,19 @@ type Asset struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type FxRate struct {
+	ID            pgtype.UUID
+	WorkspaceID   pgtype.UUID
+	FromCurrency  string
+	ToCurrency    string
+	Date          pgtype.Date
+	Rate          pgtype.Numeric
+	ProviderID    string
+	SourceQuality string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type LedgerEntry struct {
 	ID               pgtype.UUID
 	TransactionID    pgtype.UUID

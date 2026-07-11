@@ -19,7 +19,7 @@ type LocalBootstrapper interface {
 }
 
 type Repository interface {
-	LoadValuationData(context.Context, uuid.UUID, time.Time) (valuationData, error)
+	LoadValuationData(context.Context, uuid.UUID, uuid.UUID, string, time.Time) (valuationData, error)
 }
 
 type valuationAccount struct {
@@ -50,10 +50,20 @@ type marketPrice struct {
 	SourceQuality string
 }
 
+type fxRate struct {
+	FromCurrency  string
+	ToCurrency    string
+	Date          time.Time
+	Rate          decimal.Decimal
+	ProviderID    string
+	SourceQuality string
+}
+
 type valuationData struct {
 	Accounts []valuationAccount
 	Entries  []valuationEntry
 	Prices   []marketPrice
+	FXRates  []fxRate
 }
 
 type Service struct {
@@ -71,28 +81,30 @@ func NewServiceWithClock(bootstrap LocalBootstrapper, repository Repository, now
 }
 
 func (s Service) GetOverview(ctx context.Context) (portfolio.Overview, error) {
-	data, valuationDate, err := s.loadData(ctx)
+	loaded, err := s.loadData(ctx)
 	if err != nil {
 		return portfolio.Overview{}, err
 	}
-	snapshot := calculateSnapshot(data, valuationDate)
+	baseCurrency := loaded.localContext.Portfolio.BaseCurrency
+	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
 	return portfolio.Overview{
-		BaseCurrency:  portfolio.BaseCurrencyCAD,
+		BaseCurrency:  baseCurrency,
 		TotalValue:    snapshot.total,
-		ValuationDate: valuationDate,
+		ValuationDate: loaded.valuationDate,
 		Warnings:      snapshot.warnings.list(),
 	}, nil
 }
 
 func (s Service) GetAccountValues(ctx context.Context) (portfolio.AccountValues, error) {
-	data, valuationDate, err := s.loadData(ctx)
+	loaded, err := s.loadData(ctx)
 	if err != nil {
 		return portfolio.AccountValues{}, err
 	}
-	snapshot := calculateSnapshot(data, valuationDate)
+	baseCurrency := loaded.localContext.Portfolio.BaseCurrency
+	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
 	return portfolio.AccountValues{
-		BaseCurrency:  portfolio.BaseCurrencyCAD,
-		ValuationDate: valuationDate,
+		BaseCurrency:  baseCurrency,
+		ValuationDate: loaded.valuationDate,
 		Accounts:      snapshot.accounts,
 		Warnings:      snapshot.warnings.list(),
 	}, nil
@@ -103,38 +115,45 @@ func (s Service) GetValueHistory(ctx context.Context, valueRange portfolio.Range
 		return portfolio.ValueHistory{}, portfolio.ErrInvalidRange
 	}
 
-	data, valuationDate, err := s.loadData(ctx)
+	loaded, err := s.loadData(ctx)
 	if err != nil {
 		return portfolio.ValueHistory{}, err
 	}
+	baseCurrency := loaded.localContext.Portfolio.BaseCurrency
 
-	startDate := historyStartDate(valueRange, valuationDate, data.Entries)
+	startDate := historyStartDate(valueRange, loaded.valuationDate, loaded.data.Entries)
 	if startDate.IsZero() {
-		return portfolio.ValueHistory{BaseCurrency: portfolio.BaseCurrencyCAD, Range: valueRange, Points: []portfolio.ValuePoint{}}, nil
+		return portfolio.ValueHistory{BaseCurrency: baseCurrency, Range: valueRange, Points: []portfolio.ValuePoint{}}, nil
 	}
 
 	warnings := newWarningSet()
-	points := make([]portfolio.ValuePoint, 0, int(valuationDate.Sub(startDate).Hours()/24)+1)
-	for current := startDate; !current.After(valuationDate); current = current.AddDate(0, 0, 1) {
-		snapshot := calculateSnapshot(data, current)
+	points := make([]portfolio.ValuePoint, 0, int(loaded.valuationDate.Sub(startDate).Hours()/24)+1)
+	for current := startDate; !current.After(loaded.valuationDate); current = current.AddDate(0, 0, 1) {
+		snapshot := calculateSnapshot(loaded.data, baseCurrency, current)
 		warnings.merge(snapshot.warnings)
 		points = append(points, portfolio.ValuePoint{Date: current, Value: snapshot.total})
 	}
 
 	return portfolio.ValueHistory{
-		BaseCurrency: portfolio.BaseCurrencyCAD,
+		BaseCurrency: baseCurrency,
 		Range:        valueRange,
 		Points:       points,
 		Warnings:     warnings.list(),
 	}, nil
 }
 
-func (s Service) loadData(ctx context.Context) (valuationData, time.Time, error) {
+type loadedData struct {
+	data          valuationData
+	localContext  bootstrap.Result
+	valuationDate time.Time
+}
+
+func (s Service) loadData(ctx context.Context) (loadedData, error) {
 	if s.bootstrap == nil {
-		return valuationData{}, time.Time{}, fmt.Errorf("portfolio bootstrapper is required")
+		return loadedData{}, fmt.Errorf("portfolio bootstrapper is required")
 	}
 	if s.repository == nil {
-		return valuationData{}, time.Time{}, fmt.Errorf("portfolio repository is required")
+		return loadedData{}, fmt.Errorf("portfolio repository is required")
 	}
 	now := time.Now
 	if s.now != nil {
@@ -144,19 +163,24 @@ func (s Service) loadData(ctx context.Context) (valuationData, time.Time, error)
 
 	localContext, err := s.bootstrap.BootstrapLocal(ctx)
 	if err != nil {
-		return valuationData{}, time.Time{}, fmt.Errorf("resolve local portfolio context: %w", err)
+		return loadedData{}, fmt.Errorf("resolve local portfolio context: %w", err)
 	}
 
-	data, err := s.repository.LoadValuationData(ctx, localContext.Portfolio.ID, valuationDate)
+	data, err := s.repository.LoadValuationData(ctx, localContext.Workspace.ID, localContext.Portfolio.ID, localContext.Portfolio.BaseCurrency, valuationDate)
 	if err != nil {
-		return valuationData{}, time.Time{}, fmt.Errorf("load portfolio valuation data: %w", err)
+		return loadedData{}, fmt.Errorf("load portfolio valuation data: %w", err)
 	}
-	return data, valuationDate, nil
+	return loadedData{data: data, localContext: localContext, valuationDate: valuationDate}, nil
 }
 
 type accountAssetKey struct {
 	accountID uuid.UUID
 	assetID   uuid.UUID
+}
+
+type fxRateKey struct {
+	fromCurrency string
+	toCurrency   string
 }
 
 type snapshot struct {
@@ -165,7 +189,7 @@ type snapshot struct {
 	warnings warningSet
 }
 
-func calculateSnapshot(data valuationData, valuationDate time.Time) snapshot {
+func calculateSnapshot(data valuationData, baseCurrency string, valuationDate time.Time) snapshot {
 	accountValues := make(map[uuid.UUID]decimal.Decimal, len(data.Accounts))
 	accountNames := make(map[uuid.UUID]string, len(data.Accounts))
 	for _, account := range data.Accounts {
@@ -176,13 +200,10 @@ func calculateSnapshot(data valuationData, valuationDate time.Time) snapshot {
 	positions := map[accountAssetKey]decimal.Decimal{}
 	assetNames := map[uuid.UUID]string{}
 	warnings := newWarningSet()
+	fxRates := latestFXRates(data.FXRates, baseCurrency, valuationDate)
 
 	for _, entry := range data.Entries {
 		if entry.TradeDate.After(valuationDate) {
-			continue
-		}
-		if entry.EntryCurrency != portfolio.BaseCurrencyCAD || entry.AssetCurrency != portfolio.BaseCurrencyCAD {
-			warnings.add("unsupported_currency", fmt.Sprintf("Only CAD records are included in this portfolio value slice; %s was excluded.", entry.AssetName))
 			continue
 		}
 
@@ -193,7 +214,10 @@ func calculateSnapshot(data valuationData, valuationDate time.Time) snapshot {
 
 		switch entry.EntryType {
 		case "CASH":
-			accountValues[entry.AccountID] = accountValues[entry.AccountID].Add(entry.Amount)
+			converted, ok := convertMoney(entry.Amount, entry.EntryCurrency, baseCurrency, fxRates, warnings, entry.AssetName)
+			if ok {
+				accountValues[entry.AccountID] = accountValues[entry.AccountID].Add(converted)
+			}
 		case "ASSET_QUANTITY":
 			key := accountAssetKey{accountID: entry.AccountID, assetID: entry.AssetID}
 			positions[key] = positions[key].Add(entry.Quantity)
@@ -201,17 +225,21 @@ func calculateSnapshot(data valuationData, valuationDate time.Time) snapshot {
 		}
 	}
 
-	prices := latestPrices(data.Prices, valuationDate, warnings)
+	prices := latestPrices(data.Prices, valuationDate)
 	for key, quantity := range positions {
 		if quantity.IsZero() {
 			continue
 		}
 		price, ok := prices[key.assetID]
 		if !ok {
-			warnings.add("missing_price", fmt.Sprintf("Missing CAD market price for %s.", assetNames[key.assetID]))
+			warnings.add("missing_price", fmt.Sprintf("Missing market price for %s.", assetNames[key.assetID]))
 			continue
 		}
-		accountValues[key.accountID] = accountValues[key.accountID].Add(quantity.Mul(price))
+		marketValue := quantity.Mul(price.Price)
+		converted, ok := convertMoney(marketValue, price.Currency, baseCurrency, fxRates, warnings, assetNames[key.assetID])
+		if ok {
+			accountValues[key.accountID] = accountValues[key.accountID].Add(converted)
+		}
 	}
 
 	total := decimal.Zero
@@ -239,14 +267,10 @@ func calculateSnapshot(data valuationData, valuationDate time.Time) snapshot {
 	return snapshot{total: total, accounts: accounts, warnings: warnings}
 }
 
-func latestPrices(prices []marketPrice, valuationDate time.Time, warnings warningSet) map[uuid.UUID]decimal.Decimal {
+func latestPrices(prices []marketPrice, valuationDate time.Time) map[uuid.UUID]marketPrice {
 	latest := map[uuid.UUID]marketPrice{}
 	for _, price := range prices {
 		if price.Date.After(valuationDate) {
-			continue
-		}
-		if price.Currency != portfolio.BaseCurrencyCAD {
-			warnings.add("unsupported_currency", "Only CAD market prices are included in this portfolio value slice.")
 			continue
 		}
 		current, ok := latest[price.AssetID]
@@ -255,11 +279,34 @@ func latestPrices(prices []marketPrice, valuationDate time.Time, warnings warnin
 		}
 	}
 
-	result := make(map[uuid.UUID]decimal.Decimal, len(latest))
-	for assetID, price := range latest {
-		result[assetID] = price.Price
+	return latest
+}
+
+func latestFXRates(rates []fxRate, baseCurrency string, valuationDate time.Time) map[fxRateKey]fxRate {
+	latest := map[fxRateKey]fxRate{}
+	for _, rate := range rates {
+		if rate.Date.After(valuationDate) || rate.ToCurrency != baseCurrency {
+			continue
+		}
+		key := fxRateKey{fromCurrency: rate.FromCurrency, toCurrency: rate.ToCurrency}
+		current, ok := latest[key]
+		if !ok || preferredFXRate(rate, current) {
+			latest[key] = rate
+		}
 	}
-	return result
+	return latest
+}
+
+func convertMoney(amount decimal.Decimal, currency string, baseCurrency string, rates map[fxRateKey]fxRate, warnings warningSet, label string) (decimal.Decimal, bool) {
+	if currency == baseCurrency {
+		return amount, true
+	}
+	rate, ok := rates[fxRateKey{fromCurrency: currency, toCurrency: baseCurrency}]
+	if !ok {
+		warnings.add("missing_fx_rate", fmt.Sprintf("Missing %s to %s FX rate for %s.", currency, baseCurrency, label))
+		return decimal.Zero, false
+	}
+	return amount.Mul(rate.Rate), true
 }
 
 func preferredPrice(candidate marketPrice, current marketPrice) bool {
@@ -278,6 +325,24 @@ func preferredPrice(candidate marketPrice, current marketPrice) bool {
 		return candidate.ProviderID < current.ProviderID
 	}
 	return candidate.Price.String() < current.Price.String()
+}
+
+func preferredFXRate(candidate fxRate, current fxRate) bool {
+	if candidate.Date.After(current.Date) {
+		return true
+	}
+	if !candidate.Date.Equal(current.Date) {
+		return false
+	}
+	candidateRank := sourceQualityRank(candidate.SourceQuality)
+	currentRank := sourceQualityRank(current.SourceQuality)
+	if candidateRank != currentRank {
+		return candidateRank > currentRank
+	}
+	if candidate.ProviderID != current.ProviderID {
+		return candidate.ProviderID < current.ProviderID
+	}
+	return candidate.Rate.String() < current.Rate.String()
 }
 
 func sourceQualityRank(value string) int {

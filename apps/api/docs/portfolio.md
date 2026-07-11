@@ -1,8 +1,8 @@
 # Portfolio Values
 
-Portfolio values are read-only derived views. Transactions and ledger entries remain the source of truth; the portfolio service derives current value, value history, and account values from confirmed ledger entries plus market prices.
+Portfolio values are read-only derived views. Transactions and ledger entries remain the source of truth; the portfolio service derives current value, value history, and account values from confirmed ledger entries plus market prices and FX rates.
 
-The first implementation is intentionally CAD-only. Non-CAD records are excluded from calculations and returned as warnings so the data model can remain multi-currency-ready without implementing FX conversion in this slice.
+Values are reported in the default portfolio base currency. Cash ledger amounts and priced asset market values are converted with direct FX rates into that base currency when needed. Missing prices or FX rates are returned as warnings and the incomplete values are excluded from totals rather than estimated.
 
 ## Demo Seed
 
@@ -48,9 +48,10 @@ Supported ranges:
 Current value is calculated by:
 
 1. Loading confirmed ledger entries up to the valuation date.
-2. Summing CAD cash ledger entries per account.
+2. Summing cash ledger entries per account, converting non-base-currency cash with the latest direct FX rate on or before the valuation date.
 3. Summing asset quantities per account and asset.
-4. Applying the latest CAD market price on or before the valuation date.
-5. Returning missing-price and unsupported-currency warnings when data is incomplete.
+4. Applying the latest market price on or before the valuation date.
+5. Converting non-base-currency market values with the latest direct FX rate on or before the valuation date.
+6. Returning missing-price and missing-FX warnings when data is incomplete.
 
 Value history uses the same valuation logic for each daily point in the selected range. It is account/portfolio value over time, not time-weighted return.
