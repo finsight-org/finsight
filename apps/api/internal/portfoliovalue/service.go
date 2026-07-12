@@ -183,6 +183,11 @@ type fxRateKey struct {
 	toCurrency   string
 }
 
+type selectedPrice struct {
+	price       marketPrice
+	convertible bool
+}
+
 type snapshot struct {
 	total    decimal.Decimal
 	accounts []portfolio.AccountValue
@@ -225,16 +230,17 @@ func calculateSnapshot(data valuationData, baseCurrency string, valuationDate ti
 		}
 	}
 
-	prices := latestPrices(data.Prices, valuationDate)
+	prices := latestPrices(data.Prices, baseCurrency, valuationDate, fxRates)
 	for key, quantity := range positions {
 		if quantity.IsZero() {
 			continue
 		}
-		price, ok := prices[key.assetID]
+		selected, ok := prices[key.assetID]
 		if !ok {
 			warnings.add("missing_price", fmt.Sprintf("Missing market price for %s.", assetNames[key.assetID]))
 			continue
 		}
+		price := selected.price
 		marketValue := quantity.Mul(price.Price)
 		converted, ok := convertMoney(marketValue, price.Currency, baseCurrency, fxRates, warnings, assetNames[key.assetID])
 		if ok {
@@ -267,15 +273,19 @@ func calculateSnapshot(data valuationData, baseCurrency string, valuationDate ti
 	return snapshot{total: total, accounts: accounts, warnings: warnings}
 }
 
-func latestPrices(prices []marketPrice, valuationDate time.Time) map[uuid.UUID]marketPrice {
-	latest := map[uuid.UUID]marketPrice{}
+func latestPrices(prices []marketPrice, baseCurrency string, valuationDate time.Time, rates map[fxRateKey]fxRate) map[uuid.UUID]selectedPrice {
+	latest := map[uuid.UUID]selectedPrice{}
 	for _, price := range prices {
 		if price.Date.After(valuationDate) {
 			continue
 		}
+		candidate := selectedPrice{
+			price:       price,
+			convertible: canConvertCurrency(price.Currency, baseCurrency, rates),
+		}
 		current, ok := latest[price.AssetID]
-		if !ok || preferredPrice(price, current) {
-			latest[price.AssetID] = price
+		if !ok || preferredPriceSelection(candidate, current) {
+			latest[price.AssetID] = candidate
 		}
 	}
 
@@ -297,6 +307,14 @@ func latestFXRates(rates []fxRate, baseCurrency string, valuationDate time.Time)
 	return latest
 }
 
+func canConvertCurrency(currency string, baseCurrency string, rates map[fxRateKey]fxRate) bool {
+	if currency == baseCurrency {
+		return true
+	}
+	_, ok := rates[fxRateKey{fromCurrency: currency, toCurrency: baseCurrency}]
+	return ok
+}
+
 func convertMoney(amount decimal.Decimal, currency string, baseCurrency string, rates map[fxRateKey]fxRate, warnings warningSet, label string) (decimal.Decimal, bool) {
 	if currency == baseCurrency {
 		return amount, true
@@ -307,6 +325,13 @@ func convertMoney(amount decimal.Decimal, currency string, baseCurrency string, 
 		return decimal.Zero, false
 	}
 	return amount.Mul(rate.Rate), true
+}
+
+func preferredPriceSelection(candidate selectedPrice, current selectedPrice) bool {
+	if candidate.convertible != current.convertible {
+		return candidate.convertible
+	}
+	return preferredPrice(candidate.price, current.price)
 }
 
 func preferredPrice(candidate marketPrice, current marketPrice) bool {

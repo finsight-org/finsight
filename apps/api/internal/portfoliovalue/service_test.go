@@ -99,6 +99,46 @@ func TestGetOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
 	}
 }
 
+func TestGetOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *testing.T) {
+	accountID := uuid.New()
+	assetID := uuid.New()
+	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+		data: valuationData{
+			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
+			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
+			Prices: []marketPrice{
+				{
+					AssetID:       assetID,
+					Date:          date("2026-07-01"),
+					Price:         decimal.RequireFromString("55"),
+					Currency:      "CAD",
+					ProviderID:    "provider",
+					SourceQuality: "PROVIDER",
+				},
+				{
+					AssetID:       assetID,
+					Date:          date("2026-07-01"),
+					Price:         decimal.RequireFromString("50"),
+					Currency:      "USD",
+					ProviderID:    "demo",
+					SourceQuality: "DEMO",
+				},
+			},
+		},
+	}, fixedClock("2026-07-07"))
+
+	overview, err := service.GetOverview(context.Background())
+	if err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if !overview.TotalValue.Equal(decimal.RequireFromString("55")) {
+		t.Fatalf("total value = %s, want convertible CAD price 55", overview.TotalValue)
+	}
+	if len(overview.Warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none", overview.Warnings)
+	}
+}
+
 func TestGetOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
 	accountID := uuid.New()
 	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
