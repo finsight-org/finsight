@@ -43,6 +43,94 @@ func (q *Queries) ListPortfolioAccountsForValuation(ctx context.Context, portfol
 	return items, nil
 }
 
+const listPortfolioFxRatesForValuation = `-- name: ListPortfolioFxRatesForValuation :many
+select
+    fx.from_currency,
+    fx.to_currency,
+    fx.date,
+    fx.rate,
+    fx.provider_id,
+    fx.source_quality
+from fx_rates fx
+where fx.workspace_id = $1
+    and fx.to_currency = $2
+    and fx.date <= $3
+    and fx.from_currency in (
+        select distinct needed.currency
+        from (
+            select le.currency
+            from ledger_entries le
+            join transactions tx on tx.id = le.transaction_id
+            where tx.portfolio_id = $4
+                and tx.status = 'CONFIRMED'
+                and tx.trade_date <= $3
+
+            union
+
+            select mp.currency
+            from market_prices mp
+            where mp.date <= $3
+                and exists (
+                    select 1
+                    from ledger_entries le
+                    join transactions tx on tx.id = le.transaction_id
+                    where tx.portfolio_id = $4
+                        and le.asset_id = mp.asset_id
+                )
+        ) needed
+        where needed.currency <> $2
+    )
+order by fx.from_currency, fx.to_currency, fx.date, fx.source_quality, fx.provider_id
+`
+
+type ListPortfolioFxRatesForValuationParams struct {
+	WorkspaceID  pgtype.UUID
+	BaseCurrency string
+	EndDate      pgtype.Date
+	PortfolioID  pgtype.UUID
+}
+
+type ListPortfolioFxRatesForValuationRow struct {
+	FromCurrency  string
+	ToCurrency    string
+	Date          pgtype.Date
+	Rate          pgtype.Numeric
+	ProviderID    string
+	SourceQuality string
+}
+
+func (q *Queries) ListPortfolioFxRatesForValuation(ctx context.Context, arg ListPortfolioFxRatesForValuationParams) ([]ListPortfolioFxRatesForValuationRow, error) {
+	rows, err := q.db.Query(ctx, listPortfolioFxRatesForValuation,
+		arg.WorkspaceID,
+		arg.BaseCurrency,
+		arg.EndDate,
+		arg.PortfolioID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPortfolioFxRatesForValuationRow
+	for rows.Next() {
+		var i ListPortfolioFxRatesForValuationRow
+		if err := rows.Scan(
+			&i.FromCurrency,
+			&i.ToCurrency,
+			&i.Date,
+			&i.Rate,
+			&i.ProviderID,
+			&i.SourceQuality,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPortfolioLedgerEntriesForValuation = `-- name: ListPortfolioLedgerEntriesForValuation :many
 select
     le.account_id,

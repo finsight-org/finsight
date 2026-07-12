@@ -41,11 +41,14 @@ func TestSeederReplacesDemoDataBeforeCreatingRecords(t *testing.T) {
 	if repository.accountCount != 2 {
 		t.Fatalf("account count = %d, want 2", repository.accountCount)
 	}
-	if repository.priceCount != 13 {
-		t.Fatalf("price count = %d, want 13", repository.priceCount)
+	if repository.priceCount != 18 {
+		t.Fatalf("price count = %d, want 18", repository.priceCount)
 	}
-	if transactions.count != 6 {
-		t.Fatalf("transaction count = %d, want 6", transactions.count)
+	if repository.fxRateCount != 7 {
+		t.Fatalf("fx rate count = %d, want 7", repository.fxRateCount)
+	}
+	if transactions.count != 8 {
+		t.Fatalf("transaction count = %d, want 8", transactions.count)
 	}
 }
 
@@ -66,8 +69,10 @@ type fakeAssetRegistry struct{}
 func (fakeAssetRegistry) UpsertAsset(_ context.Context, input asset.UpsertInput) (asset.Asset, error) {
 	ids := map[string]uuid.UUID{
 		"finsight-demo:cash-cad": uuid.MustParse("33333333-3333-3333-3333-333333333333"),
-		"finsight-demo:xeqt":     uuid.MustParse("44444444-4444-4444-4444-444444444444"),
-		"finsight-demo:vfv":      uuid.MustParse("55555555-5555-5555-5555-555555555555"),
+		"finsight-demo:cash-usd": uuid.MustParse("44444444-4444-4444-4444-444444444444"),
+		"finsight-demo:xeqt":     uuid.MustParse("55555555-5555-5555-5555-555555555555"),
+		"finsight-demo:vfv":      uuid.MustParse("66666666-6666-6666-6666-666666666666"),
+		"finsight-demo:voo":      uuid.MustParse("77777777-7777-7777-7777-777777777777"),
 	}
 	return asset.Asset{ID: ids[input.ProviderSymbol]}, nil
 }
@@ -78,6 +83,7 @@ type fakeRepository struct {
 	deletedAfterRecords int
 	accountCount        int
 	priceCount          int
+	fxRateCount         int
 }
 
 func (r *fakeRepository) DeleteDemoData(_ context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID) error {
@@ -94,6 +100,11 @@ func (r *fakeRepository) UpsertDemoAccount(_ context.Context, input upsertAccoun
 
 func (r *fakeRepository) UpsertMarketPrice(context.Context, upsertMarketPriceInput) error {
 	r.priceCount++
+	return nil
+}
+
+func (r *fakeRepository) UpsertFXRate(context.Context, upsertFXRateInput) error {
+	r.fxRateCount++
 	return nil
 }
 

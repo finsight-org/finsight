@@ -20,7 +20,7 @@ func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
 	return PostgresRepository{db: db}
 }
 
-func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
+func (r PostgresRepository) LoadValuationData(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID, baseCurrency string, endDate time.Time) (valuationData, error) {
 	if r.db == nil {
 		return valuationData{}, fmt.Errorf("postgres pool is required")
 	}
@@ -47,10 +47,21 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID u
 		return valuationData{}, fmt.Errorf("select portfolio market prices: %w", err)
 	}
 
+	fxRateRows, err := queries.ListPortfolioFxRatesForValuation(ctx, db.ListPortfolioFxRatesForValuationParams{
+		WorkspaceID:  pgconv.UUID(workspaceID),
+		PortfolioID:  pgconv.UUID(portfolioID),
+		BaseCurrency: baseCurrency,
+		EndDate:      pgconv.Date(endDate),
+	})
+	if err != nil {
+		return valuationData{}, fmt.Errorf("select portfolio fx rates: %w", err)
+	}
+
 	data := valuationData{
 		Accounts: make([]valuationAccount, 0, len(accountRows)),
 		Entries:  make([]valuationEntry, 0, len(entryRows)),
 		Prices:   make([]marketPrice, 0, len(priceRows)),
+		FXRates:  make([]fxRate, 0, len(fxRateRows)),
 	}
 
 	for _, row := range accountRows {
@@ -75,6 +86,14 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID u
 			return valuationData{}, fmt.Errorf("map market price: %w", err)
 		}
 		data.Prices = append(data.Prices, price)
+	}
+
+	for _, row := range fxRateRows {
+		rate, err := mapFXRate(row)
+		if err != nil {
+			return valuationData{}, fmt.Errorf("map fx rate: %w", err)
+		}
+		data.FXRates = append(data.FXRates, rate)
 	}
 
 	return data, nil
@@ -134,6 +153,25 @@ func mapMarketPrice(row db.ListPortfolioMarketPricesForValuationRow) (marketPric
 		Date:          date,
 		Price:         price,
 		Currency:      row.Currency,
+		ProviderID:    row.ProviderID,
+		SourceQuality: row.SourceQuality,
+	}, nil
+}
+
+func mapFXRate(row db.ListPortfolioFxRatesForValuationRow) (fxRate, error) {
+	date, err := pgconv.DomainDate(row.Date)
+	if err != nil {
+		return fxRate{}, fmt.Errorf("date: %w", err)
+	}
+	rate, err := pgconv.DomainNumeric(row.Rate)
+	if err != nil {
+		return fxRate{}, fmt.Errorf("rate: %w", err)
+	}
+	return fxRate{
+		FromCurrency:  row.FromCurrency,
+		ToCurrency:    row.ToCurrency,
+		Date:          date,
+		Rate:          rate,
 		ProviderID:    row.ProviderID,
 		SourceQuality: row.SourceQuality,
 	}, nil

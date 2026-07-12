@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteDemoFxRates = `-- name: DeleteDemoFxRates :exec
+delete from fx_rates
+where workspace_id = $1
+    and provider_id = 'demo'
+    and source_quality = 'DEMO'
+`
+
+func (q *Queries) DeleteDemoFxRates(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteDemoFxRates, workspaceID)
+	return err
+}
+
 const deleteDemoMarketPrices = `-- name: DeleteDemoMarketPrices :exec
 delete from market_prices
 where provider_id = 'demo'
@@ -95,6 +107,68 @@ func (q *Queries) UpsertDemoAccount(ctx context.Context, arg UpsertDemoAccountPa
 		&i.Type,
 		&i.BaseCurrency,
 		&i.ExternalReference,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertDemoFxRate = `-- name: UpsertDemoFxRate :one
+insert into fx_rates (
+    workspace_id,
+    from_currency,
+    to_currency,
+    date,
+    rate,
+    provider_id,
+    source_quality
+)
+values (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7
+)
+on conflict (workspace_id, from_currency, to_currency, date, provider_id)
+do update set
+    rate = excluded.rate,
+    source_quality = excluded.source_quality
+returning id, workspace_id, from_currency, to_currency, date, rate, provider_id, source_quality, created_at, updated_at
+`
+
+type UpsertDemoFxRateParams struct {
+	WorkspaceID   pgtype.UUID
+	FromCurrency  string
+	ToCurrency    string
+	Date          pgtype.Date
+	Rate          pgtype.Numeric
+	ProviderID    string
+	SourceQuality string
+}
+
+func (q *Queries) UpsertDemoFxRate(ctx context.Context, arg UpsertDemoFxRateParams) (FxRate, error) {
+	row := q.db.QueryRow(ctx, upsertDemoFxRate,
+		arg.WorkspaceID,
+		arg.FromCurrency,
+		arg.ToCurrency,
+		arg.Date,
+		arg.Rate,
+		arg.ProviderID,
+		arg.SourceQuality,
+	)
+	var i FxRate
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.FromCurrency,
+		&i.ToCurrency,
+		&i.Date,
+		&i.Rate,
+		&i.ProviderID,
+		&i.SourceQuality,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

@@ -44,3 +44,42 @@ where mp.date <= @end_date
             and le.asset_id = mp.asset_id
     )
 order by mp.asset_id, mp.date, mp.source_quality, mp.provider_id;
+
+-- name: ListPortfolioFxRatesForValuation :many
+select
+    fx.from_currency,
+    fx.to_currency,
+    fx.date,
+    fx.rate,
+    fx.provider_id,
+    fx.source_quality
+from fx_rates fx
+where fx.workspace_id = @workspace_id
+    and fx.to_currency = @base_currency
+    and fx.date <= @end_date
+    and fx.from_currency in (
+        select distinct needed.currency
+        from (
+            select le.currency
+            from ledger_entries le
+            join transactions tx on tx.id = le.transaction_id
+            where tx.portfolio_id = @portfolio_id
+                and tx.status = 'CONFIRMED'
+                and tx.trade_date <= @end_date
+
+            union
+
+            select mp.currency
+            from market_prices mp
+            where mp.date <= @end_date
+                and exists (
+                    select 1
+                    from ledger_entries le
+                    join transactions tx on tx.id = le.transaction_id
+                    where tx.portfolio_id = @portfolio_id
+                        and le.asset_id = mp.asset_id
+                )
+        ) needed
+        where needed.currency <> @base_currency
+    )
+order by fx.from_currency, fx.to_currency, fx.date, fx.source_quality, fx.provider_id;

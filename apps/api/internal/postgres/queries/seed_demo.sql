@@ -16,6 +16,12 @@ where provider_id = 'demo'
             and assets.provider_symbol like 'finsight-demo:%'
     );
 
+-- name: DeleteDemoFxRates :exec
+delete from fx_rates
+where workspace_id = @workspace_id
+    and provider_id = 'demo'
+    and source_quality = 'DEMO';
+
 -- name: UpsertDemoAccount :one
 insert into accounts (
     portfolio_id,
@@ -65,3 +71,28 @@ do update set
     currency = excluded.currency,
     source_quality = excluded.source_quality
 returning id, asset_id, date, price, currency, provider_id, source_quality, created_at, updated_at;
+
+-- name: UpsertDemoFxRate :one
+insert into fx_rates (
+    workspace_id,
+    from_currency,
+    to_currency,
+    date,
+    rate,
+    provider_id,
+    source_quality
+)
+values (
+    @workspace_id,
+    @from_currency,
+    @to_currency,
+    @date,
+    @rate,
+    @provider_id,
+    @source_quality
+)
+on conflict (workspace_id, from_currency, to_currency, date, provider_id)
+do update set
+    rate = excluded.rate,
+    source_quality = excluded.source_quality
+returning id, workspace_id, from_currency, to_currency, date, rate, provider_id, source_quality, created_at, updated_at;
