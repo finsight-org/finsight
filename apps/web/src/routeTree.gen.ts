@@ -15,6 +15,7 @@ import { Route as ImportsRouteImport } from './routes/imports'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountsAccountIdRouteImport } from './routes/accounts_.$accountId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -46,6 +47,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccountsAccountIdRoute = AccountsAccountIdRouteImport.update({
+  id: '/accounts_/$accountId',
+  path: '/accounts/$accountId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/imports': typeof ImportsRoute
   '/portfolio': typeof PortfolioRoute
   '/settings': typeof SettingsRoute
+  '/accounts/$accountId': typeof AccountsAccountIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/imports': typeof ImportsRoute
   '/portfolio': typeof PortfolioRoute
   '/settings': typeof SettingsRoute
+  '/accounts/$accountId': typeof AccountsAccountIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,13 +79,27 @@ export interface FileRoutesById {
   '/imports': typeof ImportsRoute
   '/portfolio': typeof PortfolioRoute
   '/settings': typeof SettingsRoute
+  '/accounts_/$accountId': typeof AccountsAccountIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/accounts' | '/agents' | '/imports' | '/portfolio' | '/settings'
+    | '/'
+    | '/accounts'
+    | '/agents'
+    | '/imports'
+    | '/portfolio'
+    | '/settings'
+    | '/accounts/$accountId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/accounts' | '/agents' | '/imports' | '/portfolio' | '/settings'
+  to:
+    | '/'
+    | '/accounts'
+    | '/agents'
+    | '/imports'
+    | '/portfolio'
+    | '/settings'
+    | '/accounts/$accountId'
   id:
     | '__root__'
     | '/'
@@ -86,6 +108,7 @@ export interface FileRouteTypes {
     | '/imports'
     | '/portfolio'
     | '/settings'
+    | '/accounts_/$accountId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -95,6 +118,7 @@ export interface RootRouteChildren {
   ImportsRoute: typeof ImportsRoute
   PortfolioRoute: typeof PortfolioRoute
   SettingsRoute: typeof SettingsRoute
+  AccountsAccountIdRoute: typeof AccountsAccountIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -141,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/accounts_/$accountId': {
+      id: '/accounts_/$accountId'
+      path: '/accounts/$accountId'
+      fullPath: '/accounts/$accountId'
+      preLoaderRoute: typeof AccountsAccountIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -151,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImportsRoute: ImportsRoute,
   PortfolioRoute: PortfolioRoute,
   SettingsRoute: SettingsRoute,
+  AccountsAccountIdRoute: AccountsAccountIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

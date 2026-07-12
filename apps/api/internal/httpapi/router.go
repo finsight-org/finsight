@@ -12,6 +12,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
+	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 )
 
 type DatabasePinger interface {
@@ -38,6 +39,15 @@ type PortfolioService interface {
 	GetAccountValues(context.Context) (portfolio.AccountValues, error)
 }
 
+type TransactionService interface {
+	ListAccountTransactions(context.Context, uuid.UUID) ([]transaction.AccountTransaction, error)
+	RecordAccountTransaction(context.Context, transaction.GuidedInput) (transaction.AccountTransaction, error)
+	UpdateAccountTransaction(context.Context, transaction.UpdateGuidedInput) (transaction.AccountTransaction, error)
+	DeleteAccountTransaction(context.Context, uuid.UUID, uuid.UUID) error
+	GetAccountPositions(context.Context, uuid.UUID) ([]transaction.Position, error)
+	GetAccountCashBalances(context.Context, uuid.UUID) ([]transaction.CashBalance, error)
+}
+
 type Options struct {
 	ServiceName  string
 	Version      string
@@ -47,6 +57,7 @@ type Options struct {
 	Accounts     AccountService
 	Assets       AssetFinder
 	Portfolio    PortfolioService
+	Transactions TransactionService
 }
 
 func NewRouter(options Options) http.Handler {
@@ -59,6 +70,7 @@ func NewRouter(options Options) http.Handler {
 		accounts:     options.Accounts,
 		assets:       options.Assets,
 		portfolio:    options.Portfolio,
+		transactions: options.Transactions,
 	}
 
 	return generated.HandlerWithOptions(handler, generated.StdHTTPServerOptions{

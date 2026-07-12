@@ -4,6 +4,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
+import { Link } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -18,7 +19,11 @@ export function AccountsTable({ accounts }: { accounts: Account[] }) {
     () => [
       columnHelper.accessor('name', {
         header: t('accounts.table.account'),
-        cell: (info) => info.getValue(),
+        cell: (info) => (
+          <Link className="font-medium text-primary hover:underline" to="/accounts/$accountId" params={{ accountId: info.row.original.id }}>
+            {info.getValue()}
+          </Link>
+        ),
       }),
       columnHelper.accessor('institution_name', {
         header: t('accounts.table.institution'),

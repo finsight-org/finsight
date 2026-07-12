@@ -14,6 +14,17 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccountTransactionType.
+const (
+	BUY        AccountTransactionType = "BUY"
+	DEPOSIT    AccountTransactionType = "DEPOSIT"
+	DIVIDEND   AccountTransactionType = "DIVIDEND"
+	FEE        AccountTransactionType = "FEE"
+	INTEREST   AccountTransactionType = "INTEREST"
+	SELL       AccountTransactionType = "SELL"
+	WITHDRAWAL AccountTransactionType = "WITHDRAWAL"
+)
+
 // Defines values for AccountType.
 const (
 	BANK           AccountType = "BANK"
@@ -74,10 +85,112 @@ type Account struct {
 	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
+// AccountCashBalance defines model for AccountCashBalance.
+type AccountCashBalance struct {
+	Balance  string `json:"balance"`
+	Currency string `json:"currency"`
+}
+
+// AccountCashBalancesResponse defines model for AccountCashBalancesResponse.
+type AccountCashBalancesResponse struct {
+	CashBalances []AccountCashBalance `json:"cash_balances"`
+}
+
 // AccountListResponse defines model for AccountListResponse.
 type AccountListResponse struct {
 	Accounts []Account `json:"accounts"`
 }
+
+// AccountPosition defines model for AccountPosition.
+type AccountPosition struct {
+	Asset       AccountTransactionAsset `json:"asset"`
+	Currency    string                  `json:"currency"`
+	MarketValue *string                 `json:"market_value"`
+	Quantity    string                  `json:"quantity"`
+	Warnings    *[]PortfolioWarning     `json:"warnings,omitempty"`
+}
+
+// AccountPositionsResponse defines model for AccountPositionsResponse.
+type AccountPositionsResponse struct {
+	Positions []AccountPosition `json:"positions"`
+}
+
+// AccountTransaction defines model for AccountTransaction.
+type AccountTransaction struct {
+	AccountId      openapi_types.UUID              `json:"account_id"`
+	Asset          *AccountTransactionAsset        `json:"asset,omitempty"`
+	CashImpact     *string                         `json:"cash_impact"`
+	CreatedAt      time.Time                       `json:"created_at"`
+	Currency       string                          `json:"currency"`
+	Description    string                          `json:"description"`
+	Fees           *string                         `json:"fees"`
+	Id             openapi_types.UUID              `json:"id"`
+	LedgerEntries  []AccountTransactionLedgerEntry `json:"ledger_entries"`
+	Price          *string                         `json:"price"`
+	Quantity       *string                         `json:"quantity"`
+	SettlementDate *openapi_types.Date             `json:"settlement_date"`
+	Source         string                          `json:"source"`
+	Status         string                          `json:"status"`
+	TradeDate      openapi_types.Date              `json:"trade_date"`
+	Type           AccountTransactionType          `json:"type"`
+	UpdatedAt      time.Time                       `json:"updated_at"`
+}
+
+// AccountTransactionAsset defines model for AccountTransactionAsset.
+type AccountTransactionAsset struct {
+	AssetType      AssetType          `json:"asset_type"`
+	Currency       string             `json:"currency"`
+	Exchange       *string            `json:"exchange"`
+	Id             openapi_types.UUID `json:"id"`
+	Name           string             `json:"name"`
+	ProviderId     string             `json:"provider_id"`
+	ProviderSymbol string             `json:"provider_symbol"`
+	Symbol         string             `json:"symbol"`
+}
+
+// AccountTransactionAssetInput defines model for AccountTransactionAssetInput.
+type AccountTransactionAssetInput struct {
+	AssetType      AssetType `json:"asset_type"`
+	Currency       string    `json:"currency"`
+	Exchange       *string   `json:"exchange"`
+	Name           string    `json:"name"`
+	ProviderId     string    `json:"provider_id"`
+	ProviderSymbol string    `json:"provider_symbol"`
+	Symbol         string    `json:"symbol"`
+}
+
+// AccountTransactionLedgerEntry defines model for AccountTransactionLedgerEntry.
+type AccountTransactionLedgerEntry struct {
+	Amount    string                  `json:"amount"`
+	Asset     AccountTransactionAsset `json:"asset"`
+	Currency  string                  `json:"currency"`
+	Direction string                  `json:"direction"`
+	EntryType string                  `json:"entry_type"`
+	Id        openapi_types.UUID      `json:"id"`
+	Quantity  string                  `json:"quantity"`
+}
+
+// AccountTransactionListResponse defines model for AccountTransactionListResponse.
+type AccountTransactionListResponse struct {
+	Transactions []AccountTransaction `json:"transactions"`
+}
+
+// AccountTransactionRequest defines model for AccountTransactionRequest.
+type AccountTransactionRequest struct {
+	Amount         *string                       `json:"amount"`
+	Asset          *AccountTransactionAssetInput `json:"asset,omitempty"`
+	Currency       string                        `json:"currency"`
+	Description    string                        `json:"description"`
+	Fees           *string                       `json:"fees"`
+	Price          *string                       `json:"price"`
+	Quantity       *string                       `json:"quantity"`
+	SettlementDate *openapi_types.Date           `json:"settlement_date"`
+	TradeDate      openapi_types.Date            `json:"trade_date"`
+	Type           AccountTransactionType        `json:"type"`
+}
+
+// AccountTransactionType defines model for AccountTransactionType.
+type AccountTransactionType string
 
 // AccountType defines model for AccountType.
 type AccountType string
@@ -250,6 +363,12 @@ type GetPortfolioValueHistoryParams struct {
 // PostAccountJSONRequestBody defines body for PostAccount for application/json ContentType.
 type PostAccountJSONRequestBody = CreateAccountRequest
 
+// PostAccountTransactionJSONRequestBody defines body for PostAccountTransaction for application/json ContentType.
+type PostAccountTransactionJSONRequestBody = AccountTransactionRequest
+
+// PutAccountTransactionJSONRequestBody defines body for PutAccountTransaction for application/json ContentType.
+type PutAccountTransactionJSONRequestBody = AccountTransactionRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// List accounts in the local default portfolio.
@@ -261,6 +380,24 @@ type ServerInterface interface {
 	// Get an account from the local default portfolio.
 	// (GET /api/accounts/{id})
 	GetAccount(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Get current read-only cash balances for an account.
+	// (GET /api/accounts/{id}/cash-balances)
+	GetAccountCashBalances(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Get current read-only positions for an account.
+	// (GET /api/accounts/{id}/positions)
+	GetAccountPositions(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List transactions for an account in the local default portfolio.
+	// (GET /api/accounts/{id}/transactions)
+	ListAccountTransactions(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Create a manual transaction for an account in the local default portfolio.
+	// (POST /api/accounts/{id}/transactions)
+	PostAccountTransaction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Delete an account transaction.
+	// (DELETE /api/accounts/{id}/transactions/{transactionId})
+	DeleteAccountTransaction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, transactionId openapi_types.UUID)
+	// Update an account transaction and replace its ledger entries.
+	// (PUT /api/accounts/{id}/transactions/{transactionId})
+	PutAccountTransaction(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, transactionId openapi_types.UUID)
 	// Search provider-backed asset candidates.
 	// (GET /api/assets/search)
 	SearchAssets(w http.ResponseWriter, r *http.Request, params SearchAssetsParams)
@@ -337,6 +474,174 @@ func (siw *ServerInterfaceWrapper) GetAccount(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountCashBalances operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountCashBalances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountCashBalances(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountPositions operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountPositions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountPositions(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountTransactions operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountTransactions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountTransactions(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAccountTransaction operation middleware
+func (siw *ServerInterfaceWrapper) PostAccountTransaction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAccountTransaction(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountTransaction operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountTransaction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transactionId" -------------
+	var transactionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transactionId", r.PathValue("transactionId"), &transactionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transactionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountTransaction(w, r, id, transactionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAccountTransaction operation middleware
+func (siw *ServerInterfaceWrapper) PutAccountTransaction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transactionId" -------------
+	var transactionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transactionId", r.PathValue("transactionId"), &transactionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transactionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAccountTransaction(w, r, id, transactionId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -615,6 +920,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/accounts", wrapper.GetAccounts)
 	m.HandleFunc("POST "+options.BaseURL+"/api/accounts", wrapper.PostAccount)
 	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}", wrapper.GetAccount)
+	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}/cash-balances", wrapper.GetAccountCashBalances)
+	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}/positions", wrapper.GetAccountPositions)
+	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}/transactions", wrapper.ListAccountTransactions)
+	m.HandleFunc("POST "+options.BaseURL+"/api/accounts/{id}/transactions", wrapper.PostAccountTransaction)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/accounts/{id}/transactions/{transactionId}", wrapper.DeleteAccountTransaction)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/accounts/{id}/transactions/{transactionId}", wrapper.PutAccountTransaction)
 	m.HandleFunc("GET "+options.BaseURL+"/api/assets/search", wrapper.SearchAssets)
 	m.HandleFunc("POST "+options.BaseURL+"/api/local/bootstrap", wrapper.PostLocalBootstrap)
 	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/account-values", wrapper.GetPortfolioAccountValues)

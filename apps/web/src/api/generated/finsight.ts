@@ -73,6 +73,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts/{id}/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List transactions for an account in the local default portfolio. */
+        get: operations["listAccountTransactions"];
+        put?: never;
+        /** Create a manual transaction for an account in the local default portfolio. */
+        post: operations["postAccountTransaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{id}/transactions/{transactionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update an account transaction and replace its ledger entries. */
+        put: operations["putAccountTransaction"];
+        post?: never;
+        /** Delete an account transaction. */
+        delete: operations["deleteAccountTransaction"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{id}/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get current read-only positions for an account. */
+        get: operations["getAccountPositions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/{id}/cash-balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get current read-only cash balances for an account. */
+        get: operations["getAccountCashBalances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assets/search": {
         parameters: {
             query?: never;
@@ -188,6 +258,97 @@ export interface components {
         };
         AccountListResponse: {
             accounts: components["schemas"]["Account"][];
+        };
+        /** @enum {string} */
+        AccountTransactionType: AccountTransactionType;
+        AccountTransactionAssetInput: {
+            name: string;
+            symbol: string;
+            asset_type: components["schemas"]["AssetType"];
+            currency: string;
+            provider_id: string;
+            provider_symbol: string;
+            exchange?: string | null;
+        };
+        AccountTransactionRequest: {
+            type: components["schemas"]["AccountTransactionType"];
+            /** Format: date */
+            trade_date: string;
+            /** Format: date */
+            settlement_date?: string | null;
+            description: string;
+            currency: string;
+            asset?: components["schemas"]["AccountTransactionAssetInput"];
+            quantity?: string | null;
+            price?: string | null;
+            amount?: string | null;
+            fees?: string | null;
+        };
+        AccountTransaction: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id: string;
+            type: components["schemas"]["AccountTransactionType"];
+            /** Format: date */
+            trade_date: string;
+            /** Format: date */
+            settlement_date?: string | null;
+            description: string;
+            asset?: components["schemas"]["AccountTransactionAsset"];
+            quantity?: string | null;
+            price?: string | null;
+            fees?: string | null;
+            cash_impact?: string | null;
+            currency: string;
+            source: string;
+            status: string;
+            ledger_entries: components["schemas"]["AccountTransactionLedgerEntry"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AccountTransactionAsset: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            symbol: string;
+            asset_type: components["schemas"]["AssetType"];
+            currency: string;
+            provider_id: string;
+            provider_symbol: string;
+            exchange?: string | null;
+        };
+        AccountTransactionLedgerEntry: {
+            /** Format: uuid */
+            id: string;
+            entry_type: string;
+            asset: components["schemas"]["AccountTransactionAsset"];
+            quantity: string;
+            amount: string;
+            currency: string;
+            direction: string;
+        };
+        AccountTransactionListResponse: {
+            transactions: components["schemas"]["AccountTransaction"][];
+        };
+        AccountPosition: {
+            asset: components["schemas"]["AccountTransactionAsset"];
+            quantity: string;
+            market_value?: string | null;
+            currency: string;
+            warnings?: components["schemas"]["PortfolioWarning"][];
+        };
+        AccountPositionsResponse: {
+            positions: components["schemas"]["AccountPosition"][];
+        };
+        AccountCashBalance: {
+            currency: string;
+            balance: string;
+        };
+        AccountCashBalancesResponse: {
+            cash_balances: components["schemas"]["AccountCashBalance"][];
         };
         /** @enum {string} */
         AssetType: AssetType;
@@ -482,6 +643,272 @@ export interface operations {
             };
         };
     };
+    listAccountTransactions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account transactions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransactionListResponse"];
+                };
+            };
+            /** @description Account was not found in the local default portfolio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Transaction listing failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postAccountTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTransactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Transaction created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransaction"];
+                };
+            };
+            /** @description Invalid transaction request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Account was not found in the local default portfolio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Transaction creation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    putAccountTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                transactionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTransactionRequest"];
+            };
+        };
+        responses: {
+            /** @description Transaction updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTransaction"];
+                };
+            };
+            /** @description Invalid transaction request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Account or transaction was not found in the local default portfolio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Transaction update failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteAccountTransaction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                transactionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Transaction deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Account or transaction was not found in the local default portfolio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Transaction deletion failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAccountPositions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current account positions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPositionsResponse"];
+                };
+            };
+            /** @description Account was not found in the local default portfolio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Position calculation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAccountCashBalances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current account cash balances. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountCashBalancesResponse"];
+                };
+            };
+            /** @description Account was not found in the local default portfolio. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Cash balance calculation failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     searchAssets: {
         parameters: {
             query: {
@@ -675,6 +1102,15 @@ export enum AccountType {
     CRYPTO_EXCHANGE = "CRYPTO_EXCHANGE",
     RETIREMENT = "RETIREMENT",
     MANUAL = "MANUAL"
+}
+export enum AccountTransactionType {
+    BUY = "BUY",
+    SELL = "SELL",
+    DIVIDEND = "DIVIDEND",
+    DEPOSIT = "DEPOSIT",
+    WITHDRAWAL = "WITHDRAWAL",
+    FEE = "FEE",
+    INTEREST = "INTEREST"
 }
 export enum AssetType {
     EQUITY = "EQUITY",

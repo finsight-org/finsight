@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -64,6 +65,19 @@ vi.mock('@/api/portfolio', async (importOriginal) => {
   }
 })
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    params,
+    children,
+    ...props
+  }: {
+    to: string
+    params?: Record<string, string>
+    children: ReactNode
+  }) => <a href={params?.accountId ? to.replace('$accountId', params.accountId) : to} {...props}>{children}</a>,
+}))
+
 describe('PortfolioPage', () => {
   beforeEach(() => {
     portfolioState.overview.isLoading = false
@@ -89,6 +103,10 @@ describe('PortfolioPage', () => {
     expect(screen.getByText(/jul 8, 2026/i)).toBeInTheDocument()
     expect(screen.getByTestId('portfolio-chart')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /wealthsimple tfsa/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /wealthsimple tfsa/i })).toHaveAttribute(
+      'href',
+      '/accounts/11111111-1111-1111-1111-111111111111',
+    )
     expect(screen.getByText(/\$53,220.00/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /questrade margin/i })).toBeInTheDocument()
   })

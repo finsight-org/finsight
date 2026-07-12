@@ -112,6 +112,216 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/accounts/{id}/transactions:
+    get:
+      operationId: listAccountTransactions
+      summary: List transactions for an account in the local default portfolio.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account transactions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTransactionListResponse"
+        "404":
+          description: Account was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Transaction listing failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: postAccountTransaction
+      summary: Create a manual transaction for an account in the local default portfolio.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountTransactionRequest"
+      responses:
+        "201":
+          description: Transaction created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTransaction"
+        "400":
+          description: Invalid transaction request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Account was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Transaction creation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/accounts/{id}/transactions/{transactionId}:
+    put:
+      operationId: putAccountTransaction
+      summary: Update an account transaction and replace its ledger entries.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountTransactionRequest"
+      responses:
+        "200":
+          description: Transaction updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountTransaction"
+        "400":
+          description: Invalid transaction request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Account or transaction was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Transaction update failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAccountTransaction
+      summary: Delete an account transaction.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: transactionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Transaction deleted.
+        "404":
+          description: Account or transaction was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Transaction deletion failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/accounts/{id}/positions:
+    get:
+      operationId: getAccountPositions
+      summary: Get current read-only positions for an account.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current account positions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountPositionsResponse"
+        "404":
+          description: Account was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Position calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/accounts/{id}/cash-balances:
+    get:
+      operationId: getAccountCashBalances
+      summary: Get current read-only cash balances for an account.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current account cash balances.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountCashBalancesResponse"
+        "404":
+          description: Account was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Cash balance calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/assets/search:
     get:
       operationId: searchAssets
@@ -319,6 +529,273 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Account"
+    AccountTransactionType:
+      type: string
+      enum:
+        - BUY
+        - SELL
+        - DIVIDEND
+        - DEPOSIT
+        - WITHDRAWAL
+        - FEE
+        - INTEREST
+    AccountTransactionAssetInput:
+      type: object
+      required:
+        - name
+        - symbol
+        - asset_type
+        - currency
+        - provider_id
+        - provider_symbol
+      properties:
+        name:
+          type: string
+          minLength: 1
+        symbol:
+          type: string
+          minLength: 1
+        asset_type:
+          $ref: "#/components/schemas/AssetType"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          minLength: 3
+          maxLength: 3
+        provider_id:
+          type: string
+          minLength: 1
+        provider_symbol:
+          type: string
+          minLength: 1
+        exchange:
+          type: string
+          nullable: true
+    AccountTransactionRequest:
+      type: object
+      required:
+        - type
+        - trade_date
+        - description
+        - currency
+      properties:
+        type:
+          $ref: "#/components/schemas/AccountTransactionType"
+        trade_date:
+          type: string
+          format: date
+        settlement_date:
+          type: string
+          format: date
+          nullable: true
+        description:
+          type: string
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+          minLength: 3
+          maxLength: 3
+        asset:
+          $ref: "#/components/schemas/AccountTransactionAssetInput"
+        quantity:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        price:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        amount:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        fees:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+    AccountTransaction:
+      type: object
+      required:
+        - id
+        - account_id
+        - type
+        - trade_date
+        - description
+        - currency
+        - source
+        - status
+        - ledger_entries
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/AccountTransactionType"
+        trade_date:
+          type: string
+          format: date
+        settlement_date:
+          type: string
+          format: date
+          nullable: true
+        description:
+          type: string
+        asset:
+          $ref: "#/components/schemas/AccountTransactionAsset"
+        quantity:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        price:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        fees:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        cash_impact:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        currency:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        ledger_entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountTransactionLedgerEntry"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AccountTransactionAsset:
+      type: object
+      required:
+        - id
+        - name
+        - symbol
+        - asset_type
+        - currency
+        - provider_id
+        - provider_symbol
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        symbol:
+          type: string
+        asset_type:
+          $ref: "#/components/schemas/AssetType"
+        currency:
+          type: string
+        provider_id:
+          type: string
+        provider_symbol:
+          type: string
+        exchange:
+          type: string
+          nullable: true
+    AccountTransactionLedgerEntry:
+      type: object
+      required:
+        - id
+        - entry_type
+        - asset
+        - quantity
+        - amount
+        - currency
+        - direction
+      properties:
+        id:
+          type: string
+          format: uuid
+        entry_type:
+          type: string
+        asset:
+          $ref: "#/components/schemas/AccountTransactionAsset"
+        quantity:
+          type: string
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        amount:
+          type: string
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        currency:
+          type: string
+        direction:
+          type: string
+    AccountTransactionListResponse:
+      type: object
+      required:
+        - transactions
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountTransaction"
+    AccountPosition:
+      type: object
+      required:
+        - asset
+        - quantity
+        - currency
+      properties:
+        asset:
+          $ref: "#/components/schemas/AccountTransactionAsset"
+        quantity:
+          type: string
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        market_value:
+          type: string
+          nullable: true
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+        currency:
+          type: string
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortfolioWarning"
+    AccountPositionsResponse:
+      type: object
+      required:
+        - positions
+      properties:
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountPosition"
+    AccountCashBalance:
+      type: object
+      required:
+        - currency
+        - balance
+      properties:
+        currency:
+          type: string
+        balance:
+          type: string
+          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+    AccountCashBalancesResponse:
+      type: object
+      required:
+        - cash_balances
+      properties:
+        cash_balances:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountCashBalance"
     AssetType:
       type: string
       enum:

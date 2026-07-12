@@ -160,3 +160,325 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 	)
 	return i, err
 }
+
+const deleteAccountTransaction = `-- name: DeleteAccountTransaction :execrows
+delete from transactions
+where portfolio_id = $1
+    and account_id = $2
+    and id = $3
+`
+
+type DeleteAccountTransactionParams struct {
+	PortfolioID pgtype.UUID
+	AccountID   pgtype.UUID
+	ID          pgtype.UUID
+}
+
+func (q *Queries) DeleteAccountTransaction(ctx context.Context, arg DeleteAccountTransactionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAccountTransaction, arg.PortfolioID, arg.AccountID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteLedgerEntriesByTransaction = `-- name: DeleteLedgerEntriesByTransaction :exec
+delete from ledger_entries
+where transaction_id = $1
+    and account_id = $2
+`
+
+type DeleteLedgerEntriesByTransactionParams struct {
+	TransactionID pgtype.UUID
+	AccountID     pgtype.UUID
+}
+
+func (q *Queries) DeleteLedgerEntriesByTransaction(ctx context.Context, arg DeleteLedgerEntriesByTransactionParams) error {
+	_, err := q.db.Exec(ctx, deleteLedgerEntriesByTransaction, arg.TransactionID, arg.AccountID)
+	return err
+}
+
+const getAccountTransaction = `-- name: GetAccountTransaction :one
+select id, portfolio_id, account_id, import_id, type, trade_date, settlement_date, description, source, external_id, status, created_at, updated_at
+from transactions
+where portfolio_id = $1
+    and account_id = $2
+    and id = $3
+limit 1
+`
+
+type GetAccountTransactionParams struct {
+	PortfolioID pgtype.UUID
+	AccountID   pgtype.UUID
+	ID          pgtype.UUID
+}
+
+func (q *Queries) GetAccountTransaction(ctx context.Context, arg GetAccountTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, getAccountTransaction, arg.PortfolioID, arg.AccountID, arg.ID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.PortfolioID,
+		&i.AccountID,
+		&i.ImportID,
+		&i.Type,
+		&i.TradeDate,
+		&i.SettlementDate,
+		&i.Description,
+		&i.Source,
+		&i.ExternalID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listAccountLedgerEntries = `-- name: ListAccountLedgerEntries :many
+select
+    tx.id as transaction_id,
+    tx.portfolio_id,
+    tx.account_id,
+    tx.import_id,
+    tx.type,
+    tx.trade_date,
+    tx.settlement_date,
+    tx.description,
+    tx.source,
+    tx.external_id,
+    tx.status,
+    tx.created_at as transaction_created_at,
+    tx.updated_at as transaction_updated_at,
+    le.id as ledger_entry_id,
+    le.entry_type,
+    le.quantity,
+    le.amount,
+    le.currency as entry_currency,
+    le.original_amount,
+    le.original_currency,
+    le.exchange_rate,
+    le.direction,
+    le.created_at as ledger_entry_created_at,
+    ast.id as asset_id,
+    ast.name as asset_name,
+    ast.asset_type,
+    ast.currency as asset_currency,
+    ast.symbol,
+    ast.provider_id,
+    ast.provider_symbol,
+    ast.exchange,
+    ast.isin,
+    ast.country,
+    ast.sector,
+    ast.is_active,
+    ast.created_at as asset_created_at,
+    ast.updated_at as asset_updated_at
+from transactions tx
+join ledger_entries le on le.transaction_id = tx.id and le.account_id = tx.account_id
+join assets ast on ast.id = le.asset_id
+where tx.portfolio_id = $1
+    and tx.account_id = $2
+order by tx.trade_date desc, tx.created_at desc, tx.id desc, le.id
+`
+
+type ListAccountLedgerEntriesParams struct {
+	PortfolioID pgtype.UUID
+	AccountID   pgtype.UUID
+}
+
+type ListAccountLedgerEntriesRow struct {
+	TransactionID        pgtype.UUID
+	PortfolioID          pgtype.UUID
+	AccountID            pgtype.UUID
+	ImportID             pgtype.UUID
+	Type                 string
+	TradeDate            pgtype.Date
+	SettlementDate       pgtype.Date
+	Description          string
+	Source               string
+	ExternalID           pgtype.Text
+	Status               string
+	TransactionCreatedAt pgtype.Timestamptz
+	TransactionUpdatedAt pgtype.Timestamptz
+	LedgerEntryID        pgtype.UUID
+	EntryType            string
+	Quantity             pgtype.Numeric
+	Amount               pgtype.Numeric
+	EntryCurrency        string
+	OriginalAmount       pgtype.Numeric
+	OriginalCurrency     pgtype.Text
+	ExchangeRate         pgtype.Numeric
+	Direction            string
+	LedgerEntryCreatedAt pgtype.Timestamptz
+	AssetID              pgtype.UUID
+	AssetName            string
+	AssetType            string
+	AssetCurrency        string
+	Symbol               string
+	ProviderID           string
+	ProviderSymbol       string
+	Exchange             pgtype.Text
+	Isin                 pgtype.Text
+	Country              pgtype.Text
+	Sector               pgtype.Text
+	IsActive             bool
+	AssetCreatedAt       pgtype.Timestamptz
+	AssetUpdatedAt       pgtype.Timestamptz
+}
+
+func (q *Queries) ListAccountLedgerEntries(ctx context.Context, arg ListAccountLedgerEntriesParams) ([]ListAccountLedgerEntriesRow, error) {
+	rows, err := q.db.Query(ctx, listAccountLedgerEntries, arg.PortfolioID, arg.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAccountLedgerEntriesRow
+	for rows.Next() {
+		var i ListAccountLedgerEntriesRow
+		if err := rows.Scan(
+			&i.TransactionID,
+			&i.PortfolioID,
+			&i.AccountID,
+			&i.ImportID,
+			&i.Type,
+			&i.TradeDate,
+			&i.SettlementDate,
+			&i.Description,
+			&i.Source,
+			&i.ExternalID,
+			&i.Status,
+			&i.TransactionCreatedAt,
+			&i.TransactionUpdatedAt,
+			&i.LedgerEntryID,
+			&i.EntryType,
+			&i.Quantity,
+			&i.Amount,
+			&i.EntryCurrency,
+			&i.OriginalAmount,
+			&i.OriginalCurrency,
+			&i.ExchangeRate,
+			&i.Direction,
+			&i.LedgerEntryCreatedAt,
+			&i.AssetID,
+			&i.AssetName,
+			&i.AssetType,
+			&i.AssetCurrency,
+			&i.Symbol,
+			&i.ProviderID,
+			&i.ProviderSymbol,
+			&i.Exchange,
+			&i.Isin,
+			&i.Country,
+			&i.Sector,
+			&i.IsActive,
+			&i.AssetCreatedAt,
+			&i.AssetUpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccountTransactions = `-- name: ListAccountTransactions :many
+select id, portfolio_id, account_id, import_id, type, trade_date, settlement_date, description, source, external_id, status, created_at, updated_at
+from transactions
+where portfolio_id = $1
+    and account_id = $2
+order by trade_date desc, created_at desc, id desc
+`
+
+type ListAccountTransactionsParams struct {
+	PortfolioID pgtype.UUID
+	AccountID   pgtype.UUID
+}
+
+func (q *Queries) ListAccountTransactions(ctx context.Context, arg ListAccountTransactionsParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listAccountTransactions, arg.PortfolioID, arg.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.PortfolioID,
+			&i.AccountID,
+			&i.ImportID,
+			&i.Type,
+			&i.TradeDate,
+			&i.SettlementDate,
+			&i.Description,
+			&i.Source,
+			&i.ExternalID,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateAccountTransaction = `-- name: UpdateAccountTransaction :one
+update transactions
+set
+    type = $1,
+    trade_date = $2,
+    settlement_date = $3,
+    description = $4
+where portfolio_id = $5
+    and account_id = $6
+    and id = $7
+returning id, portfolio_id, account_id, import_id, type, trade_date, settlement_date, description, source, external_id, status, created_at, updated_at
+`
+
+type UpdateAccountTransactionParams struct {
+	Type           string
+	TradeDate      pgtype.Date
+	SettlementDate pgtype.Date
+	Description    string
+	PortfolioID    pgtype.UUID
+	AccountID      pgtype.UUID
+	ID             pgtype.UUID
+}
+
+func (q *Queries) UpdateAccountTransaction(ctx context.Context, arg UpdateAccountTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, updateAccountTransaction,
+		arg.Type,
+		arg.TradeDate,
+		arg.SettlementDate,
+		arg.Description,
+		arg.PortfolioID,
+		arg.AccountID,
+		arg.ID,
+	)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.PortfolioID,
+		&i.AccountID,
+		&i.ImportID,
+		&i.Type,
+		&i.TradeDate,
+		&i.SettlementDate,
+		&i.Description,
+		&i.Source,
+		&i.ExternalID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

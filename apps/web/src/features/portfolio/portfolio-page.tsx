@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -147,7 +148,12 @@ function AccountValuesList({
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {values.accounts.map((account) => (
-        <div key={account.account_id} className="rounded-lg border bg-card p-4">
+        <Link
+          key={account.account_id}
+          to="/accounts/$accountId"
+          params={{ accountId: account.account_id }}
+          className="block rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="font-semibold">{account.account_name}</h3>
@@ -159,7 +165,7 @@ function AccountValuesList({
             </div>
             <p className="text-right text-base font-semibold">{formatMoney(account.value, values.base_currency)}</p>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   )

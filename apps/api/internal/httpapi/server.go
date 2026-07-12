@@ -15,6 +15,7 @@ type apiServer struct {
 	accounts     AccountService
 	assets       AssetFinder
 	portfolio    PortfolioService
+	transactions TransactionService
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

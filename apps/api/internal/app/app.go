@@ -14,6 +14,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/httpapi"
 	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
+	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
 
@@ -38,6 +39,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
 	accountRepository := account.NewPostgresRepository(db)
 	accountService := account.NewService(bootstrapService, accountRepository)
+	assetRepository := asset.NewPostgresRepository(db)
+	assetRegistry := asset.NewRegistry(bootstrapService, assetRepository)
+	transactionRepository := transaction.NewPostgresRepository(db)
+	transactionService := transaction.NewServiceWithAssets(bootstrapService, transactionRepository, assetRegistry)
 	portfolioRepository := portfoliovalue.NewPostgresRepository(db)
 	portfolioService := portfoliovalue.NewService(bootstrapService, portfolioRepository)
 	assetFinder := asset.NewFinder(asset.NewYahooProvider())
@@ -51,6 +56,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Accounts:     accountService,
 		Assets:       assetFinder,
 		Portfolio:    portfolioService,
+		Transactions: transactionService,
 	})
 
 	return &App{
