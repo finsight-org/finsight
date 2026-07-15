@@ -214,12 +214,16 @@ function TransactionsTable({
               <TableCell>{transaction.currency}</TableCell>
               <TableCell>{transaction.source}</TableCell>
               <TableCell>
-                <div className="flex items-center gap-1">
-                  <TransactionDialog accountId={accountId} transaction={transaction} triggerLabel={t('accounts.detail.edit')}>
-                    <Pencil className="h-4 w-4" />
-                  </TransactionDialog>
-                  <DeleteTransactionDialog accountId={accountId} transaction={transaction} />
-                </div>
+                {isManualTransaction(transaction) ? (
+                  <div className="flex items-center gap-1">
+                    <TransactionDialog accountId={accountId} transaction={transaction} triggerLabel={t('accounts.detail.edit')}>
+                      <Pencil className="h-4 w-4" />
+                    </TransactionDialog>
+                    <DeleteTransactionDialog accountId={accountId} transaction={transaction} />
+                  </div>
+                ) : (
+                  '-'
+                )}
               </TableCell>
             </TableRow>
           ))}
@@ -576,7 +580,7 @@ function initialFormValues(transaction?: AccountTransaction): TransactionFormVal
   const type = guidedTransactionType(transaction?.type) ?? AccountTransactionRequestType.BUY
   return {
     type,
-    tradeDate: transaction?.trade_date ?? new Date().toISOString().slice(0, 10),
+    tradeDate: transaction?.trade_date ?? localDateInputValue(),
     settlementDate: transaction?.settlement_date ?? '',
     description: transaction?.description ?? '',
     currency: transaction?.currency ?? transaction?.asset?.currency ?? 'CAD',
@@ -651,8 +655,19 @@ function ledgerPreview(form: TransactionFormValues) {
   return `${form.type}: cash impact ${formatPreviewMoney(signed, currency)}`
 }
 
+function isManualTransaction(transaction: AccountTransaction) {
+  return transaction.source === 'MANUAL'
+}
+
 function guidedTransactionType(type?: AccountTransaction['type']): AccountTransactionRequest['type'] | undefined {
   return accountTransactionTypes.find((value) => String(value) === type)
+}
+
+function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function amountFromTransaction(transaction?: AccountTransaction) {

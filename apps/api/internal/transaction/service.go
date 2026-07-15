@@ -434,7 +434,7 @@ func assetPurchaseEntries(assetID uuid.UUID, cashAssetID uuid.UUID, quantity dec
 		{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: gross.Add(fees).Neg(), Currency: currency, Direction: DirectionDecrease},
 	}
 	if fees.IsPositive() {
-		entries = append(entries, CreateLedgerEntryInput{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: fees.Neg(), Currency: currency, Direction: DirectionDecrease})
+		entries = append(entries, CreateLedgerEntryInput{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: fees, Currency: currency, Direction: DirectionDecrease})
 	}
 	return entries
 }
@@ -445,7 +445,7 @@ func assetSaleEntries(assetID uuid.UUID, cashAssetID uuid.UUID, quantity decimal
 		{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: gross.Sub(fees), Currency: currency, Direction: DirectionIncrease},
 	}
 	if fees.IsPositive() {
-		entries = append(entries, CreateLedgerEntryInput{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: fees.Neg(), Currency: currency, Direction: DirectionDecrease})
+		entries = append(entries, CreateLedgerEntryInput{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: fees, Currency: currency, Direction: DirectionDecrease})
 	}
 	return entries
 }
@@ -470,7 +470,7 @@ func cashOnlyEntries(transactionType Type, cashAssetID uuid.UUID, amount decimal
 		}
 	case TypeFee:
 		return []CreateLedgerEntryInput{
-			{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: amount.Neg(), Currency: currency, Direction: DirectionDecrease},
+			{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: amount, Currency: currency, Direction: DirectionDecrease},
 			{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: amount.Neg(), Currency: currency, Direction: DirectionDecrease},
 		}
 	default:

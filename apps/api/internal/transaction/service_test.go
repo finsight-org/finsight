@@ -108,6 +108,32 @@ func TestRecordAccountTransactionBuildsBuyLedgerEntries(t *testing.T) {
 	if !repository.input.LedgerEntries[1].Amount.Equal(wantCash) || repository.input.LedgerEntries[1].EntryType != EntryTypeCash {
 		t.Fatalf("cash entry = %+v, want amount %s", repository.input.LedgerEntries[1], wantCash)
 	}
+	if !repository.input.LedgerEntries[2].Amount.Equal(fees) || repository.input.LedgerEntries[2].EntryType != EntryTypeFee {
+		t.Fatalf("fee entry = %+v, want positive amount %s", repository.input.LedgerEntries[2], fees)
+	}
+}
+
+func TestGuidedFeeLedgerEntriesStorePositiveExpenseAmounts(t *testing.T) {
+	assetID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
+	cashID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
+	quantity := decimal.NewFromInt(2)
+	gross := decimal.NewFromInt(20)
+	fees := decimal.RequireFromString("1.25")
+
+	buyEntries := assetPurchaseEntries(assetID, cashID, quantity, gross, fees, "CAD")
+	if !buyEntries[2].Amount.Equal(fees) || buyEntries[2].EntryType != EntryTypeFee || buyEntries[2].Direction != DirectionDecrease {
+		t.Fatalf("buy fee entry = %+v, want positive fee expense", buyEntries[2])
+	}
+
+	sellEntries := assetSaleEntries(assetID, cashID, quantity, gross, fees, "CAD")
+	if !sellEntries[2].Amount.Equal(fees) || sellEntries[2].EntryType != EntryTypeFee || sellEntries[2].Direction != DirectionDecrease {
+		t.Fatalf("sell fee entry = %+v, want positive fee expense", sellEntries[2])
+	}
+
+	feeEntries := cashOnlyEntries(TypeFee, cashID, fees, "CAD")
+	if !feeEntries[0].Amount.Equal(fees) || feeEntries[0].EntryType != EntryTypeFee || feeEntries[0].Direction != DirectionDecrease {
+		t.Fatalf("standalone fee entry = %+v, want positive fee expense", feeEntries[0])
+	}
 }
 
 func TestRecordAccountTransactionValidatesBeforeAssetUpsert(t *testing.T) {

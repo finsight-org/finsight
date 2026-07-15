@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AccountDetailPage } from '@/features/accounts/account-detail-page'
 
@@ -86,6 +86,8 @@ const accountState = vi.hoisted(() => ({
   },
 }))
 
+const baseTransaction = accountState.transactions.data[0]
+
 vi.mock('@/api/accounts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/accounts')>()
   return {
@@ -129,6 +131,11 @@ describe('AccountDetailPage', () => {
     accountState.deleteTransaction.mockReset()
     accountState.createTransaction.mockReset()
     accountState.updateTransaction.mockReset()
+    accountState.transactions.data = [{ ...baseTransaction, asset: { ...baseTransaction.asset }, ledger_entries: [] }]
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders account metadata and transactions', () => {
@@ -164,6 +171,15 @@ describe('AccountDetailPage', () => {
     expect(screen.getByText(/cash impact -?0\.00 C/i)).toBeInTheDocument()
   })
 
+  it('defaults new transactions to the local calendar date', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 6, 14, 22, 30) })
+    render(<AccountDetailPage accountId="11111111-1111-1111-1111-111111111111" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /add transaction/i }))
+
+    expect(screen.getByLabelText(/trade date/i)).toHaveValue('2026-07-14')
+  })
+
   it('rehydrates edit dialogs from the transaction when reopened after save', async () => {
     accountState.updateTransaction.mockResolvedValue(undefined)
     const user = userEvent.setup()
@@ -179,6 +195,25 @@ describe('AccountDetailPage', () => {
     await user.click(screen.getByRole('button', { name: /edit/i }))
 
     expect(screen.getByLabelText(/^description$/i)).toHaveValue('Buy CRCL')
+  })
+
+  it('does not show edit or delete actions for read-only transactions', () => {
+    accountState.transactions.data = [
+      { ...baseTransaction, asset: { ...baseTransaction.asset }, ledger_entries: [] },
+      {
+        ...baseTransaction,
+        id: '55555555-5555-5555-5555-555555555555',
+        description: 'Imported opening balance',
+        source: 'CSV_IMPORT',
+        ledger_entries: [],
+      },
+    ]
+
+    render(<AccountDetailPage accountId="11111111-1111-1111-1111-111111111111" />)
+
+    expect(screen.getByText('Imported opening balance')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /edit/i })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /delete/i })).toHaveLength(1)
   })
 
   it('deletes a transaction after confirmation', async () => {
