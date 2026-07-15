@@ -139,6 +139,89 @@ func TestRecordAccountTransactionValidatesBeforeAssetUpsert(t *testing.T) {
 	}
 }
 
+func TestRecordAccountTransactionRejectsInvalidAssetTypeBeforeUpsert(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	assets := &fakeAssetRegistry{}
+	service := NewServiceWithAssets(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		&fakeTransactionRepository{},
+		assets,
+	)
+	quantity := decimal.NewFromInt(2)
+	price := decimal.NewFromInt(10)
+
+	_, err := service.RecordAccountTransaction(context.Background(), GuidedInput{
+		AccountID:   accountID,
+		Type:        TypeBuy,
+		TradeDate:   time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Description: "Buy CAD cash",
+		Currency:    "CAD",
+		Quantity:    &quantity,
+		Price:       &price,
+		Asset:       &AssetInput{Name: "CAD Cash", Type: asset.TypeCash, Currency: "CAD", Symbol: "CAD", ProviderID: "manual", ProviderSymbol: "CAD"},
+	})
+	if err != ErrInvalidAsset {
+		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAsset)
+	}
+	if assets.upsertCount != 0 {
+		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	}
+}
+
+func TestImportedAccountTransactionCannotBeUpdatedOrDeleted(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	transactionID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
+	importID := uuid.MustParse("99999999-9999-9999-9999-999999999999")
+	assets := &fakeAssetRegistry{}
+	repository := &fakeTransactionRepository{
+		transaction: Transaction{
+			ID:          transactionID,
+			PortfolioID: portfolioID,
+			AccountID:   accountID,
+			ImportID:    &importID,
+			Source:      "CSV_IMPORT",
+			Status:      StatusConfirmed,
+		},
+	}
+	service := NewServiceWithAssets(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		repository,
+		assets,
+	)
+	amount := decimal.NewFromInt(100)
+	input := UpdateGuidedInput{
+		TransactionID: transactionID,
+		GuidedInput: GuidedInput{
+			AccountID:   accountID,
+			Type:        TypeDeposit,
+			TradeDate:   time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+			Description: "Deposit",
+			Currency:    "CAD",
+			Amount:      &amount,
+		},
+	}
+
+	if _, err := service.UpdateAccountTransaction(context.Background(), input); err != ErrImportedMutation {
+		t.Fatalf("UpdateAccountTransaction() error = %v, want %v", err, ErrImportedMutation)
+	}
+	if err := service.DeleteAccountTransaction(context.Background(), accountID, transactionID); err != ErrImportedMutation {
+		t.Fatalf("DeleteAccountTransaction() error = %v, want %v", err, ErrImportedMutation)
+	}
+	if assets.upsertCount != 0 {
+		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	}
+	if repository.updated.TransactionID != uuid.Nil {
+		t.Fatalf("updated transaction id = %s, want nil", repository.updated.TransactionID)
+	}
+	if repository.deleted {
+		t.Fatal("repository delete was called for imported transaction")
+	}
+}
+
 type fakeTransactionBootstrapper struct {
 	result bootstrap.Result
 	err    error
@@ -149,10 +232,12 @@ func (b fakeTransactionBootstrapper) BootstrapLocal(context.Context) (bootstrap.
 }
 
 type fakeTransactionRepository struct {
-	input     createRepositoryInput
-	updated   updateRepositoryInput
-	createdID uuid.UUID
-	err       error
+	input       createRepositoryInput
+	updated     updateRepositoryInput
+	transaction Transaction
+	createdID   uuid.UUID
+	deleted     bool
+	err         error
 }
 
 func (r *fakeTransactionRepository) CreateWithEntries(_ context.Context, input createRepositoryInput) (Transaction, error) {
@@ -196,8 +281,14 @@ func (r *fakeTransactionRepository) ValidateAccount(context.Context, uuid.UUID, 
 	return r.err
 }
 
-func (r *fakeTransactionRepository) ValidateAccountTransaction(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
-	return r.err
+func (r *fakeTransactionRepository) GetAccountTransaction(_ context.Context, portfolioID uuid.UUID, accountID uuid.UUID, transactionID uuid.UUID) (Transaction, error) {
+	if r.err != nil {
+		return Transaction{}, r.err
+	}
+	if r.transaction.ID != uuid.Nil {
+		return r.transaction, nil
+	}
+	return Transaction{ID: transactionID, PortfolioID: portfolioID, AccountID: accountID, Source: SourceManual, Status: StatusConfirmed}, nil
 }
 
 func (r *fakeTransactionRepository) UpdateWithEntries(_ context.Context, input updateRepositoryInput) (Transaction, error) {
@@ -209,6 +300,7 @@ func (r *fakeTransactionRepository) UpdateWithEntries(_ context.Context, input u
 }
 
 func (r *fakeTransactionRepository) Delete(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
+	r.deleted = true
 	return r.err
 }
 

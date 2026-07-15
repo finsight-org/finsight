@@ -22,7 +22,7 @@ type Repository interface {
 	CreateWithEntries(context.Context, createRepositoryInput) (Transaction, error)
 	ListAccountTransactions(context.Context, uuid.UUID, uuid.UUID) ([]AccountTransaction, error)
 	ValidateAccount(context.Context, uuid.UUID, uuid.UUID) error
-	ValidateAccountTransaction(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error
+	GetAccountTransaction(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (Transaction, error)
 	UpdateWithEntries(context.Context, updateRepositoryInput) (Transaction, error)
 	Delete(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error
 }
@@ -157,8 +157,12 @@ func (s Service) UpdateAccountTransaction(ctx context.Context, input UpdateGuide
 	if err != nil {
 		return AccountTransaction{}, err
 	}
-	if err := s.repository.ValidateAccountTransaction(ctx, localContext.Portfolio.ID, input.AccountID, input.TransactionID); err != nil {
+	existing, err := s.repository.GetAccountTransaction(ctx, localContext.Portfolio.ID, input.AccountID, input.TransactionID)
+	if err != nil {
 		return AccountTransaction{}, err
+	}
+	if readOnlyTransaction(existing) {
+		return AccountTransaction{}, ErrImportedMutation
 	}
 	entries, err := s.ledgerEntriesForGuidedInput(ctx, input.GuidedInput)
 	if err != nil {
@@ -185,6 +189,13 @@ func (s Service) DeleteAccountTransaction(ctx context.Context, accountID uuid.UU
 	localContext, err := s.localContext(ctx)
 	if err != nil {
 		return err
+	}
+	existing, err := s.repository.GetAccountTransaction(ctx, localContext.Portfolio.ID, accountID, transactionID)
+	if err != nil {
+		return err
+	}
+	if readOnlyTransaction(existing) {
+		return ErrImportedMutation
 	}
 	if err := s.repository.Delete(ctx, localContext.Portfolio.ID, accountID, transactionID); err != nil {
 		return fmt.Errorf("delete account transaction: %w", err)
@@ -373,6 +384,9 @@ func validateInputAsset(input *AssetInput) error {
 	if input == nil {
 		return ErrInvalidAsset
 	}
+	if !validInputAssetType(input.Type) {
+		return ErrInvalidAsset
+	}
 	if input.Name == "" || input.Symbol == "" || input.ProviderID == "" || input.ProviderSymbol == "" {
 		return ErrInvalidAsset
 	}
@@ -380,6 +394,19 @@ func validateInputAsset(input *AssetInput) error {
 		return ErrInvalidEntryCurrency
 	}
 	return nil
+}
+
+func validInputAssetType(value asset.Type) bool {
+	switch value {
+	case asset.TypeEquity, asset.TypeETF, asset.TypeMutualFund, asset.TypeCrypto, asset.TypeOther:
+		return true
+	default:
+		return false
+	}
+}
+
+func readOnlyTransaction(value Transaction) bool {
+	return value.ImportID != nil || value.Source != SourceManual
 }
 
 func (s Service) upsertInputAsset(ctx context.Context, input *AssetInput) (asset.Asset, error) {

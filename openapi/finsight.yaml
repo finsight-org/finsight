@@ -225,6 +225,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Imported transaction cannot be edited through manual CRUD.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Transaction update failed.
           content:
@@ -252,6 +258,12 @@ paths:
           description: Transaction deleted.
         "404":
           description: Account or transaction was not found in the local default portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Imported transaction cannot be deleted through manual CRUD.
           content:
             application/json:
               schema:

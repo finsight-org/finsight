@@ -626,19 +626,19 @@ function assetInputFromSearchResult(asset: AssetSearchResult, fallbackCurrency: 
 }
 
 function ledgerPreview(form: TransactionFormValues) {
-  const currency = form.currency || '---'
+  const currency = form.currency.toUpperCase()
   const fees = Number(form.fees || 0)
   if (quantityPriceTypes.has(form.type)) {
     const quantity = Number(form.quantity || 0)
     const price = Number(form.price || 0)
     const gross = quantity * price
     const cash = form.type === AccountTransactionType.BUY ? -(gross + fees) : gross - fees
-    return `${form.type}: ${quantity || 0} units, cash impact ${formatMoney(String(cash), currency)}`
+    return `${form.type}: ${quantity || 0} units, cash impact ${formatPreviewMoney(cash, currency)}`
   }
   const amount = Number(form.amount || 0)
   const signed =
     form.type === AccountTransactionType.WITHDRAWAL || form.type === AccountTransactionType.FEE ? -amount : amount
-  return `${form.type}: cash impact ${formatMoney(String(signed), currency)}`
+  return `${form.type}: cash impact ${formatPreviewMoney(signed, currency)}`
 }
 
 function amountFromTransaction(transaction?: AccountTransaction) {
@@ -675,6 +675,18 @@ function formatMoney(value: string, currency: string) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value))
+}
+
+function formatPreviewMoney(value: number, currency: string) {
+  if (/^[A-Z]{3}$/.test(currency)) {
+    return formatMoney(String(value), currency)
+  }
+  const suffix = currency || '---'
+  const amount = new Intl.NumberFormat('en-CA', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+  return `${amount} ${suffix}`
 }
 
 function trimDecimal(value: string) {

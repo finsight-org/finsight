@@ -153,6 +153,17 @@ describe('AccountDetailPage', () => {
     expect(accountState.createTransaction).not.toHaveBeenCalled()
   })
 
+  it('keeps the ledger preview stable while currency input is partial', async () => {
+    const user = userEvent.setup()
+    render(<AccountDetailPage accountId="11111111-1111-1111-1111-111111111111" />)
+
+    await user.click(screen.getByRole('button', { name: /add transaction/i }))
+    await user.clear(screen.getByLabelText(/currency/i))
+    await user.type(screen.getByLabelText(/currency/i), 'C')
+
+    expect(screen.getByText(/cash impact -?0\.00 C/i)).toBeInTheDocument()
+  })
+
   it('deletes a transaction after confirmation', async () => {
     accountState.deleteTransaction.mockResolvedValue(undefined)
     const user = userEvent.setup()

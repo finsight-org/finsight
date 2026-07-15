@@ -125,25 +125,30 @@ func (r PostgresRepository) ValidateAccount(ctx context.Context, portfolioID uui
 	return validateAccount(ctx, db.New(r.db), portfolioID, accountID)
 }
 
-func (r PostgresRepository) ValidateAccountTransaction(ctx context.Context, portfolioID uuid.UUID, accountID uuid.UUID, transactionID uuid.UUID) error {
+func (r PostgresRepository) GetAccountTransaction(ctx context.Context, portfolioID uuid.UUID, accountID uuid.UUID, transactionID uuid.UUID) (Transaction, error) {
 	if r.db == nil {
-		return fmt.Errorf("postgres pool is required")
+		return Transaction{}, fmt.Errorf("postgres pool is required")
 	}
 	queries := db.New(r.db)
 	if err := validateAccount(ctx, queries, portfolioID, accountID); err != nil {
-		return err
+		return Transaction{}, err
 	}
-	if _, err := queries.GetAccountTransaction(ctx, db.GetAccountTransactionParams{
+	row, err := queries.GetAccountTransaction(ctx, db.GetAccountTransactionParams{
 		PortfolioID: pgconv.UUID(portfolioID),
 		AccountID:   pgconv.UUID(accountID),
 		ID:          pgconv.UUID(transactionID),
-	}); err != nil {
+	})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNotFound
+			return Transaction{}, ErrNotFound
 		}
-		return fmt.Errorf("validate account transaction: %w", err)
+		return Transaction{}, fmt.Errorf("select account transaction: %w", err)
 	}
-	return nil
+	transaction, err := mapTransaction(row)
+	if err != nil {
+		return Transaction{}, fmt.Errorf("map account transaction: %w", err)
+	}
+	return transaction, nil
 }
 
 func (r PostgresRepository) UpdateWithEntries(ctx context.Context, input updateRepositoryInput) (Transaction, error) {

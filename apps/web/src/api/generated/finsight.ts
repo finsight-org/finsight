@@ -779,6 +779,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Imported transaction cannot be edited through manual CRUD. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Transaction update failed. */
             500: {
                 headers: {
@@ -811,6 +820,15 @@ export interface operations {
             };
             /** @description Account or transaction was not found in the local default portfolio. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Imported transaction cannot be deleted through manual CRUD. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

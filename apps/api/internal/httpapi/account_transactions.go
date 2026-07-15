@@ -274,6 +274,8 @@ func writeTransactionServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, transaction.ErrInvalidAccount), errors.Is(err, transaction.ErrNotFound):
 		writeTransactionError(w, http.StatusNotFound, "transaction_not_found", "account or transaction was not found")
+	case errors.Is(err, transaction.ErrImportedMutation):
+		writeTransactionError(w, http.StatusConflict, "imported_transaction_read_only", "imported transactions cannot be edited or deleted")
 	case errors.Is(err, transaction.ErrInvalidType):
 		writeTransactionError(w, http.StatusBadRequest, "invalid_transaction_type", "transaction type is invalid")
 	case errors.Is(err, transaction.ErrInvalidTradeDate):
