@@ -27,13 +27,13 @@ export async function searchAssets(query: string, limit = 10) {
   return data?.assets ?? []
 }
 
-export function useAssetSearchQuery(query: string, limit = 10) {
+export function useAssetSearchQuery(query: string, limit = 10, enabled = true) {
   const trimmedQuery = query.trim()
 
   return useQuery({
     queryKey: assetSearchQueryKey(trimmedQuery, limit),
     queryFn: () => searchAssets(trimmedQuery, limit),
-    enabled: trimmedQuery.length >= 2,
+    enabled: enabled && trimmedQuery.length >= 2,
     staleTime: 60_000,
   })
 }

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AccountDetailPage } from '@/features/accounts/account-detail-page'
 
 const accountState = vi.hoisted(() => ({
+  assetSearchQuery: vi.fn(),
   deleteTransaction: vi.fn(),
   createTransaction: vi.fn(),
   updateTransaction: vi.fn(),
@@ -118,16 +119,18 @@ vi.mock('@/api/assets', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/assets')>()
   return {
     ...actual,
-    useAssetSearchQuery: () => ({
-      data: [],
-      isLoading: false,
-      error: null,
-    }),
+    useAssetSearchQuery: accountState.assetSearchQuery,
   }
 })
 
 describe('AccountDetailPage', () => {
   beforeEach(() => {
+    accountState.assetSearchQuery.mockReset()
+    accountState.assetSearchQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    })
     accountState.deleteTransaction.mockReset()
     accountState.createTransaction.mockReset()
     accountState.updateTransaction.mockReset()
@@ -169,6 +172,18 @@ describe('AccountDetailPage', () => {
     await user.type(screen.getByLabelText(/currency/i), 'C')
 
     expect(screen.getByText(/cash impact -?0\.00 C/i)).toBeInTheDocument()
+  })
+
+  it('does not enable asset search for closed edit dialogs', async () => {
+    const user = userEvent.setup()
+    render(<AccountDetailPage accountId="11111111-1111-1111-1111-111111111111" />)
+
+    expect(accountState.assetSearchQuery).toHaveBeenCalledWith('CRCL', 10, false)
+    expect(accountState.assetSearchQuery).not.toHaveBeenCalledWith('CRCL', 10, true)
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+
+    expect(accountState.assetSearchQuery).toHaveBeenCalledWith('CRCL', 10, true)
   })
 
   it('defaults new transactions to the local calendar date', async () => {

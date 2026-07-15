@@ -356,7 +356,7 @@ function TransactionDialog({
   const updateTransaction = useUpdateAccountTransactionMutation(accountId)
   const [form, setForm] = useState<TransactionFormValues>(() => initialFormValues(transaction))
   const [formError, setFormError] = useState<string | null>(null)
-  const assetSearchQuery = useAssetSearchQuery(form.assetSearch)
+  const assetSearchQuery = useAssetSearchQuery(form.assetSearch, 10, open)
   const preview = useMemo(() => ledgerPreview(form), [form])
 
   function onOpenChange(nextOpen: boolean) {
