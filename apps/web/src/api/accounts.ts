@@ -7,7 +7,7 @@ import {
   AccountType as GeneratedAccountType,
   type components,
 } from '@/api/generated/finsight'
-import { portfolioAccountValuesQueryKey } from '@/api/portfolio'
+import { portfolioAccountValuesQueryKey, portfolioOverviewQueryKey, portfolioValueHistoryQueryRootKey } from '@/api/portfolio'
 import { i18n } from '@/i18n/i18n'
 
 export type Account = components['schemas']['Account']
@@ -257,6 +257,8 @@ async function invalidateAccountDetail(queryClient: ReturnType<typeof useQueryCl
     queryClient.invalidateQueries({ queryKey: accountTransactionsQueryKey(accountId) }),
     queryClient.invalidateQueries({ queryKey: accountPositionsQueryKey(accountId) }),
     queryClient.invalidateQueries({ queryKey: accountCashBalancesQueryKey(accountId) }),
+    queryClient.invalidateQueries({ queryKey: portfolioOverviewQueryKey }),
+    queryClient.invalidateQueries({ queryKey: portfolioValueHistoryQueryRootKey }),
     queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey }),
   ])
 }

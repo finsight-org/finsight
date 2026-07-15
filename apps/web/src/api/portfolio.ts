@@ -22,7 +22,8 @@ export const timeRanges = [
 ] as const
 
 export const portfolioOverviewQueryKey = ['portfolio', 'overview'] as const
-export const portfolioValueHistoryQueryKey = (range: PortfolioRange) => ['portfolio', 'value-history', range] as const
+export const portfolioValueHistoryQueryRootKey = ['portfolio', 'value-history'] as const
+export const portfolioValueHistoryQueryKey = (range: PortfolioRange) => [...portfolioValueHistoryQueryRootKey, range] as const
 export const portfolioAccountValuesQueryKey = ['portfolio', 'account-values'] as const
 
 export async function getPortfolioOverview() {
