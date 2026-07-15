@@ -14,15 +14,33 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccountTransactionRequestType.
+const (
+	AccountTransactionRequestTypeBUY        AccountTransactionRequestType = "BUY"
+	AccountTransactionRequestTypeDEPOSIT    AccountTransactionRequestType = "DEPOSIT"
+	AccountTransactionRequestTypeDIVIDEND   AccountTransactionRequestType = "DIVIDEND"
+	AccountTransactionRequestTypeFEE        AccountTransactionRequestType = "FEE"
+	AccountTransactionRequestTypeINTEREST   AccountTransactionRequestType = "INTEREST"
+	AccountTransactionRequestTypeSELL       AccountTransactionRequestType = "SELL"
+	AccountTransactionRequestTypeWITHDRAWAL AccountTransactionRequestType = "WITHDRAWAL"
+)
+
 // Defines values for AccountTransactionType.
 const (
-	BUY        AccountTransactionType = "BUY"
-	DEPOSIT    AccountTransactionType = "DEPOSIT"
-	DIVIDEND   AccountTransactionType = "DIVIDEND"
-	FEE        AccountTransactionType = "FEE"
-	INTEREST   AccountTransactionType = "INTEREST"
-	SELL       AccountTransactionType = "SELL"
-	WITHDRAWAL AccountTransactionType = "WITHDRAWAL"
+	AccountTransactionTypeADJUSTMENT     AccountTransactionType = "ADJUSTMENT"
+	AccountTransactionTypeBUY            AccountTransactionType = "BUY"
+	AccountTransactionTypeDEPOSIT        AccountTransactionType = "DEPOSIT"
+	AccountTransactionTypeDIVIDEND       AccountTransactionType = "DIVIDEND"
+	AccountTransactionTypeFEE            AccountTransactionType = "FEE"
+	AccountTransactionTypeFXCONVERSION   AccountTransactionType = "FX_CONVERSION"
+	AccountTransactionTypeINTEREST       AccountTransactionType = "INTEREST"
+	AccountTransactionTypeOPENINGBALANCE AccountTransactionType = "OPENING_BALANCE"
+	AccountTransactionTypeSELL           AccountTransactionType = "SELL"
+	AccountTransactionTypeSPLIT          AccountTransactionType = "SPLIT"
+	AccountTransactionTypeTAX            AccountTransactionType = "TAX"
+	AccountTransactionTypeTRANSFERIN     AccountTransactionType = "TRANSFER_IN"
+	AccountTransactionTypeTRANSFEROUT    AccountTransactionType = "TRANSFER_OUT"
+	AccountTransactionTypeWITHDRAWAL     AccountTransactionType = "WITHDRAWAL"
 )
 
 // Defines values for AccountType.
@@ -186,8 +204,11 @@ type AccountTransactionRequest struct {
 	Quantity       *string                       `json:"quantity"`
 	SettlementDate *openapi_types.Date           `json:"settlement_date"`
 	TradeDate      openapi_types.Date            `json:"trade_date"`
-	Type           AccountTransactionType        `json:"type"`
+	Type           AccountTransactionRequestType `json:"type"`
 }
+
+// AccountTransactionRequestType defines model for AccountTransactionRequestType.
+type AccountTransactionRequestType string
 
 // AccountTransactionType defines model for AccountTransactionType.
 type AccountTransactionType string

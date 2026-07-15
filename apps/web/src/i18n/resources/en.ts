@@ -161,6 +161,13 @@ export const en = {
       WITHDRAWAL: 'Withdrawal',
       FEE: 'Fee',
       INTEREST: 'Interest',
+      TAX: 'Tax',
+      TRANSFER_IN: 'Transfer in',
+      TRANSFER_OUT: 'Transfer out',
+      FX_CONVERSION: 'FX conversion',
+      SPLIT: 'Split',
+      OPENING_BALANCE: 'Opening balance',
+      ADJUSTMENT: 'Adjustment',
     },
     type: {
       BROKERAGE: 'Brokerage',

@@ -541,6 +541,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Account"
+    AccountTransactionRequestType:
+      type: string
+      enum:
+        - BUY
+        - SELL
+        - DIVIDEND
+        - DEPOSIT
+        - WITHDRAWAL
+        - FEE
+        - INTEREST
     AccountTransactionType:
       type: string
       enum:
@@ -551,6 +561,13 @@ components:
         - WITHDRAWAL
         - FEE
         - INTEREST
+        - TAX
+        - TRANSFER_IN
+        - TRANSFER_OUT
+        - FX_CONVERSION
+        - SPLIT
+        - OPENING_BALANCE
+        - ADJUSTMENT
     AccountTransactionAssetInput:
       type: object
       required:
@@ -592,7 +609,7 @@ components:
         - currency
       properties:
         type:
-          $ref: "#/components/schemas/AccountTransactionType"
+          $ref: "#/components/schemas/AccountTransactionRequestType"
         trade_date:
           type: string
           format: date

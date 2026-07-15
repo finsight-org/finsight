@@ -260,6 +260,8 @@ export interface components {
             accounts: components["schemas"]["Account"][];
         };
         /** @enum {string} */
+        AccountTransactionRequestType: AccountTransactionRequestType;
+        /** @enum {string} */
         AccountTransactionType: AccountTransactionType;
         AccountTransactionAssetInput: {
             name: string;
@@ -271,7 +273,7 @@ export interface components {
             exchange?: string | null;
         };
         AccountTransactionRequest: {
-            type: components["schemas"]["AccountTransactionType"];
+            type: components["schemas"]["AccountTransactionRequestType"];
             /** Format: date */
             trade_date: string;
             /** Format: date */
@@ -1121,7 +1123,7 @@ export enum AccountType {
     RETIREMENT = "RETIREMENT",
     MANUAL = "MANUAL"
 }
-export enum AccountTransactionType {
+export enum AccountTransactionRequestType {
     BUY = "BUY",
     SELL = "SELL",
     DIVIDEND = "DIVIDEND",
@@ -1129,6 +1131,22 @@ export enum AccountTransactionType {
     WITHDRAWAL = "WITHDRAWAL",
     FEE = "FEE",
     INTEREST = "INTEREST"
+}
+export enum AccountTransactionType {
+    BUY = "BUY",
+    SELL = "SELL",
+    DIVIDEND = "DIVIDEND",
+    DEPOSIT = "DEPOSIT",
+    WITHDRAWAL = "WITHDRAWAL",
+    FEE = "FEE",
+    INTEREST = "INTEREST",
+    TAX = "TAX",
+    TRANSFER_IN = "TRANSFER_IN",
+    TRANSFER_OUT = "TRANSFER_OUT",
+    FX_CONVERSION = "FX_CONVERSION",
+    SPLIT = "SPLIT",
+    OPENING_BALANCE = "OPENING_BALANCE",
+    ADJUSTMENT = "ADJUSTMENT"
 }
 export enum AssetType {
     EQUITY = "EQUITY",

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, errorMessage } from '@/api/client'
 import {
+  AccountTransactionRequestType as GeneratedAccountTransactionRequestType,
   AccountTransactionType as GeneratedAccountTransactionType,
   AccountType as GeneratedAccountType,
   type components,
@@ -14,6 +15,7 @@ export type AccountType = components['schemas']['AccountType']
 export type CreateAccountRequest = components['schemas']['CreateAccountRequest']
 export type AccountTransaction = components['schemas']['AccountTransaction']
 export type AccountTransactionRequest = components['schemas']['AccountTransactionRequest']
+export type AccountTransactionRequestType = components['schemas']['AccountTransactionRequestType']
 export type AccountTransactionType = components['schemas']['AccountTransactionType']
 export type AccountTransactionAssetInput = components['schemas']['AccountTransactionAssetInput']
 export type AccountPosition = components['schemas']['AccountPosition']
@@ -21,8 +23,9 @@ export type AccountCashBalance = components['schemas']['AccountCashBalance']
 
 export const AccountType = GeneratedAccountType
 export const AccountTransactionType = GeneratedAccountTransactionType
+export const AccountTransactionRequestType = GeneratedAccountTransactionRequestType
 export const accountTypes = Object.values(AccountType)
-export const accountTransactionTypes = Object.values(AccountTransactionType)
+export const accountTransactionTypes = Object.values(AccountTransactionRequestType)
 
 export const accountsQueryKey = ['accounts'] as const
 export const accountQueryKey = (accountId: string) => ['accounts', accountId] as const

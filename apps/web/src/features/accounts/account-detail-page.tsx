@@ -3,7 +3,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
-  AccountTransactionType,
+  AccountTransactionRequestType,
   accountTransactionTypes,
   useAccountCashBalancesQuery,
   useAccountPositionsQuery,
@@ -53,17 +53,17 @@ type TransactionFormValues = {
 }
 
 const assetRequiredTypes = new Set<AccountTransactionRequest['type']>([
-  AccountTransactionType.BUY,
-  AccountTransactionType.SELL,
-  AccountTransactionType.DIVIDEND,
+  AccountTransactionRequestType.BUY,
+  AccountTransactionRequestType.SELL,
+  AccountTransactionRequestType.DIVIDEND,
 ])
-const quantityPriceTypes = new Set<AccountTransactionRequest['type']>([AccountTransactionType.BUY, AccountTransactionType.SELL])
+const quantityPriceTypes = new Set<AccountTransactionRequest['type']>([AccountTransactionRequestType.BUY, AccountTransactionRequestType.SELL])
 const amountTypes = new Set<AccountTransactionRequest['type']>([
-  AccountTransactionType.DIVIDEND,
-  AccountTransactionType.DEPOSIT,
-  AccountTransactionType.WITHDRAWAL,
-  AccountTransactionType.FEE,
-  AccountTransactionType.INTEREST,
+  AccountTransactionRequestType.DIVIDEND,
+  AccountTransactionRequestType.DEPOSIT,
+  AccountTransactionRequestType.WITHDRAWAL,
+  AccountTransactionRequestType.FEE,
+  AccountTransactionRequestType.INTEREST,
 ])
 
 export function AccountDetailPage({ accountId }: { accountId: string }) {
@@ -355,6 +355,14 @@ function TransactionDialog({
   const assetSearchQuery = useAssetSearchQuery(form.assetSearch)
   const preview = useMemo(() => ledgerPreview(form), [form])
 
+  function onOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (nextOpen) {
+      setForm(initialFormValues(transaction))
+      setFormError(null)
+    }
+  }
+
   function update<K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) {
     setForm((current) => ({ ...current, [key]: value }))
   }
@@ -373,14 +381,16 @@ function TransactionDialog({
       await createTransaction.mutateAsync(request)
     }
     setOpen(false)
-    setForm(initialFormValues(undefined))
+    if (!transaction) {
+      setForm(initialFormValues(undefined))
+    }
   }
 
   const isPending = createTransaction.isPending || updateTransaction.isPending
   const mutationError = createTransaction.error ?? updateTransaction.error
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant={children ? 'ghost' : 'default'} size={children ? 'icon-sm' : 'default'} aria-label={triggerLabel}>
           {children ?? (
@@ -563,7 +573,7 @@ function Field({ label, id, children }: { label: string; id: string; children: R
 }
 
 function initialFormValues(transaction?: AccountTransaction): TransactionFormValues {
-  const type = transaction?.type ?? AccountTransactionType.BUY
+  const type = guidedTransactionType(transaction?.type) ?? AccountTransactionRequestType.BUY
   return {
     type,
     tradeDate: transaction?.trade_date ?? new Date().toISOString().slice(0, 10),
@@ -632,13 +642,17 @@ function ledgerPreview(form: TransactionFormValues) {
     const quantity = Number(form.quantity || 0)
     const price = Number(form.price || 0)
     const gross = quantity * price
-    const cash = form.type === AccountTransactionType.BUY ? -(gross + fees) : gross - fees
+    const cash = form.type === AccountTransactionRequestType.BUY ? -(gross + fees) : gross - fees
     return `${form.type}: ${quantity || 0} units, cash impact ${formatPreviewMoney(cash, currency)}`
   }
   const amount = Number(form.amount || 0)
   const signed =
-    form.type === AccountTransactionType.WITHDRAWAL || form.type === AccountTransactionType.FEE ? -amount : amount
+    form.type === AccountTransactionRequestType.WITHDRAWAL || form.type === AccountTransactionRequestType.FEE ? -amount : amount
   return `${form.type}: cash impact ${formatPreviewMoney(signed, currency)}`
+}
+
+function guidedTransactionType(type?: AccountTransaction['type']): AccountTransactionRequest['type'] | undefined {
+  return accountTransactionTypes.find((value) => String(value) === type)
 }
 
 function amountFromTransaction(transaction?: AccountTransaction) {

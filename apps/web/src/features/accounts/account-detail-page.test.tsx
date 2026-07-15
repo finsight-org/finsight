@@ -164,6 +164,23 @@ describe('AccountDetailPage', () => {
     expect(screen.getByText(/cash impact -?0\.00 C/i)).toBeInTheDocument()
   })
 
+  it('rehydrates edit dialogs from the transaction when reopened after save', async () => {
+    accountState.updateTransaction.mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<AccountDetailPage accountId="11111111-1111-1111-1111-111111111111" />)
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+    await user.clear(screen.getByLabelText(/^description$/i))
+    await user.type(screen.getByLabelText(/^description$/i), 'Edited description')
+    await user.click(screen.getByRole('button', { name: /save transaction/i }))
+
+    await waitFor(() => expect(accountState.updateTransaction).toHaveBeenCalled())
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+
+    expect(screen.getByLabelText(/^description$/i)).toHaveValue('Buy CRCL')
+  })
+
   it('deletes a transaction after confirmation', async () => {
     accountState.deleteTransaction.mockResolvedValue(undefined)
     const user = userEvent.setup()
