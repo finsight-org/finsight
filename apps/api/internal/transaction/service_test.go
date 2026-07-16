@@ -301,6 +301,39 @@ func TestRecordAccountTransactionRejectsComputedLedgerScaleOverflowBeforeUpsert(
 	}
 }
 
+func TestRecordAccountTransactionRejectsSellFeesGreaterThanGrossBeforeUpsert(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	assets := &fakeAssetRegistry{}
+	service := NewServiceWithAssets(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		&fakeTransactionRepository{},
+		assets,
+	)
+	quantity := decimal.NewFromInt(2)
+	price := decimal.NewFromInt(10)
+	fees := decimal.NewFromInt(21)
+
+	_, err := service.RecordAccountTransaction(context.Background(), GuidedInput{
+		AccountID:   accountID,
+		Type:        TypeSell,
+		TradeDate:   time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Description: "Sell CRCL",
+		Currency:    "CAD",
+		Quantity:    &quantity,
+		Price:       &price,
+		Fees:        &fees,
+		Asset:       &AssetInput{Name: "Circle", Type: asset.TypeEquity, Currency: "CAD", Symbol: "CRCL", ProviderID: "manual", ProviderSymbol: "CRCL"},
+	})
+	if err != ErrInvalidAmount {
+		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
+	}
+	if assets.upsertCount != 0 {
+		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	}
+}
+
 func TestRecordAccountTransactionRejectsInvalidAssetTypeBeforeUpsert(t *testing.T) {
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")

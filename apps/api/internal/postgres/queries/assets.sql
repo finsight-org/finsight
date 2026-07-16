@@ -33,10 +33,10 @@ do update set
     asset_type = excluded.asset_type,
     currency = excluded.currency,
     symbol = excluded.symbol,
-    exchange = excluded.exchange,
-    isin = excluded.isin,
-    country = excluded.country,
-    sector = excluded.sector,
+    exchange = coalesce(excluded.exchange, assets.exchange),
+    isin = coalesce(excluded.isin, assets.isin),
+    country = coalesce(excluded.country, assets.country),
+    sector = coalesce(excluded.sector, assets.sector),
     is_active = true
 returning id, workspace_id, name, asset_type, currency, symbol, provider_id, provider_symbol, exchange, isin, country, sector, is_active, created_at, updated_at;
 

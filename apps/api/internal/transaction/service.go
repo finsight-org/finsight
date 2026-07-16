@@ -354,6 +354,9 @@ func (s Service) ledgerEntriesForGuidedInput(ctx context.Context, input GuidedIn
 		}
 		cashAmount := gross.Add(fees)
 		if input.Type == TypeSell {
+			if fees.GreaterThan(gross) {
+				return nil, ErrInvalidAmount
+			}
 			cashAmount = gross.Sub(fees)
 		}
 		if !fitsLedgerDecimal(cashAmount) {
