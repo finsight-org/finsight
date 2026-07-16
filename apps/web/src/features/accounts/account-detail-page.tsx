@@ -674,7 +674,7 @@ function amountFromTransaction(transaction?: AccountTransaction) {
   if (!transaction?.cash_impact) {
     return ''
   }
-  return trimDecimal(String(Math.abs(Number(transaction.cash_impact))))
+  return trimDecimal(transaction.cash_impact.trim().replace(/^-/, ''))
 }
 
 function positiveString(value: string) {

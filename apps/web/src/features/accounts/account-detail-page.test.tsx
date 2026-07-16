@@ -212,6 +212,40 @@ describe('AccountDetailPage', () => {
     expect(screen.getByLabelText(/^description$/i)).toHaveValue('Buy CRCL')
   })
 
+  it('preserves large decimal amount strings when editing cash transactions', async () => {
+    accountState.transactions.data = [
+      {
+        ...baseTransaction,
+        type: 'DEPOSIT',
+        description: 'Large cash deposit',
+        asset: undefined,
+        quantity: null,
+        price: null,
+        fees: null,
+        cash_impact: '12345678901234567890.123400000000',
+        ledger_entries: [],
+      } as unknown as typeof baseTransaction,
+    ]
+    accountState.updateTransaction.mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<AccountDetailPage accountId="11111111-1111-1111-1111-111111111111" />)
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+    await user.clear(screen.getByLabelText(/^description$/i))
+    await user.type(screen.getByLabelText(/^description$/i), 'Updated deposit')
+    await user.click(screen.getByRole('button', { name: /save transaction/i }))
+
+    await waitFor(() =>
+      expect(accountState.updateTransaction).toHaveBeenCalledWith({
+        transactionId: '33333333-3333-3333-3333-333333333333',
+        body: expect.objectContaining({
+          amount: '12345678901234567890.1234',
+          description: 'Updated deposit',
+        }),
+      }),
+    )
+  })
+
   it('does not show edit or delete actions for read-only transactions', () => {
     accountState.transactions.data = [
       { ...baseTransaction, asset: { ...baseTransaction.asset }, ledger_entries: [] },
