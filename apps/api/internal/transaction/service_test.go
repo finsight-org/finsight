@@ -136,6 +136,55 @@ func TestGuidedFeeLedgerEntriesStorePositiveExpenseAmounts(t *testing.T) {
 	}
 }
 
+func TestAccountDerivedViewsExcludeFutureTransactions(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	stockID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
+	cashID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
+	stock := asset.Asset{ID: stockID, Name: "Circle", Type: asset.TypeEquity, Currency: "CAD", Symbol: "CRCL"}
+	cash := asset.Asset{ID: cashID, Name: "CAD Cash", Type: asset.TypeCash, Currency: "CAD", Symbol: "CAD"}
+	service := NewServiceWithClock(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		&fakeTransactionRepository{
+			transactions: []AccountTransaction{
+				{
+					Transaction: Transaction{ID: uuid.New(), PortfolioID: portfolioID, AccountID: accountID, Type: TypeBuy, TradeDate: time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC), Source: SourceManual, Status: StatusConfirmed},
+					Entries: []AccountLedgerEntry{
+						{LedgerEntry: LedgerEntry{EntryType: EntryTypeAssetQuantity, Quantity: decimal.NewFromInt(2)}, Asset: stock},
+						{LedgerEntry: LedgerEntry{EntryType: EntryTypeCash, Amount: decimal.NewFromInt(-20), Currency: "CAD"}, Asset: cash},
+					},
+				},
+				{
+					Transaction: Transaction{ID: uuid.New(), PortfolioID: portfolioID, AccountID: accountID, Type: TypeBuy, TradeDate: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC), Source: SourceManual, Status: StatusConfirmed},
+					Entries: []AccountLedgerEntry{
+						{LedgerEntry: LedgerEntry{EntryType: EntryTypeAssetQuantity, Quantity: decimal.NewFromInt(5)}, Asset: stock},
+						{LedgerEntry: LedgerEntry{EntryType: EntryTypeCash, Amount: decimal.NewFromInt(-50), Currency: "CAD"}, Asset: cash},
+					},
+				},
+			},
+		},
+		nil,
+		func() time.Time { return time.Date(2026, 7, 16, 23, 30, 0, 0, time.UTC) },
+	)
+
+	positions, err := service.GetAccountPositions(context.Background(), accountID)
+	if err != nil {
+		t.Fatalf("GetAccountPositions() error = %v", err)
+	}
+	if len(positions) != 1 || !positions[0].Quantity.Equal(decimal.NewFromInt(2)) {
+		t.Fatalf("positions = %+v, want one current position with quantity 2", positions)
+	}
+
+	balances, err := service.GetAccountCashBalances(context.Background(), accountID)
+	if err != nil {
+		t.Fatalf("GetAccountCashBalances() error = %v", err)
+	}
+	if len(balances) != 1 || balances[0].Currency != "CAD" || !balances[0].Balance.Equal(decimal.NewFromInt(-20)) {
+		t.Fatalf("cash balances = %+v, want CAD -20", balances)
+	}
+}
+
 func TestRecordAccountTransactionValidatesBeforeAssetUpsert(t *testing.T) {
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
@@ -159,6 +208,93 @@ func TestRecordAccountTransactionValidatesBeforeAssetUpsert(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("RecordAccountTransaction() error = nil, want validation error")
+	}
+	if assets.upsertCount != 0 {
+		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	}
+}
+
+func TestRecordAccountTransactionRejectsLedgerPrecisionOverflowBeforeUpsert(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	assets := &fakeAssetRegistry{}
+	service := NewServiceWithAssets(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		&fakeTransactionRepository{},
+		assets,
+	)
+	amount := decimal.RequireFromString("123456789012345678901234567")
+
+	_, err := service.RecordAccountTransaction(context.Background(), GuidedInput{
+		AccountID:   accountID,
+		Type:        TypeDeposit,
+		TradeDate:   time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Description: "Oversized deposit",
+		Currency:    "CAD",
+		Amount:      &amount,
+	})
+	if err != ErrInvalidAmount {
+		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
+	}
+	if assets.upsertCount != 0 {
+		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	}
+}
+
+func TestRecordAccountTransactionRejectsLedgerScaleOverflowBeforeUpsert(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	assets := &fakeAssetRegistry{}
+	service := NewServiceWithAssets(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		&fakeTransactionRepository{},
+		assets,
+	)
+	amount := decimal.RequireFromString("1.1234567890123")
+
+	_, err := service.RecordAccountTransaction(context.Background(), GuidedInput{
+		AccountID:   accountID,
+		Type:        TypeDeposit,
+		TradeDate:   time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Description: "Overprecise deposit",
+		Currency:    "CAD",
+		Amount:      &amount,
+	})
+	if err != ErrInvalidAmount {
+		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
+	}
+	if assets.upsertCount != 0 {
+		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	}
+}
+
+func TestRecordAccountTransactionRejectsComputedLedgerScaleOverflowBeforeUpsert(t *testing.T) {
+	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	assets := &fakeAssetRegistry{}
+	service := NewServiceWithAssets(
+		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
+		&fakeTransactionRepository{},
+		assets,
+	)
+	quantity := decimal.RequireFromString("1.000000000001")
+	price := decimal.RequireFromString("1.000000000001")
+
+	_, err := service.RecordAccountTransaction(context.Background(), GuidedInput{
+		AccountID:   accountID,
+		Type:        TypeBuy,
+		TradeDate:   time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Description: "Overprecise buy",
+		Currency:    "CAD",
+		Quantity:    &quantity,
+		Price:       &price,
+		Asset:       &AssetInput{Name: "Circle", Type: asset.TypeEquity, Currency: "CAD", Symbol: "CRCL", ProviderID: "manual", ProviderSymbol: "CRCL"},
+	})
+	if err != ErrInvalidAmount {
+		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
 	}
 	if assets.upsertCount != 0 {
 		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
@@ -258,12 +394,13 @@ func (b fakeTransactionBootstrapper) BootstrapLocal(context.Context) (bootstrap.
 }
 
 type fakeTransactionRepository struct {
-	input       createRepositoryInput
-	updated     updateRepositoryInput
-	transaction Transaction
-	createdID   uuid.UUID
-	deleted     bool
-	err         error
+	input        createRepositoryInput
+	updated      updateRepositoryInput
+	transaction  Transaction
+	transactions []AccountTransaction
+	createdID    uuid.UUID
+	deleted      bool
+	err          error
 }
 
 func (r *fakeTransactionRepository) CreateWithEntries(_ context.Context, input createRepositoryInput) (Transaction, error) {
@@ -285,6 +422,9 @@ func (r *fakeTransactionRepository) CreateWithEntries(_ context.Context, input c
 func (r *fakeTransactionRepository) ListAccountTransactions(_ context.Context, portfolioID uuid.UUID, accountID uuid.UUID) ([]AccountTransaction, error) {
 	if r.err != nil {
 		return nil, r.err
+	}
+	if r.transactions != nil {
+		return r.transactions, nil
 	}
 	id := r.createdID
 	if id == uuid.Nil {

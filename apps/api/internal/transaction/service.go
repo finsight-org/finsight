@@ -3,6 +3,7 @@ package transaction
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -35,14 +36,19 @@ type Service struct {
 	bootstrap  LocalBootstrapper
 	repository Repository
 	assets     AssetRegistry
+	now        func() time.Time
 }
 
 func NewService(bootstrap LocalBootstrapper, repository Repository) Service {
-	return Service{bootstrap: bootstrap, repository: repository}
+	return Service{bootstrap: bootstrap, repository: repository, now: time.Now}
 }
 
 func NewServiceWithAssets(bootstrap LocalBootstrapper, repository Repository, assets AssetRegistry) Service {
-	return Service{bootstrap: bootstrap, repository: repository, assets: assets}
+	return Service{bootstrap: bootstrap, repository: repository, assets: assets, now: time.Now}
+}
+
+func NewServiceWithClock(bootstrap LocalBootstrapper, repository Repository, assets AssetRegistry, now func() time.Time) Service {
+	return Service{bootstrap: bootstrap, repository: repository, assets: assets, now: now}
 }
 
 func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Transaction, error) {
@@ -84,6 +90,12 @@ func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Tran
 		}
 		if !validDirection(entry.Direction) {
 			return Transaction{}, ErrInvalidLedgerEntry
+		}
+		if !fitsLedgerDecimal(entry.Quantity) || !fitsLedgerDecimal(entry.Amount) {
+			return Transaction{}, ErrInvalidAmount
+		}
+		if entry.OriginalAmount != nil && !fitsLedgerDecimal(*entry.OriginalAmount) {
+			return Transaction{}, ErrInvalidAmount
 		}
 	}
 
@@ -213,7 +225,11 @@ func (s Service) GetAccountPositions(ctx context.Context, accountID uuid.UUID) (
 		quantity decimal.Decimal
 	}
 	positionsByAsset := map[uuid.UUID]positionState{}
+	valuationDate := s.valuationDate()
 	for _, tx := range transactions {
+		if dateutil.DateOnly(tx.TradeDate).After(valuationDate) {
+			continue
+		}
 		for _, entry := range tx.Entries {
 			if entry.EntryType != EntryTypeAssetQuantity {
 				continue
@@ -240,7 +256,11 @@ func (s Service) GetAccountCashBalances(ctx context.Context, accountID uuid.UUID
 		return nil, err
 	}
 	balancesByCurrency := map[string]decimal.Decimal{}
+	valuationDate := s.valuationDate()
 	for _, tx := range transactions {
+		if dateutil.DateOnly(tx.TradeDate).After(valuationDate) {
+			continue
+		}
 		for _, entry := range tx.Entries {
 			if entry.EntryType != EntryTypeCash {
 				continue
@@ -270,6 +290,14 @@ func (s Service) localContext(ctx context.Context) (bootstrap.Result, error) {
 		return bootstrap.Result{}, fmt.Errorf("resolve local transaction context: %w", err)
 	}
 	return localContext, nil
+}
+
+func (s Service) valuationDate() time.Time {
+	now := time.Now
+	if s.now != nil {
+		now = s.now
+	}
+	return dateutil.DateOnly(now().UTC())
 }
 
 func (s Service) loadAccountTransaction(ctx context.Context, accountID uuid.UUID, transactionID uuid.UUID) (AccountTransaction, error) {
@@ -320,6 +348,17 @@ func (s Service) ledgerEntriesForGuidedInput(ctx context.Context, input GuidedIn
 		if err != nil {
 			return nil, ErrInvalidAmount
 		}
+		gross := quantity.Mul(price)
+		if !fitsLedgerDecimal(gross) {
+			return nil, ErrInvalidAmount
+		}
+		cashAmount := gross.Add(fees)
+		if input.Type == TypeSell {
+			cashAmount = gross.Sub(fees)
+		}
+		if !fitsLedgerDecimal(cashAmount) {
+			return nil, ErrInvalidAmount
+		}
 		cashAsset, err := s.upsertCashAsset(ctx, input.Currency)
 		if err != nil {
 			return nil, err
@@ -328,7 +367,6 @@ func (s Service) ledgerEntriesForGuidedInput(ctx context.Context, input GuidedIn
 		if err != nil {
 			return nil, err
 		}
-		gross := quantity.Mul(price)
 		if input.Type == TypeBuy {
 			return assetPurchaseEntries(tradedAsset.ID, cashAsset.ID, quantity, gross, fees, input.Currency), nil
 		}
@@ -482,6 +520,9 @@ func positiveDecimal(value *decimal.Decimal) (decimal.Decimal, error) {
 	if value == nil || !value.IsPositive() {
 		return decimal.Decimal{}, ErrInvalidAmount
 	}
+	if !fitsLedgerDecimal(*value) {
+		return decimal.Decimal{}, ErrInvalidAmount
+	}
 	return *value, nil
 }
 
@@ -492,7 +533,38 @@ func nonNegativeDecimal(value *decimal.Decimal) (decimal.Decimal, error) {
 	if value.IsNegative() {
 		return decimal.Decimal{}, ErrInvalidAmount
 	}
+	if !fitsLedgerDecimal(*value) {
+		return decimal.Decimal{}, ErrInvalidAmount
+	}
 	return *value, nil
+}
+
+func fitsLedgerDecimal(value decimal.Decimal) bool {
+	const maxScale = 12
+	const maxIntegerDigits = 26
+
+	scale := 0
+	if exponent := value.Exponent(); exponent < 0 {
+		scale = int(-exponent)
+	}
+	if scale > maxScale {
+		return false
+	}
+
+	coefficient := new(big.Int).Abs(value.Coefficient())
+	if coefficient.Sign() == 0 {
+		return true
+	}
+	integerDigits := len(coefficient.String())
+	if exponent := value.Exponent(); exponent < 0 {
+		integerDigits -= scale
+		if integerDigits < 0 {
+			integerDigits = 0
+		}
+	} else {
+		integerDigits += int(exponent)
+	}
+	return integerDigits <= maxIntegerDigits
 }
 
 func optionalDate(value *time.Time) *time.Time {
