@@ -234,6 +234,43 @@ func (q *Queries) GetAccountTransaction(ctx context.Context, arg GetAccountTrans
 	return i, err
 }
 
+const getAccountTransactionForUpdate = `-- name: GetAccountTransactionForUpdate :one
+select id, portfolio_id, account_id, import_id, type, trade_date, settlement_date, description, source, external_id, status, created_at, updated_at
+from transactions
+where portfolio_id = $1
+    and account_id = $2
+    and id = $3
+limit 1
+for update
+`
+
+type GetAccountTransactionForUpdateParams struct {
+	PortfolioID pgtype.UUID
+	AccountID   pgtype.UUID
+	ID          pgtype.UUID
+}
+
+func (q *Queries) GetAccountTransactionForUpdate(ctx context.Context, arg GetAccountTransactionForUpdateParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, getAccountTransactionForUpdate, arg.PortfolioID, arg.AccountID, arg.ID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.PortfolioID,
+		&i.AccountID,
+		&i.ImportID,
+		&i.Type,
+		&i.TradeDate,
+		&i.SettlementDate,
+		&i.Description,
+		&i.Source,
+		&i.ExternalID,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAccountLedgerEntries = `-- name: ListAccountLedgerEntries :many
 select
     tx.id as transaction_id,

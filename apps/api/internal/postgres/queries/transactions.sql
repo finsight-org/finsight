@@ -69,6 +69,15 @@ where portfolio_id = @portfolio_id
     and id = @id
 limit 1;
 
+-- name: GetAccountTransactionForUpdate :one
+select id, portfolio_id, account_id, import_id, type, trade_date, settlement_date, description, source, external_id, status, created_at, updated_at
+from transactions
+where portfolio_id = @portfolio_id
+    and account_id = @account_id
+    and id = @id
+limit 1
+for update;
+
 -- name: UpdateAccountTransaction :one
 update transactions
 set

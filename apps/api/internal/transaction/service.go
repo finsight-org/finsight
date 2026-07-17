@@ -3,7 +3,7 @@ package transaction
 import (
 	"context"
 	"fmt"
-	"math/big"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,22 +20,16 @@ type LocalBootstrapper interface {
 }
 
 type Repository interface {
-	CreateWithEntries(context.Context, createRepositoryInput) (Transaction, error)
+	CreateWithEntries(context.Context, createRepositoryInput) (repositoryResult, error)
 	ListAccountTransactions(context.Context, uuid.UUID, uuid.UUID) ([]AccountTransaction, error)
-	ValidateAccount(context.Context, uuid.UUID, uuid.UUID) error
 	GetAccountTransaction(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (Transaction, error)
-	UpdateWithEntries(context.Context, updateRepositoryInput) (Transaction, error)
+	UpdateWithEntries(context.Context, updateRepositoryInput) (repositoryResult, error)
 	Delete(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error
-}
-
-type AssetRegistry interface {
-	UpsertAsset(context.Context, asset.UpsertInput) (asset.Asset, error)
 }
 
 type Service struct {
 	bootstrap  LocalBootstrapper
 	repository Repository
-	assets     AssetRegistry
 	now        func() time.Time
 }
 
@@ -43,12 +37,8 @@ func NewService(bootstrap LocalBootstrapper, repository Repository) Service {
 	return Service{bootstrap: bootstrap, repository: repository, now: time.Now}
 }
 
-func NewServiceWithAssets(bootstrap LocalBootstrapper, repository Repository, assets AssetRegistry) Service {
-	return Service{bootstrap: bootstrap, repository: repository, assets: assets, now: time.Now}
-}
-
-func NewServiceWithClock(bootstrap LocalBootstrapper, repository Repository, assets AssetRegistry, now func() time.Time) Service {
-	return Service{bootstrap: bootstrap, repository: repository, assets: assets, now: now}
+func NewServiceWithClock(bootstrap LocalBootstrapper, repository Repository, now func() time.Time) Service {
+	return Service{bootstrap: bootstrap, repository: repository, now: now}
 }
 
 func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Transaction, error) {
@@ -97,6 +87,9 @@ func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Tran
 		if entry.OriginalAmount != nil && !fitsLedgerDecimal(*entry.OriginalAmount) {
 			return Transaction{}, ErrInvalidAmount
 		}
+		if entry.ExchangeRate != nil && (!entry.ExchangeRate.IsPositive() || !fitsLedgerDecimal(*entry.ExchangeRate)) {
+			return Transaction{}, ErrInvalidAmount
+		}
 	}
 
 	localContext, err := s.bootstrap.BootstrapLocal(ctx)
@@ -120,7 +113,7 @@ func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Tran
 	if err != nil {
 		return Transaction{}, fmt.Errorf("record transaction: %w", err)
 	}
-	return recorded, nil
+	return recorded.Transaction, nil
 }
 
 func (s Service) ListAccountTransactions(ctx context.Context, accountID uuid.UUID) ([]AccountTransaction, error) {
@@ -140,10 +133,7 @@ func (s Service) RecordAccountTransaction(ctx context.Context, input GuidedInput
 	if err != nil {
 		return AccountTransaction{}, err
 	}
-	if err := s.repository.ValidateAccount(ctx, localContext.Portfolio.ID, input.AccountID); err != nil {
-		return AccountTransaction{}, err
-	}
-	entries, err := s.ledgerEntriesForGuidedInput(ctx, input)
+	plan, err := ledgerPlanForGuidedInput(input)
 	if err != nil {
 		return AccountTransaction{}, err
 	}
@@ -156,12 +146,13 @@ func (s Service) RecordAccountTransaction(ctx context.Context, input GuidedInput
 		SettlementDate: optionalDate(input.SettlementDate),
 		Description:    strings.TrimSpace(input.Description),
 		Source:         SourceManual,
-		LedgerEntries:  entries,
+		AssetUpserts:   plan.AssetUpserts,
+		LedgerEntries:  plan.LedgerEntries,
 	})
 	if err != nil {
 		return AccountTransaction{}, fmt.Errorf("record account transaction: %w", err)
 	}
-	return s.loadAccountTransaction(ctx, input.AccountID, created.ID)
+	return accountTransactionFromResult(created)
 }
 
 func (s Service) UpdateAccountTransaction(ctx context.Context, input UpdateGuidedInput) (AccountTransaction, error) {
@@ -176,7 +167,10 @@ func (s Service) UpdateAccountTransaction(ctx context.Context, input UpdateGuide
 	if readOnlyTransaction(existing) {
 		return AccountTransaction{}, ErrImportedMutation
 	}
-	entries, err := s.ledgerEntriesForGuidedInput(ctx, input.GuidedInput)
+	if !validGuidedType(existing.Type) {
+		return AccountTransaction{}, ErrUnsupportedMutation
+	}
+	plan, err := ledgerPlanForGuidedInput(input.GuidedInput)
 	if err != nil {
 		return AccountTransaction{}, err
 	}
@@ -189,12 +183,13 @@ func (s Service) UpdateAccountTransaction(ctx context.Context, input UpdateGuide
 		TradeDate:      dateutil.DateOnly(input.TradeDate),
 		SettlementDate: optionalDate(input.SettlementDate),
 		Description:    strings.TrimSpace(input.Description),
-		LedgerEntries:  entries,
+		AssetUpserts:   plan.AssetUpserts,
+		LedgerEntries:  plan.LedgerEntries,
 	})
 	if err != nil {
 		return AccountTransaction{}, fmt.Errorf("update account transaction: %w", err)
 	}
-	return s.loadAccountTransaction(ctx, input.AccountID, updated.ID)
+	return accountTransactionFromResult(updated)
 }
 
 func (s Service) DeleteAccountTransaction(ctx context.Context, accountID uuid.UUID, transactionID uuid.UUID) error {
@@ -208,6 +203,9 @@ func (s Service) DeleteAccountTransaction(ctx context.Context, accountID uuid.UU
 	}
 	if readOnlyTransaction(existing) {
 		return ErrImportedMutation
+	}
+	if !validGuidedType(existing.Type) {
+		return ErrUnsupportedMutation
 	}
 	if err := s.repository.Delete(ctx, localContext.Portfolio.ID, accountID, transactionID); err != nil {
 		return fmt.Errorf("delete account transaction: %w", err)
@@ -231,7 +229,7 @@ func (s Service) GetAccountPositions(ctx context.Context, accountID uuid.UUID) (
 			continue
 		}
 		for _, entry := range tx.Entries {
-			if entry.EntryType != EntryTypeAssetQuantity {
+			if entry.EntryType != EntryTypeAssetQuantity || entry.Asset.Type == asset.TypeCash {
 				continue
 			}
 			state := positionsByAsset[entry.Asset.ID]
@@ -247,6 +245,12 @@ func (s Service) GetAccountPositions(ctx context.Context, accountID uuid.UUID) (
 		}
 		positions = append(positions, Position{Asset: state.asset, Quantity: state.quantity, Currency: state.asset.Currency})
 	}
+	sort.Slice(positions, func(i, j int) bool {
+		if positions[i].Asset.Symbol != positions[j].Asset.Symbol {
+			return positions[i].Asset.Symbol < positions[j].Asset.Symbol
+		}
+		return positions[i].Asset.ID.String() < positions[j].Asset.ID.String()
+	})
 	return positions, nil
 }
 
@@ -262,7 +266,7 @@ func (s Service) GetAccountCashBalances(ctx context.Context, accountID uuid.UUID
 			continue
 		}
 		for _, entry := range tx.Entries {
-			if entry.EntryType != EntryTypeCash {
+			if entry.EntryType != EntryTypeCash || entry.Asset.Type != asset.TypeCash {
 				continue
 			}
 			balancesByCurrency[entry.Currency] = balancesByCurrency[entry.Currency].Add(entry.Amount)
@@ -275,6 +279,7 @@ func (s Service) GetAccountCashBalances(ctx context.Context, accountID uuid.UUID
 		}
 		balances = append(balances, CashBalance{Currency: currency, Balance: balance})
 	}
+	sort.Slice(balances, func(i, j int) bool { return balances[i].Currency < balances[j].Currency })
 	return balances, nil
 }
 
@@ -300,114 +305,126 @@ func (s Service) valuationDate() time.Time {
 	return dateutil.DateOnly(now().UTC())
 }
 
-func (s Service) loadAccountTransaction(ctx context.Context, accountID uuid.UUID, transactionID uuid.UUID) (AccountTransaction, error) {
-	transactions, err := s.ListAccountTransactions(ctx, accountID)
-	if err != nil {
-		return AccountTransaction{}, err
+func accountTransactionFromResult(result repositoryResult) (AccountTransaction, error) {
+	if result.AccountTransaction == nil {
+		return AccountTransaction{}, fmt.Errorf("account transaction result is required")
 	}
-	for _, transaction := range transactions {
-		if transaction.ID == transactionID {
-			return transaction, nil
-		}
-	}
-	return AccountTransaction{}, ErrNotFound
+	return *result.AccountTransaction, nil
 }
 
-func (s Service) ledgerEntriesForGuidedInput(ctx context.Context, input GuidedInput) ([]CreateLedgerEntryInput, error) {
-	if s.assets == nil {
-		return nil, fmt.Errorf("transaction asset registry is required")
-	}
+type guidedLedgerPlan struct {
+	AssetUpserts  []repositoryAssetUpsert
+	LedgerEntries []CreateLedgerEntryInput
+}
+
+func ledgerPlanForGuidedInput(input GuidedInput) (guidedLedgerPlan, error) {
 	input = normalizeGuidedInput(input)
 	if input.AccountID == uuid.Nil {
-		return nil, ErrInvalidAccount
+		return guidedLedgerPlan{}, ErrInvalidAccount
 	}
 	if !validGuidedType(input.Type) {
-		return nil, ErrInvalidType
+		return guidedLedgerPlan{}, ErrInvalidType
 	}
 	if input.TradeDate.IsZero() {
-		return nil, ErrInvalidTradeDate
+		return guidedLedgerPlan{}, ErrInvalidTradeDate
+	}
+	if input.SettlementDate != nil && dateutil.DateOnly(*input.SettlementDate).Before(dateutil.DateOnly(input.TradeDate)) {
+		return guidedLedgerPlan{}, ErrInvalidTradeDate
 	}
 	if !currencyPattern.MatchString(input.Currency) {
-		return nil, ErrInvalidEntryCurrency
+		return guidedLedgerPlan{}, ErrInvalidEntryCurrency
 	}
 
 	switch input.Type {
 	case TypeBuy, TypeSell:
+		if input.Amount != nil {
+			return guidedLedgerPlan{}, ErrInvalidAmount
+		}
 		if err := validateInputAsset(input.Asset); err != nil {
-			return nil, err
+			return guidedLedgerPlan{}, err
+		}
+		if input.Asset.Currency != input.Currency {
+			return guidedLedgerPlan{}, ErrInvalidEntryCurrency
 		}
 		quantity, err := positiveDecimal(input.Quantity)
 		if err != nil {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
 		price, err := positiveDecimal(input.Price)
 		if err != nil {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
 		fees, err := nonNegativeDecimal(input.Fees)
 		if err != nil {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
 		gross := quantity.Mul(price)
 		if !fitsLedgerDecimal(gross) {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
 		cashAmount := gross.Add(fees)
 		if input.Type == TypeSell {
 			if fees.GreaterThan(gross) {
-				return nil, ErrInvalidAmount
+				return guidedLedgerPlan{}, ErrInvalidAmount
 			}
 			cashAmount = gross.Sub(fees)
 		}
 		if !fitsLedgerDecimal(cashAmount) {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
-		cashAsset, err := s.upsertCashAsset(ctx, input.Currency)
+		upserts, err := guidedAssetUpserts(input.Currency, input.Asset)
 		if err != nil {
-			return nil, err
-		}
-		tradedAsset, err := s.upsertInputAsset(ctx, input.Asset)
-		if err != nil {
-			return nil, err
+			return guidedLedgerPlan{}, err
 		}
 		if input.Type == TypeBuy {
-			return assetPurchaseEntries(tradedAsset.ID, cashAsset.ID, quantity, gross, fees, input.Currency), nil
+			return guidedLedgerPlan{AssetUpserts: upserts, LedgerEntries: assetPurchaseEntries(quantity, gross, fees, input.Currency)}, nil
 		}
-		return assetSaleEntries(tradedAsset.ID, cashAsset.ID, quantity, gross, fees, input.Currency), nil
+		return guidedLedgerPlan{AssetUpserts: upserts, LedgerEntries: assetSaleEntries(quantity, gross, fees, input.Currency)}, nil
 	case TypeDividend:
+		if input.Quantity != nil || input.Price != nil || input.Fees != nil {
+			return guidedLedgerPlan{}, ErrInvalidAmount
+		}
 		if err := validateInputAsset(input.Asset); err != nil {
-			return nil, err
+			return guidedLedgerPlan{}, err
+		}
+		if input.Asset.Currency != input.Currency {
+			return guidedLedgerPlan{}, ErrInvalidEntryCurrency
 		}
 		amount, err := positiveDecimal(input.Amount)
 		if err != nil {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
-		cashAsset, err := s.upsertCashAsset(ctx, input.Currency)
+		upserts, err := guidedAssetUpserts(input.Currency, input.Asset)
 		if err != nil {
-			return nil, err
+			return guidedLedgerPlan{}, err
 		}
-		dividendAsset, err := s.upsertInputAsset(ctx, input.Asset)
-		if err != nil {
-			return nil, err
-		}
-		return dividendEntries(dividendAsset.ID, cashAsset.ID, amount, input.Currency), nil
+		return guidedLedgerPlan{AssetUpserts: upserts, LedgerEntries: dividendEntries(amount, input.Currency)}, nil
 	case TypeDeposit, TypeWithdrawal, TypeFee, TypeInterest:
+		if input.Asset != nil {
+			return guidedLedgerPlan{}, ErrInvalidAsset
+		}
+		if input.Quantity != nil || input.Price != nil || input.Fees != nil {
+			return guidedLedgerPlan{}, ErrInvalidAmount
+		}
 		amount, err := positiveDecimal(input.Amount)
 		if err != nil {
-			return nil, ErrInvalidAmount
+			return guidedLedgerPlan{}, ErrInvalidAmount
 		}
-		cashAsset, err := s.upsertCashAsset(ctx, input.Currency)
+		cashUpsert, err := cashAssetUpsert(input.Currency)
 		if err != nil {
-			return nil, err
+			return guidedLedgerPlan{}, err
 		}
-		return cashOnlyEntries(input.Type, cashAsset.ID, amount, input.Currency), nil
+		return guidedLedgerPlan{
+			AssetUpserts:  []repositoryAssetUpsert{cashUpsert},
+			LedgerEntries: cashOnlyEntries(input.Type, amount, input.Currency),
+		}, nil
 	default:
-		return nil, ErrInvalidType
+		return guidedLedgerPlan{}, ErrInvalidType
 	}
 }
 
-func (s Service) upsertCashAsset(ctx context.Context, currency string) (asset.Asset, error) {
-	cashAsset, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+func cashAssetUpsert(currency string) (repositoryAssetUpsert, error) {
+	prepared, err := asset.PrepareUpsertInput(asset.UpsertInput{
 		Name:           currency + " Cash",
 		Type:           asset.TypeCash,
 		Currency:       currency,
@@ -416,9 +433,9 @@ func (s Service) upsertCashAsset(ctx context.Context, currency string) (asset.As
 		ProviderSymbol: strings.ToLower(currency),
 	})
 	if err != nil {
-		return asset.Asset{}, fmt.Errorf("upsert cash asset: %w", err)
+		return repositoryAssetUpsert{}, fmt.Errorf("prepare cash asset: %w", err)
 	}
-	return cashAsset, nil
+	return repositoryAssetUpsert{Reference: ledgerAssetCash, Input: prepared}, nil
 }
 
 func validateInputAsset(input *AssetInput) error {
@@ -447,14 +464,14 @@ func validInputAssetType(value asset.Type) bool {
 }
 
 func readOnlyTransaction(value Transaction) bool {
-	return value.ImportID != nil || value.Source != SourceManual
+	return value.ImportID != nil || value.ExternalID != nil || value.Source != SourceManual
 }
 
-func (s Service) upsertInputAsset(ctx context.Context, input *AssetInput) (asset.Asset, error) {
+func instrumentAssetUpsert(input *AssetInput) (repositoryAssetUpsert, error) {
 	if err := validateInputAsset(input); err != nil {
-		return asset.Asset{}, err
+		return repositoryAssetUpsert{}, err
 	}
-	created, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+	prepared, err := asset.PrepareUpsertInput(asset.UpsertInput{
 		Name:           input.Name,
 		Type:           input.Type,
 		Currency:       input.Currency,
@@ -464,55 +481,67 @@ func (s Service) upsertInputAsset(ctx context.Context, input *AssetInput) (asset
 		Exchange:       input.Exchange,
 	})
 	if err != nil {
-		return asset.Asset{}, fmt.Errorf("upsert transaction asset: %w", err)
+		return repositoryAssetUpsert{}, ErrInvalidAsset
 	}
-	return created, nil
+	return repositoryAssetUpsert{Reference: ledgerAssetInstrument, Input: prepared}, nil
 }
 
-func assetPurchaseEntries(assetID uuid.UUID, cashAssetID uuid.UUID, quantity decimal.Decimal, gross decimal.Decimal, fees decimal.Decimal, currency string) []CreateLedgerEntryInput {
+func guidedAssetUpserts(currency string, input *AssetInput) ([]repositoryAssetUpsert, error) {
+	cashUpsert, err := cashAssetUpsert(currency)
+	if err != nil {
+		return nil, err
+	}
+	instrumentUpsert, err := instrumentAssetUpsert(input)
+	if err != nil {
+		return nil, err
+	}
+	return []repositoryAssetUpsert{cashUpsert, instrumentUpsert}, nil
+}
+
+func assetPurchaseEntries(quantity decimal.Decimal, gross decimal.Decimal, fees decimal.Decimal, currency string) []CreateLedgerEntryInput {
 	entries := []CreateLedgerEntryInput{
-		{AssetID: assetID, EntryType: EntryTypeAssetQuantity, Quantity: quantity, Currency: currency, Direction: DirectionIncrease},
-		{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: gross.Add(fees).Neg(), Currency: currency, Direction: DirectionDecrease},
+		{assetReference: ledgerAssetInstrument, EntryType: EntryTypeAssetQuantity, Quantity: quantity, Currency: currency, Direction: DirectionIncrease},
+		{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: gross.Add(fees).Neg(), Currency: currency, Direction: DirectionDecrease},
 	}
 	if fees.IsPositive() {
-		entries = append(entries, CreateLedgerEntryInput{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: fees, Currency: currency, Direction: DirectionDecrease})
+		entries = append(entries, CreateLedgerEntryInput{assetReference: ledgerAssetCash, EntryType: EntryTypeFee, Amount: fees, Currency: currency, Direction: DirectionDecrease})
 	}
 	return entries
 }
 
-func assetSaleEntries(assetID uuid.UUID, cashAssetID uuid.UUID, quantity decimal.Decimal, gross decimal.Decimal, fees decimal.Decimal, currency string) []CreateLedgerEntryInput {
+func assetSaleEntries(quantity decimal.Decimal, gross decimal.Decimal, fees decimal.Decimal, currency string) []CreateLedgerEntryInput {
 	entries := []CreateLedgerEntryInput{
-		{AssetID: assetID, EntryType: EntryTypeAssetQuantity, Quantity: quantity.Neg(), Currency: currency, Direction: DirectionDecrease},
-		{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: gross.Sub(fees), Currency: currency, Direction: DirectionIncrease},
+		{assetReference: ledgerAssetInstrument, EntryType: EntryTypeAssetQuantity, Quantity: quantity.Neg(), Currency: currency, Direction: DirectionDecrease},
+		{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: gross.Sub(fees), Currency: currency, Direction: DirectionIncrease},
 	}
 	if fees.IsPositive() {
-		entries = append(entries, CreateLedgerEntryInput{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: fees, Currency: currency, Direction: DirectionDecrease})
+		entries = append(entries, CreateLedgerEntryInput{assetReference: ledgerAssetCash, EntryType: EntryTypeFee, Amount: fees, Currency: currency, Direction: DirectionDecrease})
 	}
 	return entries
 }
 
-func dividendEntries(assetID uuid.UUID, cashAssetID uuid.UUID, amount decimal.Decimal, currency string) []CreateLedgerEntryInput {
+func dividendEntries(amount decimal.Decimal, currency string) []CreateLedgerEntryInput {
 	return []CreateLedgerEntryInput{
-		{AssetID: assetID, EntryType: EntryTypeIncome, Amount: amount, Currency: currency, Direction: DirectionIncrease},
-		{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: amount, Currency: currency, Direction: DirectionIncrease},
+		{assetReference: ledgerAssetInstrument, EntryType: EntryTypeIncome, Amount: amount, Currency: currency, Direction: DirectionIncrease},
+		{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: amount, Currency: currency, Direction: DirectionIncrease},
 	}
 }
 
-func cashOnlyEntries(transactionType Type, cashAssetID uuid.UUID, amount decimal.Decimal, currency string) []CreateLedgerEntryInput {
+func cashOnlyEntries(transactionType Type, amount decimal.Decimal, currency string) []CreateLedgerEntryInput {
 	switch transactionType {
 	case TypeDeposit:
-		return []CreateLedgerEntryInput{{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: amount, Currency: currency, Direction: DirectionIncrease}}
+		return []CreateLedgerEntryInput{{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: amount, Currency: currency, Direction: DirectionIncrease}}
 	case TypeWithdrawal:
-		return []CreateLedgerEntryInput{{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: amount.Neg(), Currency: currency, Direction: DirectionDecrease}}
+		return []CreateLedgerEntryInput{{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: amount.Neg(), Currency: currency, Direction: DirectionDecrease}}
 	case TypeInterest:
 		return []CreateLedgerEntryInput{
-			{AssetID: cashAssetID, EntryType: EntryTypeIncome, Amount: amount, Currency: currency, Direction: DirectionIncrease},
-			{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: amount, Currency: currency, Direction: DirectionIncrease},
+			{assetReference: ledgerAssetCash, EntryType: EntryTypeIncome, Amount: amount, Currency: currency, Direction: DirectionIncrease},
+			{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: amount, Currency: currency, Direction: DirectionIncrease},
 		}
 	case TypeFee:
 		return []CreateLedgerEntryInput{
-			{AssetID: cashAssetID, EntryType: EntryTypeFee, Amount: amount, Currency: currency, Direction: DirectionDecrease},
-			{AssetID: cashAssetID, EntryType: EntryTypeCash, Amount: amount.Neg(), Currency: currency, Direction: DirectionDecrease},
+			{assetReference: ledgerAssetCash, EntryType: EntryTypeFee, Amount: amount, Currency: currency, Direction: DirectionDecrease},
+			{assetReference: ledgerAssetCash, EntryType: EntryTypeCash, Amount: amount.Neg(), Currency: currency, Direction: DirectionDecrease},
 		}
 	default:
 		return nil
@@ -544,30 +573,10 @@ func nonNegativeDecimal(value *decimal.Decimal) (decimal.Decimal, error) {
 
 func fitsLedgerDecimal(value decimal.Decimal) bool {
 	const maxScale = 12
-	const maxIntegerDigits = 26
-
-	scale := 0
-	if exponent := value.Exponent(); exponent < 0 {
-		scale = int(-exponent)
-	}
-	if scale > maxScale {
+	if !value.Truncate(maxScale).Equal(value) {
 		return false
 	}
-
-	coefficient := new(big.Int).Abs(value.Coefficient())
-	if coefficient.Sign() == 0 {
-		return true
-	}
-	integerDigits := len(coefficient.String())
-	if exponent := value.Exponent(); exponent < 0 {
-		integerDigits -= scale
-		if integerDigits < 0 {
-			integerDigits = 0
-		}
-	} else {
-		integerDigits += int(exponent)
-	}
-	return integerDigits <= maxIntegerDigits
+	return value.Abs().LessThan(decimal.New(1, 26))
 }
 
 func optionalDate(value *time.Time) *time.Time {

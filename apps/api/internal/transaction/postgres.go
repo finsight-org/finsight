@@ -23,14 +23,14 @@ func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
 	return PostgresRepository{db: db}
 }
 
-func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createRepositoryInput) (Transaction, error) {
+func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createRepositoryInput) (repositoryResult, error) {
 	if r.db == nil {
-		return Transaction{}, fmt.Errorf("postgres pool is required")
+		return repositoryResult{}, fmt.Errorf("postgres pool is required")
 	}
 
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return Transaction{}, fmt.Errorf("begin transaction insert: %w", err)
+		return repositoryResult{}, fmt.Errorf("begin transaction insert: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -38,10 +38,14 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 
 	queries := db.New(tx)
 	if err := validateAccount(ctx, queries, input.PortfolioID, input.AccountID); err != nil {
-		return Transaction{}, err
+		return repositoryResult{}, err
 	}
-	if err := validateLedgerAssets(ctx, queries, input.WorkspaceID, input.LedgerEntries); err != nil {
-		return Transaction{}, err
+	entries, resolvedAssets, err := resolveRepositoryEntries(ctx, tx, input.WorkspaceID, input.AssetUpserts, input.LedgerEntries)
+	if err != nil {
+		return repositoryResult{}, err
+	}
+	if err := validateLedgerAssets(ctx, queries, input.WorkspaceID, entries); err != nil {
+		return repositoryResult{}, err
 	}
 
 	row, err := queries.CreateTransaction(ctx, db.CreateTransactionParams{
@@ -57,15 +61,15 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 		Status:         string(StatusConfirmed),
 	})
 	if err != nil {
-		return Transaction{}, fmt.Errorf("insert transaction: %w", err)
+		return repositoryResult{}, fmt.Errorf("insert transaction: %w", err)
 	}
 
 	created, err := mapTransaction(row)
 	if err != nil {
-		return Transaction{}, fmt.Errorf("map transaction: %w", err)
+		return repositoryResult{}, fmt.Errorf("map transaction: %w", err)
 	}
 
-	for _, entry := range input.LedgerEntries {
+	for _, entry := range entries {
 		entryRow, err := queries.CreateLedgerEntry(ctx, db.CreateLedgerEntryParams{
 			TransactionID:    row.ID,
 			AccountID:        pgconv.UUID(input.AccountID),
@@ -80,19 +84,27 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 			Direction:        string(entry.Direction),
 		})
 		if err != nil {
-			return Transaction{}, fmt.Errorf("insert ledger entry: %w", err)
+			return repositoryResult{}, fmt.Errorf("insert ledger entry: %w", err)
 		}
 		mappedEntry, err := mapLedgerEntry(entryRow)
 		if err != nil {
-			return Transaction{}, fmt.Errorf("map ledger entry: %w", err)
+			return repositoryResult{}, fmt.Errorf("map ledger entry: %w", err)
 		}
 		created.LedgerEntries = append(created.LedgerEntries, mappedEntry)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return Transaction{}, fmt.Errorf("commit transaction insert: %w", err)
+	result := repositoryResult{Transaction: created}
+	if len(input.AssetUpserts) > 0 {
+		accountTransaction, err := accountTransactionFromResolvedAssets(created, resolvedAssets)
+		if err != nil {
+			return repositoryResult{}, err
+		}
+		result.AccountTransaction = &accountTransaction
 	}
-	return created, nil
+	if err := tx.Commit(ctx); err != nil {
+		return repositoryResult{}, fmt.Errorf("commit transaction insert: %w", err)
+	}
+	return result, nil
 }
 
 func (r PostgresRepository) ListAccountTransactions(ctx context.Context, portfolioID uuid.UUID, accountID uuid.UUID) ([]AccountTransaction, error) {
@@ -116,13 +128,6 @@ func (r PostgresRepository) ListAccountTransactions(ctx context.Context, portfol
 		return nil, fmt.Errorf("map account transactions: %w", err)
 	}
 	return transactions, nil
-}
-
-func (r PostgresRepository) ValidateAccount(ctx context.Context, portfolioID uuid.UUID, accountID uuid.UUID) error {
-	if r.db == nil {
-		return fmt.Errorf("postgres pool is required")
-	}
-	return validateAccount(ctx, db.New(r.db), portfolioID, accountID)
 }
 
 func (r PostgresRepository) GetAccountTransaction(ctx context.Context, portfolioID uuid.UUID, accountID uuid.UUID, transactionID uuid.UUID) (Transaction, error) {
@@ -151,14 +156,14 @@ func (r PostgresRepository) GetAccountTransaction(ctx context.Context, portfolio
 	return transaction, nil
 }
 
-func (r PostgresRepository) UpdateWithEntries(ctx context.Context, input updateRepositoryInput) (Transaction, error) {
+func (r PostgresRepository) UpdateWithEntries(ctx context.Context, input updateRepositoryInput) (repositoryResult, error) {
 	if r.db == nil {
-		return Transaction{}, fmt.Errorf("postgres pool is required")
+		return repositoryResult{}, fmt.Errorf("postgres pool is required")
 	}
 
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return Transaction{}, fmt.Errorf("begin transaction update: %w", err)
+		return repositoryResult{}, fmt.Errorf("begin transaction update: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -166,20 +171,35 @@ func (r PostgresRepository) UpdateWithEntries(ctx context.Context, input updateR
 
 	queries := db.New(tx)
 	if err := validateAccount(ctx, queries, input.PortfolioID, input.AccountID); err != nil {
-		return Transaction{}, err
+		return repositoryResult{}, err
 	}
-	if _, err := queries.GetAccountTransaction(ctx, db.GetAccountTransactionParams{
+	existingRow, err := queries.GetAccountTransactionForUpdate(ctx, db.GetAccountTransactionForUpdateParams{
 		PortfolioID: pgconv.UUID(input.PortfolioID),
 		AccountID:   pgconv.UUID(input.AccountID),
 		ID:          pgconv.UUID(input.TransactionID),
-	}); err != nil {
+	})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Transaction{}, ErrNotFound
+			return repositoryResult{}, ErrNotFound
 		}
-		return Transaction{}, fmt.Errorf("select transaction for update: %w", err)
+		return repositoryResult{}, fmt.Errorf("select transaction for update: %w", err)
 	}
-	if err := validateLedgerAssets(ctx, queries, input.WorkspaceID, input.LedgerEntries); err != nil {
-		return Transaction{}, err
+	existing, err := mapTransaction(existingRow)
+	if err != nil {
+		return repositoryResult{}, fmt.Errorf("map transaction for update: %w", err)
+	}
+	if readOnlyTransaction(existing) {
+		return repositoryResult{}, ErrImportedMutation
+	}
+	if !validGuidedType(existing.Type) {
+		return repositoryResult{}, ErrUnsupportedMutation
+	}
+	entries, resolvedAssets, err := resolveRepositoryEntries(ctx, tx, input.WorkspaceID, input.AssetUpserts, input.LedgerEntries)
+	if err != nil {
+		return repositoryResult{}, err
+	}
+	if err := validateLedgerAssets(ctx, queries, input.WorkspaceID, entries); err != nil {
+		return repositoryResult{}, err
 	}
 
 	row, err := queries.UpdateAccountTransaction(ctx, db.UpdateAccountTransactionParams{
@@ -192,20 +212,20 @@ func (r PostgresRepository) UpdateWithEntries(ctx context.Context, input updateR
 		Description:    input.Description,
 	})
 	if err != nil {
-		return Transaction{}, fmt.Errorf("update transaction: %w", err)
+		return repositoryResult{}, fmt.Errorf("update transaction: %w", err)
 	}
 	updated, err := mapTransaction(row)
 	if err != nil {
-		return Transaction{}, fmt.Errorf("map transaction: %w", err)
+		return repositoryResult{}, fmt.Errorf("map transaction: %w", err)
 	}
 
 	if err := queries.DeleteLedgerEntriesByTransaction(ctx, db.DeleteLedgerEntriesByTransactionParams{
 		TransactionID: pgconv.UUID(input.TransactionID),
 		AccountID:     pgconv.UUID(input.AccountID),
 	}); err != nil {
-		return Transaction{}, fmt.Errorf("delete old ledger entries: %w", err)
+		return repositoryResult{}, fmt.Errorf("delete old ledger entries: %w", err)
 	}
-	for _, entry := range input.LedgerEntries {
+	for _, entry := range entries {
 		entryRow, err := queries.CreateLedgerEntry(ctx, db.CreateLedgerEntryParams{
 			TransactionID:    row.ID,
 			AccountID:        pgconv.UUID(input.AccountID),
@@ -220,19 +240,27 @@ func (r PostgresRepository) UpdateWithEntries(ctx context.Context, input updateR
 			Direction:        string(entry.Direction),
 		})
 		if err != nil {
-			return Transaction{}, fmt.Errorf("insert replacement ledger entry: %w", err)
+			return repositoryResult{}, fmt.Errorf("insert replacement ledger entry: %w", err)
 		}
 		mappedEntry, err := mapLedgerEntry(entryRow)
 		if err != nil {
-			return Transaction{}, fmt.Errorf("map replacement ledger entry: %w", err)
+			return repositoryResult{}, fmt.Errorf("map replacement ledger entry: %w", err)
 		}
 		updated.LedgerEntries = append(updated.LedgerEntries, mappedEntry)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return Transaction{}, fmt.Errorf("commit transaction update: %w", err)
+	result := repositoryResult{Transaction: updated}
+	if len(input.AssetUpserts) > 0 {
+		accountTransaction, err := accountTransactionFromResolvedAssets(updated, resolvedAssets)
+		if err != nil {
+			return repositoryResult{}, err
+		}
+		result.AccountTransaction = &accountTransaction
 	}
-	return updated, nil
+	if err := tx.Commit(ctx); err != nil {
+		return repositoryResult{}, fmt.Errorf("commit transaction update: %w", err)
+	}
+	return result, nil
 }
 
 func (r PostgresRepository) Delete(ctx context.Context, portfolioID uuid.UUID, accountID uuid.UUID, transactionID uuid.UUID) error {
@@ -240,10 +268,40 @@ func (r PostgresRepository) Delete(ctx context.Context, portfolioID uuid.UUID, a
 		return fmt.Errorf("postgres pool is required")
 	}
 
-	queries := db.New(r.db)
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin transaction delete: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	queries := db.New(tx)
 	if err := validateAccount(ctx, queries, portfolioID, accountID); err != nil {
 		return err
 	}
+	existingRow, err := queries.GetAccountTransactionForUpdate(ctx, db.GetAccountTransactionForUpdateParams{
+		PortfolioID: pgconv.UUID(portfolioID),
+		AccountID:   pgconv.UUID(accountID),
+		ID:          pgconv.UUID(transactionID),
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("select transaction for delete: %w", err)
+	}
+	existing, err := mapTransaction(existingRow)
+	if err != nil {
+		return fmt.Errorf("map transaction for delete: %w", err)
+	}
+	if readOnlyTransaction(existing) {
+		return ErrImportedMutation
+	}
+	if !validGuidedType(existing.Type) {
+		return ErrUnsupportedMutation
+	}
+
 	rowsAffected, err := queries.DeleteAccountTransaction(ctx, db.DeleteAccountTransactionParams{
 		PortfolioID: pgconv.UUID(portfolioID),
 		AccountID:   pgconv.UUID(accountID),
@@ -255,7 +313,71 @@ func (r PostgresRepository) Delete(ctx context.Context, portfolioID uuid.UUID, a
 	if rowsAffected == 0 {
 		return ErrNotFound
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction delete: %w", err)
+	}
 	return nil
+}
+
+func resolveRepositoryEntries(
+	ctx context.Context,
+	tx pgx.Tx,
+	workspaceID uuid.UUID,
+	upserts []repositoryAssetUpsert,
+	entries []CreateLedgerEntryInput,
+) ([]CreateLedgerEntryInput, map[uuid.UUID]asset.Asset, error) {
+	assetsByReference := make(map[ledgerAssetReference]asset.Asset, len(upserts))
+	assetsByID := make(map[uuid.UUID]asset.Asset, len(upserts))
+	assetRepository := asset.NewPostgresRepository(tx)
+	for _, upsert := range upserts {
+		if upsert.Reference == "" {
+			return nil, nil, ErrInvalidEntryAsset
+		}
+		if _, exists := assetsByReference[upsert.Reference]; exists {
+			return nil, nil, ErrInvalidEntryAsset
+		}
+		resolved, err := assetRepository.Upsert(ctx, workspaceID, upsert.Input)
+		if err != nil {
+			if errors.Is(err, asset.ErrInvalidName) || errors.Is(err, asset.ErrInvalidType) || errors.Is(err, asset.ErrInvalidCurrency) ||
+				errors.Is(err, asset.ErrInvalidSymbol) || errors.Is(err, asset.ErrInvalidProvider) {
+				return nil, nil, ErrInvalidAsset
+			}
+			return nil, nil, fmt.Errorf("upsert transaction asset: %w", err)
+		}
+		assetsByReference[upsert.Reference] = resolved
+		assetsByID[resolved.ID] = resolved
+	}
+
+	resolvedEntries := make([]CreateLedgerEntryInput, len(entries))
+	copy(resolvedEntries, entries)
+	for index := range resolvedEntries {
+		entry := &resolvedEntries[index]
+		if entry.assetReference == "" {
+			if entry.AssetID == uuid.Nil {
+				return nil, nil, ErrInvalidEntryAsset
+			}
+			continue
+		}
+		resolved, ok := assetsByReference[entry.assetReference]
+		if !ok {
+			return nil, nil, ErrInvalidEntryAsset
+		}
+		entry.AssetID = resolved.ID
+	}
+	return resolvedEntries, assetsByID, nil
+}
+
+func accountTransactionFromResolvedAssets(value Transaction, assetsByID map[uuid.UUID]asset.Asset) (AccountTransaction, error) {
+	result := AccountTransaction{Transaction: value}
+	for _, ledgerEntry := range value.LedgerEntries {
+		resolvedAsset, ok := assetsByID[ledgerEntry.AssetID]
+		if !ok {
+			return AccountTransaction{}, fmt.Errorf("resolve account transaction ledger asset: %w", ErrInvalidEntryAsset)
+		}
+		result.Entries = append(result.Entries, AccountLedgerEntry{LedgerEntry: ledgerEntry, Asset: resolvedAsset})
+	}
+	summarizeAccountTransaction(&result)
+	return result, nil
 }
 
 func validateAccount(ctx context.Context, queries *db.Queries, portfolioID uuid.UUID, accountID uuid.UUID) error {
@@ -273,24 +395,34 @@ func validateAccount(ctx context.Context, queries *db.Queries, portfolioID uuid.
 }
 
 func validateLedgerAssets(ctx context.Context, queries *db.Queries, workspaceID uuid.UUID, entries []CreateLedgerEntryInput) error {
-	seen := map[uuid.UUID]struct{}{}
+	assetsByID := map[uuid.UUID]db.Asset{}
 	for _, entry := range entries {
-		if _, ok := seen[entry.AssetID]; ok {
-			continue
+		storedAsset, ok := assetsByID[entry.AssetID]
+		if !ok {
+			var err error
+			storedAsset, err = queries.GetAssetByWorkspaceAndID(ctx, db.GetAssetByWorkspaceAndIDParams{
+				WorkspaceID: pgconv.UUID(workspaceID),
+				ID:          pgconv.UUID(entry.AssetID),
+			})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("validate ledger asset: %w", ErrInvalidEntryAsset)
+			}
+			if err != nil {
+				return fmt.Errorf("validate ledger asset: %w", err)
+			}
+			assetsByID[entry.AssetID] = storedAsset
 		}
-		seen[entry.AssetID] = struct{}{}
-
-		_, err := queries.GetAssetByWorkspaceAndID(ctx, db.GetAssetByWorkspaceAndIDParams{
-			WorkspaceID: pgconv.UUID(workspaceID),
-			ID:          pgconv.UUID(entry.AssetID),
-		})
-		if err == nil {
-			continue
+		if entry.EntryType == EntryTypeCash {
+			if storedAsset.AssetType != string(asset.TypeCash) {
+				return fmt.Errorf("validate cash ledger asset: %w", ErrInvalidEntryAsset)
+			}
+			if entry.Currency != storedAsset.Currency {
+				return fmt.Errorf("validate cash ledger currency: %w", ErrInvalidEntryCurrency)
+			}
 		}
-		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("validate ledger asset: %w", ErrInvalidEntryAsset)
+		if entry.EntryType == EntryTypeAssetQuantity && storedAsset.AssetType == string(asset.TypeCash) {
+			return fmt.Errorf("validate quantity ledger asset: %w", ErrInvalidEntryAsset)
 		}
-		return fmt.Errorf("validate ledger asset: %w", err)
 	}
 	return nil
 }
@@ -543,46 +675,124 @@ func mapLedgerAsset(row db.ListAccountLedgerEntriesRow) (asset.Asset, error) {
 }
 
 func summarizeAccountTransaction(transaction *AccountTransaction) {
+	transaction.Asset = nil
+	transaction.Quantity = nil
+	transaction.Price = nil
+	transaction.Fees = nil
+	transaction.CashImpact = nil
+	transaction.Currency = ""
+	transaction.Editable = !readOnlyTransaction(transaction.Transaction) && validGuidedType(transaction.Type)
+
+	var quantityAsset *asset.Asset
+	quantity := decimal.Zero
+	quantityMixed := false
+	var incomeAsset *asset.Asset
+	incomeMixed := false
 	fees := decimal.Zero
+	feeCurrency := ""
+	feeSeen := false
+	feeMixed := false
 	cashImpact := decimal.Zero
+	cashCurrency := ""
+	cashSeen := false
+	cashMixed := false
+	firstCurrency := ""
+
 	for _, entry := range transaction.Entries {
+		if firstCurrency == "" || entry.Currency < firstCurrency {
+			firstCurrency = entry.Currency
+		}
 		switch entry.EntryType {
 		case EntryTypeAssetQuantity:
-			assetValue := entry.Asset
-			transaction.Asset = &assetValue
-			quantity := entry.Quantity.Abs()
-			transaction.Quantity = &quantity
+			if entry.Asset.Type == asset.TypeCash {
+				continue
+			}
+			if quantityAsset == nil {
+				value := entry.Asset
+				quantityAsset = &value
+			} else if quantityAsset.ID != entry.Asset.ID {
+				quantityMixed = true
+			}
+			quantity = quantity.Add(entry.Quantity)
 		case EntryTypeIncome:
-			if entry.Asset.Type != asset.TypeCash {
-				assetValue := entry.Asset
-				transaction.Asset = &assetValue
+			if entry.Asset.Type == asset.TypeCash {
+				continue
+			}
+			if incomeAsset == nil {
+				value := entry.Asset
+				incomeAsset = &value
+			} else if incomeAsset.ID != entry.Asset.ID {
+				incomeMixed = true
 			}
 		case EntryTypeFee:
+			if !feeSeen {
+				feeCurrency = entry.Currency
+				feeSeen = true
+			} else if feeCurrency != entry.Currency {
+				feeMixed = true
+				if entry.Currency < feeCurrency {
+					feeCurrency = entry.Currency
+				}
+			}
 			fees = fees.Add(entry.Amount.Abs())
 		case EntryTypeCash:
+			if !cashSeen {
+				cashCurrency = entry.Currency
+				cashSeen = true
+			} else if cashCurrency != entry.Currency {
+				cashMixed = true
+				if entry.Currency < cashCurrency {
+					cashCurrency = entry.Currency
+				}
+			}
 			cashImpact = cashImpact.Add(entry.Amount)
-			transaction.Currency = entry.Currency
 		}
 	}
-	if transaction.Currency == "" && len(transaction.Entries) > 0 {
-		transaction.Currency = transaction.Entries[0].Currency
+
+	if quantityAsset != nil && !quantityMixed {
+		transaction.Asset = quantityAsset
+		value := quantity.Abs()
+		transaction.Quantity = &value
+	} else if incomeAsset != nil && !incomeMixed {
+		transaction.Asset = incomeAsset
 	}
-	if !fees.IsZero() {
-		transaction.Fees = &fees
-	}
-	if !cashImpact.IsZero() {
-		transaction.CashImpact = &cashImpact
-	}
-	if transaction.Quantity != nil && transaction.CashImpact != nil {
-		price := decimal.Zero
-		switch transaction.Type {
-		case TypeBuy:
-			price = transaction.CashImpact.Abs().Sub(fees).Div(*transaction.Quantity)
-		case TypeSell:
-			price = transaction.CashImpact.Add(fees).Div(*transaction.Quantity)
+
+	if cashSeen {
+		transaction.Currency = cashCurrency
+		if !cashMixed {
+			value := cashImpact
+			transaction.CashImpact = &value
 		}
-		if price.IsPositive() {
-			transaction.Price = &price
-		}
+	} else if transaction.Asset != nil {
+		transaction.Currency = transaction.Asset.Currency
+	} else {
+		transaction.Currency = firstCurrency
+	}
+
+	feesUsable := feeSeen && !feeMixed && !cashMixed && (!cashSeen || feeCurrency == transaction.Currency)
+	if feesUsable {
+		value := fees
+		transaction.Fees = &value
+	}
+
+	if transaction.Quantity == nil || !transaction.Quantity.IsPositive() || transaction.CashImpact == nil || (feeSeen && !feesUsable) {
+		return
+	}
+	priceFees := decimal.Zero
+	if transaction.Fees != nil {
+		priceFees = *transaction.Fees
+	}
+	gross := decimal.Zero
+	switch transaction.Type {
+	case TypeBuy:
+		gross = transaction.CashImpact.Abs().Sub(priceFees)
+	case TypeSell:
+		gross = transaction.CashImpact.Add(priceFees)
+	default:
+		return
+	}
+	if gross.IsPositive() {
+		price := gross.Div(*transaction.Quantity)
+		transaction.Price = &price
 	}
 }

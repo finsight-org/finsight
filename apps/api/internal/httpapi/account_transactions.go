@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -184,6 +185,9 @@ func optionalDecimal(value *string) (*decimal.Decimal, error) {
 	if value == nil || *value == "" {
 		return nil, nil
 	}
+	if len(*value) > 39 {
+		return nil, fmt.Errorf("decimal value is too long")
+	}
 	parsed, err := decimal.NewFromString(*value)
 	if err != nil {
 		return nil, err
@@ -227,6 +231,7 @@ func accountTransactionResponse(value transaction.AccountTransaction) generated.
 		Currency:       value.Currency,
 		Source:         value.Source,
 		Status:         string(value.Status),
+		Editable:       value.Editable,
 		LedgerEntries:  entries,
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,
@@ -276,6 +281,8 @@ func writeTransactionServiceError(w http.ResponseWriter, err error) {
 		writeTransactionError(w, http.StatusNotFound, "transaction_not_found", "account or transaction was not found")
 	case errors.Is(err, transaction.ErrImportedMutation):
 		writeTransactionError(w, http.StatusConflict, "imported_transaction_read_only", "imported transactions cannot be edited or deleted")
+	case errors.Is(err, transaction.ErrUnsupportedMutation):
+		writeTransactionError(w, http.StatusConflict, "transaction_type_read_only", "this transaction type cannot be edited or deleted manually")
 	case errors.Is(err, transaction.ErrInvalidType):
 		writeTransactionError(w, http.StatusBadRequest, "invalid_transaction_type", "transaction type is invalid")
 	case errors.Is(err, transaction.ErrInvalidTradeDate):

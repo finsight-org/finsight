@@ -85,7 +85,7 @@ export const en = {
     },
     detail: {
       loadErrorTitle: 'Account could not load',
-      derivedNote: 'Positions and cash are calculated from confirmed transactions.',
+      derivedNote: 'Positions and cash are calculated from transactions.',
       addTransaction: 'Add transaction',
       tabs: {
         transactions: 'Transactions',
@@ -93,12 +93,15 @@ export const en = {
         cash: 'Cash',
       },
       assetFilterActive: 'Transactions are filtered to the selected asset.',
+      currencyFilterActive: 'Transactions are filtered to {{currency}} cash activity.',
       clearFilter: 'Clear filter',
       transactionsLoadErrorTitle: 'Transactions could not load',
       positionsLoadErrorTitle: 'Positions could not load',
       cashLoadErrorTitle: 'Cash balances could not load',
       noTransactionsTitle: 'No transactions yet',
       noTransactionsDescription: 'Create or import transactions to calculate positions and cash balances.',
+      noMatchingTransactionsTitle: 'No matching transactions',
+      noMatchingTransactionsDescription: 'Clear the filter to view all account transactions.',
       noPositions: 'No positions yet.',
       noCash: 'No cash balances yet.',
       edit: 'Edit transaction',
@@ -125,12 +128,15 @@ export const en = {
       positions: {
         asset: 'Asset',
         quantity: 'Quantity',
+        marketValue: 'Market value',
         currency: 'Currency',
+        warnings: 'Warnings',
         actions: 'Actions',
       },
       cash: {
         currency: 'Currency',
         balance: 'Balance',
+        actions: 'Actions',
       },
       form: {
         createTitle: 'Add transaction',
@@ -148,9 +154,11 @@ export const en = {
         amount: 'Amount',
         descriptionLabel: 'Description',
         preview: 'Ledger preview',
+        tradePreview: '{{type}}: {{quantity}} units, cash impact {{cashImpact}}',
+        cashPreview: '{{type}}: cash impact {{cashImpact}}',
         save: 'Save transaction',
         saving: 'Saving...',
-        validation: 'Complete the required transaction fields before saving.',
+        validation: 'Check required fields, dates, currencies, and decimal amounts before saving.',
       },
     },
     transactionType: {

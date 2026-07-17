@@ -226,7 +226,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Imported transaction cannot be edited through manual CRUD.
+          description: Transaction is imported or its type is not supported by manual CRUD.
           content:
             application/json:
               schema:
@@ -263,7 +263,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Imported transaction cannot be deleted through manual CRUD.
+          description: Transaction is imported or its type is not supported by manual CRUD.
           content:
             application/json:
               schema:
@@ -568,6 +568,14 @@ components:
         - SPLIT
         - OPENING_BALANCE
         - ADJUSTMENT
+    AccountTransactionAssetType:
+      type: string
+      enum:
+        - EQUITY
+        - ETF
+        - MUTUAL_FUND
+        - CRYPTO
+        - OTHER
     AccountTransactionAssetInput:
       type: object
       required:
@@ -585,7 +593,7 @@ components:
           type: string
           minLength: 1
         asset_type:
-          $ref: "#/components/schemas/AssetType"
+          $ref: "#/components/schemas/AccountTransactionAssetType"
         currency:
           type: string
           pattern: "^[A-Z]{3}$"
@@ -625,23 +633,33 @@ components:
           minLength: 3
           maxLength: 3
         asset:
-          $ref: "#/components/schemas/AccountTransactionAssetInput"
+          description: Required only for BUY, SELL, and DIVIDEND.
+          allOf:
+            - $ref: "#/components/schemas/AccountTransactionAssetInput"
         quantity:
+          description: Required only for BUY and SELL.
           type: string
           nullable: true
-          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+          maxLength: 39
+          pattern: "^(?:0*[1-9][0-9]*(?:\\.[0-9]+)?|0*\\.[0-9]*[1-9][0-9]*)$"
         price:
+          description: Required only for BUY and SELL.
           type: string
           nullable: true
-          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+          maxLength: 39
+          pattern: "^(?:0*[1-9][0-9]*(?:\\.[0-9]+)?|0*\\.[0-9]*[1-9][0-9]*)$"
         amount:
+          description: Required only for DIVIDEND, DEPOSIT, WITHDRAWAL, FEE, and INTEREST.
           type: string
           nullable: true
-          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+          maxLength: 39
+          pattern: "^(?:0*[1-9][0-9]*(?:\\.[0-9]+)?|0*\\.[0-9]*[1-9][0-9]*)$"
         fees:
+          description: Optional only for BUY and SELL.
           type: string
           nullable: true
-          pattern: "^-?[0-9]+(\\.[0-9]+)?$"
+          maxLength: 39
+          pattern: "^[0-9]+(?:\\.[0-9]+)?$"
     AccountTransaction:
       type: object
       required:
@@ -653,6 +671,7 @@ components:
         - currency
         - source
         - status
+        - editable
         - ledger_entries
         - created_at
         - updated_at
@@ -698,6 +717,9 @@ components:
           type: string
         status:
           type: string
+        editable:
+          description: Whether this supported manual transaction can be edited or deleted through account CRUD.
+          type: boolean
         ledger_entries:
           type: array
           items:

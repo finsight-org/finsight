@@ -63,18 +63,10 @@ func TestRecordAccountTransactionBuildsBuyLedgerEntries(t *testing.T) {
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	stockID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
-	cashID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
 	repository := &fakeTransactionRepository{createdID: uuid.MustParse("88888888-8888-8888-8888-888888888888")}
-	service := NewServiceWithAssets(
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
 		repository,
-		&fakeAssetRegistry{
-			assetsByType: map[asset.Type]asset.Asset{
-				asset.TypeEquity: {ID: stockID, Name: "Circle", Type: asset.TypeEquity, Currency: "CAD", Symbol: "CRCL"},
-				asset.TypeCash:   {ID: cashID, Name: "CAD Cash", Type: asset.TypeCash, Currency: "CAD", Symbol: "CAD"},
-			},
-		},
 	)
 	quantity := decimal.NewFromInt(2)
 	price := decimal.NewFromInt(10)
@@ -114,23 +106,21 @@ func TestRecordAccountTransactionBuildsBuyLedgerEntries(t *testing.T) {
 }
 
 func TestGuidedFeeLedgerEntriesStorePositiveExpenseAmounts(t *testing.T) {
-	assetID := uuid.MustParse("66666666-6666-6666-6666-666666666666")
-	cashID := uuid.MustParse("77777777-7777-7777-7777-777777777777")
 	quantity := decimal.NewFromInt(2)
 	gross := decimal.NewFromInt(20)
 	fees := decimal.RequireFromString("1.25")
 
-	buyEntries := assetPurchaseEntries(assetID, cashID, quantity, gross, fees, "CAD")
+	buyEntries := assetPurchaseEntries(quantity, gross, fees, "CAD")
 	if !buyEntries[2].Amount.Equal(fees) || buyEntries[2].EntryType != EntryTypeFee || buyEntries[2].Direction != DirectionDecrease {
 		t.Fatalf("buy fee entry = %+v, want positive fee expense", buyEntries[2])
 	}
 
-	sellEntries := assetSaleEntries(assetID, cashID, quantity, gross, fees, "CAD")
+	sellEntries := assetSaleEntries(quantity, gross, fees, "CAD")
 	if !sellEntries[2].Amount.Equal(fees) || sellEntries[2].EntryType != EntryTypeFee || sellEntries[2].Direction != DirectionDecrease {
 		t.Fatalf("sell fee entry = %+v, want positive fee expense", sellEntries[2])
 	}
 
-	feeEntries := cashOnlyEntries(TypeFee, cashID, fees, "CAD")
+	feeEntries := cashOnlyEntries(TypeFee, fees, "CAD")
 	if !feeEntries[0].Amount.Equal(fees) || feeEntries[0].EntryType != EntryTypeFee || feeEntries[0].Direction != DirectionDecrease {
 		t.Fatalf("standalone fee entry = %+v, want positive fee expense", feeEntries[0])
 	}
@@ -164,7 +154,6 @@ func TestAccountDerivedViewsExcludeFutureTransactions(t *testing.T) {
 				},
 			},
 		},
-		nil,
 		func() time.Time { return time.Date(2026, 7, 16, 23, 30, 0, 0, time.UTC) },
 	)
 
@@ -189,11 +178,10 @@ func TestRecordAccountTransactionValidatesBeforeAssetUpsert(t *testing.T) {
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	assets := &fakeAssetRegistry{}
-	service := NewServiceWithAssets(
+	repository := &fakeTransactionRepository{}
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
-		&fakeTransactionRepository{},
-		assets,
+		repository,
 	)
 	price := decimal.NewFromInt(10)
 
@@ -209,8 +197,8 @@ func TestRecordAccountTransactionValidatesBeforeAssetUpsert(t *testing.T) {
 	if err == nil {
 		t.Fatal("RecordAccountTransaction() error = nil, want validation error")
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
 	}
 }
 
@@ -218,11 +206,10 @@ func TestRecordAccountTransactionRejectsLedgerPrecisionOverflowBeforeUpsert(t *t
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	assets := &fakeAssetRegistry{}
-	service := NewServiceWithAssets(
+	repository := &fakeTransactionRepository{}
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
-		&fakeTransactionRepository{},
-		assets,
+		repository,
 	)
 	amount := decimal.RequireFromString("123456789012345678901234567")
 
@@ -237,8 +224,8 @@ func TestRecordAccountTransactionRejectsLedgerPrecisionOverflowBeforeUpsert(t *t
 	if err != ErrInvalidAmount {
 		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
 	}
 }
 
@@ -246,11 +233,10 @@ func TestRecordAccountTransactionRejectsLedgerScaleOverflowBeforeUpsert(t *testi
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	assets := &fakeAssetRegistry{}
-	service := NewServiceWithAssets(
+	repository := &fakeTransactionRepository{}
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
-		&fakeTransactionRepository{},
-		assets,
+		repository,
 	)
 	amount := decimal.RequireFromString("1.1234567890123")
 
@@ -265,8 +251,8 @@ func TestRecordAccountTransactionRejectsLedgerScaleOverflowBeforeUpsert(t *testi
 	if err != ErrInvalidAmount {
 		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
 	}
 }
 
@@ -274,11 +260,10 @@ func TestRecordAccountTransactionRejectsComputedLedgerScaleOverflowBeforeUpsert(
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	assets := &fakeAssetRegistry{}
-	service := NewServiceWithAssets(
+	repository := &fakeTransactionRepository{}
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
-		&fakeTransactionRepository{},
-		assets,
+		repository,
 	)
 	quantity := decimal.RequireFromString("1.000000000001")
 	price := decimal.RequireFromString("1.000000000001")
@@ -296,8 +281,8 @@ func TestRecordAccountTransactionRejectsComputedLedgerScaleOverflowBeforeUpsert(
 	if err != ErrInvalidAmount {
 		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
 	}
 }
 
@@ -305,11 +290,10 @@ func TestRecordAccountTransactionRejectsSellFeesGreaterThanGrossBeforeUpsert(t *
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	assets := &fakeAssetRegistry{}
-	service := NewServiceWithAssets(
+	repository := &fakeTransactionRepository{}
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
-		&fakeTransactionRepository{},
-		assets,
+		repository,
 	)
 	quantity := decimal.NewFromInt(2)
 	price := decimal.NewFromInt(10)
@@ -329,8 +313,8 @@ func TestRecordAccountTransactionRejectsSellFeesGreaterThanGrossBeforeUpsert(t *
 	if err != ErrInvalidAmount {
 		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAmount)
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
 	}
 }
 
@@ -338,11 +322,10 @@ func TestRecordAccountTransactionRejectsInvalidAssetTypeBeforeUpsert(t *testing.
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	assets := &fakeAssetRegistry{}
-	service := NewServiceWithAssets(
+	repository := &fakeTransactionRepository{}
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
-		&fakeTransactionRepository{},
-		assets,
+		repository,
 	)
 	quantity := decimal.NewFromInt(2)
 	price := decimal.NewFromInt(10)
@@ -360,8 +343,109 @@ func TestRecordAccountTransactionRejectsInvalidAssetTypeBeforeUpsert(t *testing.
 	if err != ErrInvalidAsset {
 		t.Fatalf("RecordAccountTransaction() error = %v, want %v", err, ErrInvalidAsset)
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
+	}
+}
+
+func TestGuidedTransactionRejectsIncoherentDatesAndAssetCurrency(t *testing.T) {
+	quantity := decimal.NewFromInt(1)
+	price := decimal.NewFromInt(10)
+	base := GuidedInput{
+		AccountID: uuid.New(),
+		Type:      TypeBuy,
+		TradeDate: time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Currency:  "CAD",
+		Quantity:  &quantity,
+		Price:     &price,
+		Asset:     &AssetInput{Name: "Circle", Type: asset.TypeEquity, Currency: "CAD", Symbol: "CRCL", ProviderID: "manual", ProviderSymbol: "CRCL"},
+	}
+
+	settlementBeforeTrade := base
+	settlementDate := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
+	settlementBeforeTrade.SettlementDate = &settlementDate
+	if _, err := ledgerPlanForGuidedInput(settlementBeforeTrade); err != ErrInvalidTradeDate {
+		t.Fatalf("ledgerPlanForGuidedInput() settlement error = %v, want %v", err, ErrInvalidTradeDate)
+	}
+
+	assetCurrencyMismatch := base
+	assetCurrencyMismatch.Asset = &AssetInput{Name: "Circle", Type: asset.TypeEquity, Currency: "USD", Symbol: "CRCL", ProviderID: "manual", ProviderSymbol: "CRCL"}
+	if _, err := ledgerPlanForGuidedInput(assetCurrencyMismatch); err != ErrInvalidEntryCurrency {
+		t.Fatalf("ledgerPlanForGuidedInput() currency error = %v, want %v", err, ErrInvalidEntryCurrency)
+	}
+}
+
+func TestGuidedTransactionRejectsFieldsThatDoNotApplyToType(t *testing.T) {
+	amount := decimal.NewFromInt(10)
+	quantity := decimal.NewFromInt(1)
+	price := decimal.NewFromInt(10)
+	fees := decimal.NewFromInt(1)
+	instrument := &AssetInput{Name: "Circle", Type: asset.TypeEquity, Currency: "CAD", Symbol: "CRCL", ProviderID: "manual", ProviderSymbol: "CRCL"}
+	base := GuidedInput{AccountID: uuid.New(), TradeDate: time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC), Currency: "CAD"}
+
+	tests := []struct {
+		name  string
+		input GuidedInput
+		want  error
+	}{
+		{
+			name: "buy amount",
+			input: GuidedInput{
+				AccountID: base.AccountID, Type: TypeBuy, TradeDate: base.TradeDate, Currency: "CAD",
+				Asset: instrument, Quantity: &quantity, Price: &price, Amount: &amount,
+			},
+			want: ErrInvalidAmount,
+		},
+		{
+			name: "deposit asset",
+			input: GuidedInput{
+				AccountID: base.AccountID, Type: TypeDeposit, TradeDate: base.TradeDate, Currency: "CAD",
+				Asset: instrument, Amount: &amount,
+			},
+			want: ErrInvalidAsset,
+		},
+		{
+			name: "dividend fees",
+			input: GuidedInput{
+				AccountID: base.AccountID, Type: TypeDividend, TradeDate: base.TradeDate, Currency: "CAD",
+				Asset: instrument, Amount: &amount, Fees: &fees,
+			},
+			want: ErrInvalidAmount,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := ledgerPlanForGuidedInput(test.input); err != test.want {
+				t.Fatalf("ledgerPlanForGuidedInput() error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRecordTransactionRejectsInvalidExchangeRatePrecision(t *testing.T) {
+	repository := &fakeTransactionRepository{}
+	service := NewService(fakeTransactionBootstrapper{}, repository)
+	exchangeRate := decimal.RequireFromString("1.1234567890123")
+
+	_, err := service.RecordTransaction(context.Background(), CreateInput{
+		AccountID: uuid.New(),
+		Type:      TypeFXConversion,
+		TradeDate: time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+		Source:    "CSV_IMPORT",
+		LedgerEntries: []CreateLedgerEntryInput{{
+			AssetID:      uuid.New(),
+			EntryType:    EntryTypeFX,
+			Currency:     "CAD",
+			Direction:    DirectionIncrease,
+			ExchangeRate: &exchangeRate,
+		}},
+	})
+	if err != ErrInvalidAmount {
+		t.Fatalf("RecordTransaction() error = %v, want %v", err, ErrInvalidAmount)
+	}
+	if repository.createCalls != 0 {
+		t.Fatalf("repository create calls = %d, want 0", repository.createCalls)
 	}
 }
 
@@ -371,7 +455,6 @@ func TestImportedAccountTransactionCannotBeUpdatedOrDeleted(t *testing.T) {
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
 	transactionID := uuid.MustParse("88888888-8888-8888-8888-888888888888")
 	importID := uuid.MustParse("99999999-9999-9999-9999-999999999999")
-	assets := &fakeAssetRegistry{}
 	repository := &fakeTransactionRepository{
 		transaction: Transaction{
 			ID:          transactionID,
@@ -382,10 +465,9 @@ func TestImportedAccountTransactionCannotBeUpdatedOrDeleted(t *testing.T) {
 			Status:      StatusConfirmed,
 		},
 	}
-	service := NewServiceWithAssets(
+	service := NewService(
 		fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)},
 		repository,
-		assets,
 	)
 	amount := decimal.NewFromInt(100)
 	input := UpdateGuidedInput{
@@ -406,14 +488,55 @@ func TestImportedAccountTransactionCannotBeUpdatedOrDeleted(t *testing.T) {
 	if err := service.DeleteAccountTransaction(context.Background(), accountID, transactionID); err != ErrImportedMutation {
 		t.Fatalf("DeleteAccountTransaction() error = %v, want %v", err, ErrImportedMutation)
 	}
-	if assets.upsertCount != 0 {
-		t.Fatalf("asset upserts = %d, want 0", assets.upsertCount)
-	}
 	if repository.updated.TransactionID != uuid.Nil {
 		t.Fatalf("updated transaction id = %s, want nil", repository.updated.TransactionID)
 	}
 	if repository.deleted {
 		t.Fatal("repository delete was called for imported transaction")
+	}
+}
+
+func TestTransactionsWithExternalIDsAreReadOnly(t *testing.T) {
+	externalID := "broker-row-1"
+	value := Transaction{Source: SourceManual, ExternalID: &externalID}
+	if !readOnlyTransaction(value) {
+		t.Fatal("readOnlyTransaction() = false, want true for an external transaction")
+	}
+}
+
+func TestUnsupportedManualTransactionCannotBeMutatedThroughGuidedCRUD(t *testing.T) {
+	workspaceID := uuid.New()
+	portfolioID := uuid.New()
+	accountID := uuid.New()
+	transactionID := uuid.New()
+	repository := &fakeTransactionRepository{transaction: Transaction{
+		ID: transactionID, PortfolioID: portfolioID, AccountID: accountID, Type: TypeFXConversion, Source: SourceManual,
+	}}
+	service := NewService(fakeTransactionBootstrapper{result: transactionBootstrapResult(workspaceID, portfolioID)}, repository)
+	amount := decimal.NewFromInt(100)
+
+	_, err := service.UpdateAccountTransaction(context.Background(), UpdateGuidedInput{
+		TransactionID: transactionID,
+		GuidedInput: GuidedInput{
+			AccountID: accountID, Type: TypeDeposit, TradeDate: time.Date(2026, 7, 8, 0, 0, 0, 0, time.UTC),
+			Currency: "CAD", Amount: &amount,
+		},
+	})
+	if err != ErrUnsupportedMutation {
+		t.Fatalf("UpdateAccountTransaction() error = %v, want %v", err, ErrUnsupportedMutation)
+	}
+	if err := service.DeleteAccountTransaction(context.Background(), accountID, transactionID); err != ErrUnsupportedMutation {
+		t.Fatalf("DeleteAccountTransaction() error = %v, want %v", err, ErrUnsupportedMutation)
+	}
+	if repository.deleted {
+		t.Fatal("repository delete was called for an unsupported transaction type")
+	}
+}
+
+func TestFitsLedgerDecimalAcceptsRepresentableTrailingZeros(t *testing.T) {
+	value := decimal.RequireFromString("1.2300000000000")
+	if !fitsLedgerDecimal(value) {
+		t.Fatalf("fitsLedgerDecimal(%s) = false, want true", value)
 	}
 }
 
@@ -432,16 +555,18 @@ type fakeTransactionRepository struct {
 	transaction  Transaction
 	transactions []AccountTransaction
 	createdID    uuid.UUID
+	createCalls  int
 	deleted      bool
 	err          error
 }
 
-func (r *fakeTransactionRepository) CreateWithEntries(_ context.Context, input createRepositoryInput) (Transaction, error) {
+func (r *fakeTransactionRepository) CreateWithEntries(_ context.Context, input createRepositoryInput) (repositoryResult, error) {
 	r.input = input
+	r.createCalls++
 	if r.err != nil {
-		return Transaction{}, r.err
+		return repositoryResult{}, r.err
 	}
-	return Transaction{
+	created := Transaction{
 		ID:          r.createdID,
 		PortfolioID: input.PortfolioID,
 		AccountID:   input.AccountID,
@@ -449,7 +574,8 @@ func (r *fakeTransactionRepository) CreateWithEntries(_ context.Context, input c
 		TradeDate:   input.TradeDate,
 		Source:      input.Source,
 		Status:      StatusConfirmed,
-	}, nil
+	}
+	return repositoryResult{Transaction: created, AccountTransaction: &AccountTransaction{Transaction: created}}, nil
 }
 
 func (r *fakeTransactionRepository) ListAccountTransactions(_ context.Context, portfolioID uuid.UUID, accountID uuid.UUID) ([]AccountTransaction, error) {
@@ -476,10 +602,6 @@ func (r *fakeTransactionRepository) ListAccountTransactions(_ context.Context, p
 	}}, nil
 }
 
-func (r *fakeTransactionRepository) ValidateAccount(context.Context, uuid.UUID, uuid.UUID) error {
-	return r.err
-}
-
 func (r *fakeTransactionRepository) GetAccountTransaction(_ context.Context, portfolioID uuid.UUID, accountID uuid.UUID, transactionID uuid.UUID) (Transaction, error) {
 	if r.err != nil {
 		return Transaction{}, r.err
@@ -490,34 +612,18 @@ func (r *fakeTransactionRepository) GetAccountTransaction(_ context.Context, por
 	return Transaction{ID: transactionID, PortfolioID: portfolioID, AccountID: accountID, Source: SourceManual, Status: StatusConfirmed}, nil
 }
 
-func (r *fakeTransactionRepository) UpdateWithEntries(_ context.Context, input updateRepositoryInput) (Transaction, error) {
+func (r *fakeTransactionRepository) UpdateWithEntries(_ context.Context, input updateRepositoryInput) (repositoryResult, error) {
 	r.updated = input
 	if r.err != nil {
-		return Transaction{}, r.err
+		return repositoryResult{}, r.err
 	}
-	return Transaction{ID: input.TransactionID, PortfolioID: input.PortfolioID, AccountID: input.AccountID, Type: input.Type, TradeDate: input.TradeDate, Status: StatusConfirmed}, nil
+	updated := Transaction{ID: input.TransactionID, PortfolioID: input.PortfolioID, AccountID: input.AccountID, Type: input.Type, TradeDate: input.TradeDate, Source: SourceManual, Status: StatusConfirmed}
+	return repositoryResult{Transaction: updated, AccountTransaction: &AccountTransaction{Transaction: updated}}, nil
 }
 
 func (r *fakeTransactionRepository) Delete(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error {
 	r.deleted = true
 	return r.err
-}
-
-type fakeAssetRegistry struct {
-	assetsByType map[asset.Type]asset.Asset
-	upsertCount  int
-	err          error
-}
-
-func (r *fakeAssetRegistry) UpsertAsset(_ context.Context, input asset.UpsertInput) (asset.Asset, error) {
-	r.upsertCount++
-	if r.err != nil {
-		return asset.Asset{}, r.err
-	}
-	if value, ok := r.assetsByType[input.Type]; ok {
-		return value, nil
-	}
-	return asset.Asset{ID: uuid.New(), Name: input.Name, Type: input.Type, Currency: input.Currency, Symbol: input.Symbol}, nil
 }
 
 func transactionBootstrapResult(workspaceID uuid.UUID, portfolioID uuid.UUID) bootstrap.Result {

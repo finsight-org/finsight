@@ -87,6 +87,7 @@ do update set
     country = coalesce(excluded.country, assets.country),
     sector = coalesce(excluded.sector, assets.sector),
     is_active = true
+where assets.asset_type <> 'CASH'
 returning id, workspace_id, name, asset_type, currency, symbol, provider_id, provider_symbol, exchange, isin, country, sector, is_active, created_at, updated_at
 `
 

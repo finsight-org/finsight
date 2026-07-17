@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 )
 
@@ -12,8 +14,7 @@ type LocalBootstrapper interface {
 }
 
 type Repository interface {
-	Upsert(context.Context, upsertRepositoryInput) (Asset, error)
-	UpsertCash(context.Context, upsertRepositoryInput) (Asset, error)
+	Upsert(context.Context, uuid.UUID, UpsertInput) (Asset, error)
 }
 
 type Registry struct {
@@ -33,21 +34,9 @@ func (r Registry) UpsertAsset(ctx context.Context, input UpsertInput) (Asset, er
 		return Asset{}, fmt.Errorf("asset repository is required")
 	}
 
-	input = normalizeUpsertInput(input)
-	if input.Name == "" {
-		return Asset{}, ErrInvalidName
-	}
-	if !validType(input.Type) {
-		return Asset{}, ErrInvalidType
-	}
-	if !currencyPattern.MatchString(input.Currency) {
-		return Asset{}, ErrInvalidCurrency
-	}
-	if input.Symbol == "" {
-		return Asset{}, ErrInvalidSymbol
-	}
-	if input.ProviderID == "" || input.ProviderSymbol == "" {
-		return Asset{}, ErrInvalidProvider
+	prepared, err := PrepareUpsertInput(input)
+	if err != nil {
+		return Asset{}, err
 	}
 
 	localContext, err := r.bootstrap.BootstrapLocal(ctx)
@@ -55,26 +44,7 @@ func (r Registry) UpsertAsset(ctx context.Context, input UpsertInput) (Asset, er
 		return Asset{}, fmt.Errorf("resolve local asset context: %w", err)
 	}
 
-	repositoryInput := upsertRepositoryInput{
-		WorkspaceID:    localContext.Workspace.ID,
-		Name:           input.Name,
-		Type:           input.Type,
-		Currency:       input.Currency,
-		Symbol:         input.Symbol,
-		ProviderID:     input.ProviderID,
-		ProviderSymbol: input.ProviderSymbol,
-		Exchange:       input.Exchange,
-		ISIN:           input.ISIN,
-		Country:        input.Country,
-		Sector:         input.Sector,
-	}
-
-	var created Asset
-	if input.Type == TypeCash {
-		created, err = r.repository.UpsertCash(ctx, repositoryInput)
-	} else {
-		created, err = r.repository.Upsert(ctx, repositoryInput)
-	}
+	created, err := r.repository.Upsert(ctx, localContext.Workspace.ID, prepared)
 	if err != nil {
 		return Asset{}, fmt.Errorf("upsert asset: %w", err)
 	}

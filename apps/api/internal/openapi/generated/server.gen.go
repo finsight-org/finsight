@@ -14,6 +14,15 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccountTransactionAssetType.
+const (
+	AccountTransactionAssetTypeCRYPTO     AccountTransactionAssetType = "CRYPTO"
+	AccountTransactionAssetTypeEQUITY     AccountTransactionAssetType = "EQUITY"
+	AccountTransactionAssetTypeETF        AccountTransactionAssetType = "ETF"
+	AccountTransactionAssetTypeMUTUALFUND AccountTransactionAssetType = "MUTUAL_FUND"
+	AccountTransactionAssetTypeOTHER      AccountTransactionAssetType = "OTHER"
+)
+
 // Defines values for AccountTransactionRequestType.
 const (
 	AccountTransactionRequestTypeBUY        AccountTransactionRequestType = "BUY"
@@ -54,12 +63,12 @@ const (
 
 // Defines values for AssetType.
 const (
-	CASH       AssetType = "CASH"
-	CRYPTO     AssetType = "CRYPTO"
-	EQUITY     AssetType = "EQUITY"
-	ETF        AssetType = "ETF"
-	MUTUALFUND AssetType = "MUTUAL_FUND"
-	OTHER      AssetType = "OTHER"
+	AssetTypeCASH       AssetType = "CASH"
+	AssetTypeCRYPTO     AssetType = "CRYPTO"
+	AssetTypeEQUITY     AssetType = "EQUITY"
+	AssetTypeETF        AssetType = "ETF"
+	AssetTypeMUTUALFUND AssetType = "MUTUAL_FUND"
+	AssetTypeOTHER      AssetType = "OTHER"
 )
 
 // Defines values for CheckStateStatus.
@@ -135,12 +144,15 @@ type AccountPositionsResponse struct {
 
 // AccountTransaction defines model for AccountTransaction.
 type AccountTransaction struct {
-	AccountId      openapi_types.UUID              `json:"account_id"`
-	Asset          *AccountTransactionAsset        `json:"asset,omitempty"`
-	CashImpact     *string                         `json:"cash_impact"`
-	CreatedAt      time.Time                       `json:"created_at"`
-	Currency       string                          `json:"currency"`
-	Description    string                          `json:"description"`
+	AccountId   openapi_types.UUID       `json:"account_id"`
+	Asset       *AccountTransactionAsset `json:"asset,omitempty"`
+	CashImpact  *string                  `json:"cash_impact"`
+	CreatedAt   time.Time                `json:"created_at"`
+	Currency    string                   `json:"currency"`
+	Description string                   `json:"description"`
+
+	// Editable Whether this supported manual transaction can be edited or deleted through account CRUD.
+	Editable       bool                            `json:"editable"`
 	Fees           *string                         `json:"fees"`
 	Id             openapi_types.UUID              `json:"id"`
 	LedgerEntries  []AccountTransactionLedgerEntry `json:"ledger_entries"`
@@ -168,14 +180,17 @@ type AccountTransactionAsset struct {
 
 // AccountTransactionAssetInput defines model for AccountTransactionAssetInput.
 type AccountTransactionAssetInput struct {
-	AssetType      AssetType `json:"asset_type"`
-	Currency       string    `json:"currency"`
-	Exchange       *string   `json:"exchange"`
-	Name           string    `json:"name"`
-	ProviderId     string    `json:"provider_id"`
-	ProviderSymbol string    `json:"provider_symbol"`
-	Symbol         string    `json:"symbol"`
+	AssetType      AccountTransactionAssetType `json:"asset_type"`
+	Currency       string                      `json:"currency"`
+	Exchange       *string                     `json:"exchange"`
+	Name           string                      `json:"name"`
+	ProviderId     string                      `json:"provider_id"`
+	ProviderSymbol string                      `json:"provider_symbol"`
+	Symbol         string                      `json:"symbol"`
 }
+
+// AccountTransactionAssetType defines model for AccountTransactionAssetType.
+type AccountTransactionAssetType string
 
 // AccountTransactionLedgerEntry defines model for AccountTransactionLedgerEntry.
 type AccountTransactionLedgerEntry struct {
@@ -195,12 +210,21 @@ type AccountTransactionListResponse struct {
 
 // AccountTransactionRequest defines model for AccountTransactionRequest.
 type AccountTransactionRequest struct {
-	Amount         *string                       `json:"amount"`
-	Asset          *AccountTransactionAssetInput `json:"asset,omitempty"`
-	Currency       string                        `json:"currency"`
-	Description    string                        `json:"description"`
-	Fees           *string                       `json:"fees"`
-	Price          *string                       `json:"price"`
+	// Amount Required only for DIVIDEND, DEPOSIT, WITHDRAWAL, FEE, and INTEREST.
+	Amount *string `json:"amount"`
+
+	// Asset Required only for BUY, SELL, and DIVIDEND.
+	Asset       *AccountTransactionAssetInput `json:"asset,omitempty"`
+	Currency    string                        `json:"currency"`
+	Description string                        `json:"description"`
+
+	// Fees Optional only for BUY and SELL.
+	Fees *string `json:"fees"`
+
+	// Price Required only for BUY and SELL.
+	Price *string `json:"price"`
+
+	// Quantity Required only for BUY and SELL.
 	Quantity       *string                       `json:"quantity"`
 	SettlementDate *openapi_types.Date           `json:"settlement_date"`
 	TradeDate      openapi_types.Date            `json:"trade_date"`

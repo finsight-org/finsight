@@ -7,51 +7,56 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
 
 type PostgresRepository struct {
-	db *pgxpool.Pool
+	db db.DBTX
 }
 
-func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
+func NewPostgresRepository(db db.DBTX) PostgresRepository {
 	return PostgresRepository{db: db}
 }
 
-func (r PostgresRepository) Upsert(ctx context.Context, input upsertRepositoryInput) (Asset, error) {
+func (r PostgresRepository) Upsert(ctx context.Context, workspaceID uuid.UUID, input UpsertInput) (Asset, error) {
 	if r.db == nil {
 		return Asset{}, fmt.Errorf("postgres pool is required")
 	}
+	prepared, err := PrepareUpsertInput(input)
+	if err != nil {
+		return Asset{}, err
+	}
+	if prepared.Type == TypeCash {
+		return r.upsertCash(ctx, workspaceID, prepared)
+	}
 
 	row, err := db.New(r.db).UpsertAsset(ctx, db.UpsertAssetParams{
-		WorkspaceID:    pgconv.UUID(input.WorkspaceID),
-		Name:           input.Name,
-		AssetType:      string(input.Type),
-		Currency:       input.Currency,
-		Symbol:         input.Symbol,
-		ProviderID:     input.ProviderID,
-		ProviderSymbol: input.ProviderSymbol,
-		Exchange:       pgconv.Text(input.Exchange),
-		Isin:           pgconv.Text(input.ISIN),
-		Country:        pgconv.Text(input.Country),
-		Sector:         pgconv.Text(input.Sector),
+		WorkspaceID:    pgconv.UUID(workspaceID),
+		Name:           prepared.Name,
+		AssetType:      string(prepared.Type),
+		Currency:       prepared.Currency,
+		Symbol:         prepared.Symbol,
+		ProviderID:     prepared.ProviderID,
+		ProviderSymbol: prepared.ProviderSymbol,
+		Exchange:       pgconv.Text(prepared.Exchange),
+		Isin:           pgconv.Text(prepared.ISIN),
+		Country:        pgconv.Text(prepared.Country),
+		Sector:         pgconv.Text(prepared.Sector),
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Asset{}, ErrInvalidType
+		}
 		return Asset{}, fmt.Errorf("upsert asset row: %w", err)
 	}
 	return mapAsset(row)
 }
 
-func (r PostgresRepository) UpsertCash(ctx context.Context, input upsertRepositoryInput) (Asset, error) {
-	if r.db == nil {
-		return Asset{}, fmt.Errorf("postgres pool is required")
-	}
-
+func (r PostgresRepository) upsertCash(ctx context.Context, workspaceID uuid.UUID, input UpsertInput) (Asset, error) {
 	row, err := db.New(r.db).UpsertCashAsset(ctx, db.UpsertCashAssetParams{
-		WorkspaceID:    pgconv.UUID(input.WorkspaceID),
+		WorkspaceID:    pgconv.UUID(workspaceID),
 		Name:           input.Name,
 		Currency:       input.Currency,
 		Symbol:         input.Symbol,

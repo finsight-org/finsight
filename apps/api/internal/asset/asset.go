@@ -73,20 +73,6 @@ type UpsertInput struct {
 	Sector         *string
 }
 
-type upsertRepositoryInput struct {
-	WorkspaceID    uuid.UUID
-	Name           string
-	Type           Type
-	Currency       string
-	Symbol         string
-	ProviderID     string
-	ProviderSymbol string
-	Exchange       *string
-	ISIN           *string
-	Country        *string
-	Sector         *string
-}
-
 var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 func normalizeSearchInput(input SearchInput) SearchInput {
@@ -100,7 +86,7 @@ func normalizeSearchInput(input SearchInput) SearchInput {
 
 func normalizeUpsertInput(input UpsertInput) UpsertInput {
 	input.Name = strings.TrimSpace(input.Name)
-	input.Currency = strings.TrimSpace(input.Currency)
+	input.Currency = strings.ToUpper(strings.TrimSpace(input.Currency))
 	input.Symbol = strings.TrimSpace(input.Symbol)
 	input.ProviderID = strings.ToLower(strings.TrimSpace(input.ProviderID))
 	input.ProviderSymbol = strings.ToLower(strings.TrimSpace(input.ProviderSymbol))
@@ -109,6 +95,28 @@ func normalizeUpsertInput(input UpsertInput) UpsertInput {
 	input.Country = textutil.TrimmedOptional(input.Country)
 	input.Sector = textutil.TrimmedOptional(input.Sector)
 	return input
+}
+
+// PrepareUpsertInput normalizes and validates provider-backed asset data before
+// it crosses a persistence boundary.
+func PrepareUpsertInput(input UpsertInput) (UpsertInput, error) {
+	input = normalizeUpsertInput(input)
+	if input.Name == "" {
+		return UpsertInput{}, ErrInvalidName
+	}
+	if !validType(input.Type) {
+		return UpsertInput{}, ErrInvalidType
+	}
+	if !currencyPattern.MatchString(input.Currency) {
+		return UpsertInput{}, ErrInvalidCurrency
+	}
+	if input.Symbol == "" {
+		return UpsertInput{}, ErrInvalidSymbol
+	}
+	if input.ProviderID == "" || input.ProviderSymbol == "" {
+		return UpsertInput{}, ErrInvalidProvider
+	}
+	return input, nil
 }
 
 func validType(value Type) bool {

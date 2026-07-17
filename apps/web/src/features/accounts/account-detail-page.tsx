@@ -3,6 +3,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  AccountTransactionAssetType,
   AccountTransactionRequestType,
   accountTransactionTypes,
   useAccountCashBalancesQuery,
@@ -52,6 +53,10 @@ type TransactionFormValues = {
   fees: string
 }
 
+type TransactionFilter =
+  | { kind: 'asset'; value: string }
+  | { kind: 'currency'; value: string }
+
 const assetRequiredTypes = new Set<AccountTransactionRequest['type']>([
   AccountTransactionRequestType.BUY,
   AccountTransactionRequestType.SELL,
@@ -65,18 +70,20 @@ const amountTypes = new Set<AccountTransactionRequest['type']>([
   AccountTransactionRequestType.FEE,
   AccountTransactionRequestType.INTEREST,
 ])
+const currencyPattern = /^[A-Z]{3}$/
+const unsignedDecimalPattern = /^\d+(?:\.\d+)?$/
 
 export function AccountDetailPage({ accountId }: { accountId: string }) {
-	const { t } = useTranslation()
-	const accountQuery = useAccountQuery(accountId)
-	const transactionsQuery = useAccountTransactionsQuery(accountId)
-	const positionsQuery = useAccountPositionsQuery(accountId)
-	const cashQuery = useAccountCashBalancesQuery(accountId)
-	const [activeTab, setActiveTab] = useState('transactions')
-	const [assetFilter, setAssetFilter] = useState<string | null>(null)
-	const transactions = transactionsQuery.data ?? []
-	const filteredTransactions = assetFilter
-    ? transactions.filter((transaction) => transaction.asset?.id === assetFilter)
+  const { t } = useTranslation()
+  const accountQuery = useAccountQuery(accountId)
+  const transactionsQuery = useAccountTransactionsQuery(accountId, accountQuery.isSuccess)
+  const positionsQuery = useAccountPositionsQuery(accountId, accountQuery.isSuccess)
+  const cashQuery = useAccountCashBalancesQuery(accountId, accountQuery.isSuccess)
+  const [activeTab, setActiveTab] = useState('transactions')
+  const [transactionFilter, setTransactionFilter] = useState<TransactionFilter | null>(null)
+  const transactions = transactionsQuery.data ?? []
+  const filteredTransactions = transactionFilter
+    ? transactions.filter((transaction) => transactionMatchesFilter(transaction, transactionFilter))
     : transactions
 
   return (
@@ -89,62 +96,77 @@ export function AccountDetailPage({ accountId }: { accountId: string }) {
         </Alert>
       ) : null}
       {accountQuery.data ? (
-        <section className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-3xl font-semibold tracking-normal">{accountQuery.data.name}</h1>
-                <Badge variant="secondary">{t(`accounts.type.${accountQuery.data.type}`)}</Badge>
+        <>
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-3xl font-semibold tracking-normal">{accountQuery.data.name}</h1>
+                  <Badge variant="secondary">{t(`accounts.type.${accountQuery.data.type}`)}</Badge>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {(accountQuery.data.institution_name || t('accounts.noInstitution')) +
+                    ' - ' +
+                    accountQuery.data.base_currency}
+                </p>
+                <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{t('accounts.detail.derivedNote')}</p>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {(accountQuery.data.institution_name || t('accounts.noInstitution')) +
-                  ' - ' +
-                  accountQuery.data.base_currency}
-              </p>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{t('accounts.detail.derivedNote')}</p>
+              <TransactionDialog accountId={accountId} triggerLabel={t('accounts.detail.addTransaction')} />
             </div>
-            <TransactionDialog accountId={accountId} triggerLabel={t('accounts.detail.addTransaction')} />
-          </div>
-        </section>
-      ) : null}
+          </section>
 
-			<Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="transactions">{t('accounts.detail.tabs.transactions')}</TabsTrigger>
-          <TabsTrigger value="positions">{t('accounts.detail.tabs.positions')}</TabsTrigger>
-          <TabsTrigger value="cash">{t('accounts.detail.tabs.cash')}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="transactions" className="space-y-4">
-          {assetFilter ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-              <p className="text-sm text-muted-foreground">{t('accounts.detail.assetFilterActive')}</p>
-              <Button variant="outline" size="sm" onClick={() => setAssetFilter(null)}>
-                {t('accounts.detail.clearFilter')}
-              </Button>
-            </div>
-          ) : null}
-          <TransactionsTable
-            accountId={accountId}
-            transactions={filteredTransactions}
-            isLoading={transactionsQuery.isLoading}
-            error={transactionsQuery.error}
-          />
-        </TabsContent>
-				<TabsContent value="positions">
-					<PositionsTable
-						positions={positionsQuery.data ?? []}
-						isLoading={positionsQuery.isLoading}
-						error={positionsQuery.error}
-						onViewTransactions={(assetId) => {
-							setAssetFilter(assetId)
-							setActiveTab('transactions')
-						}}
-					/>
-				</TabsContent>
-        <TabsContent value="cash">
-          <CashBalancesTable balances={cashQuery.data ?? []} isLoading={cashQuery.isLoading} error={cashQuery.error} />
-        </TabsContent>
-      </Tabs>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList>
+              <TabsTrigger value="transactions">{t('accounts.detail.tabs.transactions')}</TabsTrigger>
+              <TabsTrigger value="positions">{t('accounts.detail.tabs.positions')}</TabsTrigger>
+              <TabsTrigger value="cash">{t('accounts.detail.tabs.cash')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="transactions" className="space-y-4">
+              {transactionFilter ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-sm text-muted-foreground">
+                    {transactionFilter.kind === 'asset'
+                      ? t('accounts.detail.assetFilterActive')
+                      : t('accounts.detail.currencyFilterActive', { currency: transactionFilter.value })}
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => setTransactionFilter(null)}>
+                    {t('accounts.detail.clearFilter')}
+                  </Button>
+                </div>
+              ) : null}
+              <TransactionsTable
+                accountId={accountId}
+                transactions={filteredTransactions}
+                isLoading={transactionsQuery.isLoading}
+                error={transactionsQuery.error}
+                isFiltered={transactionFilter !== null}
+              />
+            </TabsContent>
+            <TabsContent value="positions">
+              <PositionsTable
+                positions={positionsQuery.data ?? []}
+                isLoading={positionsQuery.isLoading}
+                error={positionsQuery.error}
+                onViewTransactions={(assetId) => {
+                  setTransactionFilter({ kind: 'asset', value: assetId })
+                  setActiveTab('transactions')
+                }}
+              />
+            </TabsContent>
+            <TabsContent value="cash">
+              <CashBalancesTable
+                balances={cashQuery.data ?? []}
+                isLoading={cashQuery.isLoading}
+                error={cashQuery.error}
+                onViewTransactions={(currency) => {
+                  setTransactionFilter({ kind: 'currency', value: currency })
+                  setActiveTab('transactions')
+                }}
+              />
+            </TabsContent>
+          </Tabs>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -154,11 +176,13 @@ function TransactionsTable({
   transactions,
   isLoading,
   error,
+  isFiltered,
 }: {
   accountId: string
   transactions: AccountTransaction[]
   isLoading: boolean
   error: Error | null
+  isFiltered: boolean
 }) {
   const { t } = useTranslation()
 
@@ -176,8 +200,12 @@ function TransactionsTable({
   if (transactions.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-6">
-        <h2 className="text-lg font-semibold">{t('accounts.detail.noTransactionsTitle')}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{t('accounts.detail.noTransactionsDescription')}</p>
+        <h2 className="text-lg font-semibold">
+          {isFiltered ? t('accounts.detail.noMatchingTransactionsTitle') : t('accounts.detail.noTransactionsTitle')}
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {isFiltered ? t('accounts.detail.noMatchingTransactionsDescription') : t('accounts.detail.noTransactionsDescription')}
+        </p>
       </div>
     )
   }
@@ -214,7 +242,7 @@ function TransactionsTable({
               <TableCell>{transaction.currency}</TableCell>
               <TableCell>{transaction.source}</TableCell>
               <TableCell>
-                {isManualTransaction(transaction) ? (
+                {transaction.editable ? (
                   <div className="flex items-center gap-1">
                     <TransactionDialog accountId={accountId} transaction={transaction} triggerLabel={t('accounts.detail.edit')}>
                       <Pencil className="h-4 w-4" />
@@ -231,6 +259,17 @@ function TransactionsTable({
       </Table>
     </div>
   )
+}
+
+function transactionMatchesFilter(transaction: AccountTransaction, filter: TransactionFilter) {
+  if (filter.kind === 'asset') {
+    return (
+      transaction.asset?.id === filter.value ||
+      transaction.ledger_entries.some((entry) => entry.asset.id === filter.value && entry.asset.asset_type !== 'CASH')
+    )
+  }
+
+  return transaction.ledger_entries.some((entry) => entry.asset.asset_type === 'CASH' && entry.currency === filter.value)
 }
 
 function PositionsTable({
@@ -268,7 +307,9 @@ function PositionsTable({
           <TableRow>
             <TableHead>{t('accounts.detail.positions.asset')}</TableHead>
             <TableHead>{t('accounts.detail.positions.quantity')}</TableHead>
+            <TableHead>{t('accounts.detail.positions.marketValue')}</TableHead>
             <TableHead>{t('accounts.detail.positions.currency')}</TableHead>
+            <TableHead>{t('accounts.detail.positions.warnings')}</TableHead>
             <TableHead>{t('accounts.detail.positions.actions')}</TableHead>
           </TableRow>
         </TableHeader>
@@ -277,7 +318,13 @@ function PositionsTable({
             <TableRow key={position.asset.id}>
               <TableCell>{`${position.asset.symbol} - ${position.asset.name}`}</TableCell>
               <TableCell>{formatDecimal(position.quantity)}</TableCell>
+              <TableCell>{formatOptionalMoney(position.market_value, position.currency)}</TableCell>
               <TableCell>{position.currency}</TableCell>
+              <TableCell>
+                {position.warnings && position.warnings.length > 0
+                  ? position.warnings.map((warning) => warning.message).join('; ')
+                  : '-'}
+              </TableCell>
               <TableCell>
                 <Button variant="outline" size="sm" onClick={() => onViewTransactions(position.asset.id)}>
                   {t('accounts.detail.viewTransactions')}
@@ -295,10 +342,12 @@ function CashBalancesTable({
   balances,
   isLoading,
   error,
+  onViewTransactions,
 }: {
   balances: AccountCashBalance[]
   isLoading: boolean
   error: Error | null
+  onViewTransactions: (currency: string) => void
 }) {
   const { t } = useTranslation()
 
@@ -324,6 +373,7 @@ function CashBalancesTable({
           <TableRow>
             <TableHead>{t('accounts.detail.cash.currency')}</TableHead>
             <TableHead>{t('accounts.detail.cash.balance')}</TableHead>
+            <TableHead>{t('accounts.detail.cash.actions')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -331,6 +381,11 @@ function CashBalancesTable({
             <TableRow key={balance.currency}>
               <TableCell>{balance.currency}</TableCell>
               <TableCell>{formatMoney(balance.balance, balance.currency)}</TableCell>
+              <TableCell>
+                <Button variant="outline" size="sm" onClick={() => onViewTransactions(balance.currency)}>
+                  {t('accounts.detail.viewTransactions')}
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -358,17 +413,44 @@ function TransactionDialog({
   const [formError, setFormError] = useState<string | null>(null)
   const assetSearchQuery = useAssetSearchQuery(form.assetSearch, 10, open)
   const preview = useMemo(() => ledgerPreview(form), [form])
+  const assetSearchResults = useMemo(
+    () =>
+      (assetSearchQuery.data ?? []).flatMap((asset) => {
+        const input = assetInputFromSearchResult(asset, form.currency)
+        return input ? [{ asset, input }] : []
+      }),
+    [assetSearchQuery.data, form.currency],
+  )
 
   function onOpenChange(nextOpen: boolean) {
     setOpen(nextOpen)
     if (nextOpen) {
       setForm(initialFormValues(transaction))
       setFormError(null)
+      createTransaction.reset()
+      updateTransaction.reset()
     }
   }
 
   function update<K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateAssetSearch(value: string) {
+    setForm((current) => ({ ...current, assetSearch: value, asset: null }))
+  }
+
+  function updateCurrency(value: string) {
+    const currency = value.toUpperCase()
+    setForm((current) => ({
+      ...current,
+      currency,
+      asset: current.asset?.currency === currency ? current.asset : null,
+    }))
+  }
+
+  function selectAsset(asset: AccountTransactionAssetInput) {
+    setForm((current) => ({ ...current, asset, currency: asset.currency }))
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -379,10 +461,14 @@ function TransactionDialog({
       return
     }
     setFormError(null)
-    if (transaction) {
-      await updateTransaction.mutateAsync({ transactionId: transaction.id, body: request })
-    } else {
-      await createTransaction.mutateAsync(request)
+    try {
+      if (transaction) {
+        await updateTransaction.mutateAsync({ transactionId: transaction.id, body: request })
+      } else {
+        await createTransaction.mutateAsync(request)
+      }
+    } catch {
+      return
     }
     setOpen(false)
     if (!transaction) {
@@ -438,6 +524,7 @@ function TransactionDialog({
               <Input
                 id="settlement-date"
                 type="date"
+                min={form.tradeDate}
                 value={form.settlementDate}
                 onChange={(event) => update('settlementDate', event.target.value)}
               />
@@ -447,7 +534,7 @@ function TransactionDialog({
                 id="transaction-currency"
                 value={form.currency}
                 maxLength={3}
-                onChange={(event) => update('currency', event.target.value.toUpperCase())}
+                onChange={(event) => updateCurrency(event.target.value)}
               />
             </Field>
           </div>
@@ -461,7 +548,7 @@ function TransactionDialog({
                   id="asset-search"
                   value={form.assetSearch}
                   placeholder={t('search.placeholder')}
-                  onChange={(event) => update('assetSearch', event.target.value)}
+                  onChange={(event) => updateAssetSearch(event.target.value)}
                 />
               </div>
               {form.asset ? (
@@ -469,15 +556,27 @@ function TransactionDialog({
                   {t('accounts.detail.form.selectedAsset', { symbol: form.asset.symbol, name: form.asset.name })}
                 </p>
               ) : null}
-              {assetSearchQuery.data && assetSearchQuery.data.length > 0 ? (
+              {assetSearchQuery.isLoading ? <p className="text-sm text-muted-foreground">{t('search.loading')}</p> : null}
+              {assetSearchQuery.error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{assetSearchQuery.error.message}</AlertDescription>
+                </Alert>
+              ) : null}
+              {form.assetSearch.trim().length >= 2 &&
+              assetSearchResults.length === 0 &&
+              !assetSearchQuery.isLoading &&
+              !assetSearchQuery.error ? (
+                <p className="text-sm text-muted-foreground">{t('search.empty')}</p>
+              ) : null}
+              {assetSearchResults.length > 0 ? (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {assetSearchQuery.data.map((asset) => (
+                  {assetSearchResults.map(({ asset, input }) => (
                     <Button
                       key={`${asset.provider_id}:${asset.provider_symbol}`}
                       type="button"
                       variant="outline"
                       className="h-auto justify-start whitespace-normal text-left"
-                      onClick={() => update('asset', assetInputFromSearchResult(asset, form.currency))}
+                      onClick={() => selectAsset(input)}
                     >
                       {asset.symbol} - {asset.name}
                     </Button>
@@ -491,19 +590,19 @@ function TransactionDialog({
             {quantityPriceTypes.has(form.type) ? (
               <>
                 <Field label={t('accounts.detail.form.quantity')} id="quantity">
-                  <Input id="quantity" inputMode="decimal" value={form.quantity} onChange={(event) => update('quantity', event.target.value)} />
+                  <Input id="quantity" inputMode="decimal" maxLength={39} value={form.quantity} onChange={(event) => update('quantity', event.target.value)} />
                 </Field>
                 <Field label={t('accounts.detail.form.price')} id="price">
-                  <Input id="price" inputMode="decimal" value={form.price} onChange={(event) => update('price', event.target.value)} />
+                  <Input id="price" inputMode="decimal" maxLength={39} value={form.price} onChange={(event) => update('price', event.target.value)} />
                 </Field>
                 <Field label={t('accounts.detail.form.fees')} id="fees">
-                  <Input id="fees" inputMode="decimal" value={form.fees} onChange={(event) => update('fees', event.target.value)} />
+                  <Input id="fees" inputMode="decimal" maxLength={39} value={form.fees} onChange={(event) => update('fees', event.target.value)} />
                 </Field>
               </>
             ) : null}
             {amountTypes.has(form.type) ? (
               <Field label={t('accounts.detail.form.amount')} id="amount">
-                <Input id="amount" inputMode="decimal" value={form.amount} onChange={(event) => update('amount', event.target.value)} />
+                <Input id="amount" inputMode="decimal" maxLength={39} value={form.amount} onChange={(event) => update('amount', event.target.value)} />
               </Field>
             ) : null}
             <Field label={t('accounts.detail.form.descriptionLabel')} id="description">
@@ -513,7 +612,11 @@ function TransactionDialog({
 
           <div className="rounded-lg border bg-muted/30 p-3">
             <h3 className="font-medium">{t('accounts.detail.form.preview')}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{preview}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {preview.kind === 'trade'
+                ? t('accounts.detail.form.tradePreview', preview)
+                : t('accounts.detail.form.cashPreview', preview)}
+            </p>
           </div>
 
           <DialogFooter>
@@ -533,12 +636,23 @@ function DeleteTransactionDialog({ accountId, transaction }: { accountId: string
   const deleteTransaction = useDeleteAccountTransactionMutation(accountId)
 
   async function onDelete() {
-    await deleteTransaction.mutateAsync(transaction.id)
+    try {
+      await deleteTransaction.mutateAsync(transaction.id)
+    } catch {
+      return
+    }
     setOpen(false)
   }
 
+  function onOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (nextOpen) {
+      deleteTransaction.reset()
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="icon-sm" aria-label={t('accounts.detail.delete')}>
           <Trash2 className="h-4 w-4" />
@@ -588,7 +702,7 @@ function initialFormValues(transaction?: AccountTransaction): TransactionFormVal
       ? {
           name: transaction.asset.name,
           symbol: transaction.asset.symbol,
-          asset_type: transaction.asset.asset_type,
+          asset_type: guidedAssetType(transaction.asset.asset_type) ?? AccountTransactionAssetType.OTHER,
           currency: transaction.asset.currency,
           provider_id: transaction.asset.provider_id,
           provider_symbol: transaction.asset.provider_symbol,
@@ -604,13 +718,47 @@ function initialFormValues(transaction?: AccountTransaction): TransactionFormVal
 }
 
 function requestFromForm(form: TransactionFormValues): AccountTransactionRequest | null {
-  if (!form.tradeDate || !form.currency || (assetRequiredTypes.has(form.type) && !form.asset)) {
+  if (
+    !form.tradeDate ||
+    (form.settlementDate && form.settlementDate < form.tradeDate) ||
+    !currencyPattern.test(form.currency) ||
+    (assetRequiredTypes.has(form.type) && !form.asset)
+  ) {
     return null
   }
-  if (quantityPriceTypes.has(form.type) && (!positiveString(form.quantity) || !positiveString(form.price))) {
+  if (
+    form.asset &&
+    (!currencyPattern.test(form.asset.currency) || form.asset.currency !== form.currency || !form.asset.name || !form.asset.symbol)
+  ) {
     return null
   }
-  if (amountTypes.has(form.type) && !positiveString(form.amount)) {
+  if (quantityPriceTypes.has(form.type) && (!validLedgerDecimal(form.quantity) || !validLedgerDecimal(form.price))) {
+    return null
+  }
+  if (amountTypes.has(form.type) && !validLedgerDecimal(form.amount)) {
+    return null
+  }
+  if (form.fees && !validLedgerDecimal(form.fees, true)) {
+    return null
+  }
+  if (quantityPriceTypes.has(form.type)) {
+    const gross = multiplyDecimals(form.quantity, form.price)
+    const fees = form.fees ? parseDecimal(form.fees) : parseDecimal('0')
+    const cash = addDecimals(
+      gross,
+      fees,
+      1n,
+      form.type === AccountTransactionRequestType.BUY ? 1n : -1n,
+    )
+    if (!fitsLedgerDecimal(gross) || !fitsLedgerDecimal(cash)) {
+      return null
+    }
+  }
+  if (
+    form.type === AccountTransactionRequestType.SELL &&
+    form.fees &&
+    compareDecimals(multiplyDecimals(form.quantity, form.price), parseDecimal(form.fees)) < 0
+  ) {
     return null
   }
   return {
@@ -627,36 +775,59 @@ function requestFromForm(form: TransactionFormValues): AccountTransactionRequest
   }
 }
 
-function assetInputFromSearchResult(asset: AssetSearchResult, fallbackCurrency: string): AccountTransactionAssetInput {
+function assetInputFromSearchResult(asset: AssetSearchResult, fallbackCurrency: string): AccountTransactionAssetInput | null {
+  const assetType = guidedAssetType(asset.asset_type)
+  const currency = (asset.currency ?? fallbackCurrency).toUpperCase()
+  if (!assetType || !currencyPattern.test(currency)) {
+    return null
+  }
+
   return {
     name: asset.name,
     symbol: asset.symbol,
-    asset_type: asset.asset_type,
-    currency: asset.currency ?? fallbackCurrency,
+    asset_type: assetType,
+    currency,
     provider_id: asset.provider_id,
     provider_symbol: asset.provider_symbol,
     exchange: asset.exchange,
   }
 }
 
-function ledgerPreview(form: TransactionFormValues) {
-  const currency = form.currency.toUpperCase()
-  const fees = Number(form.fees || 0)
-  if (quantityPriceTypes.has(form.type)) {
-    const quantity = Number(form.quantity || 0)
-    const price = Number(form.price || 0)
-    const gross = quantity * price
-    const cash = form.type === AccountTransactionRequestType.BUY ? -(gross + fees) : gross - fees
-    return `${form.type}: ${quantity || 0} units, cash impact ${formatPreviewMoney(cash, currency)}`
+function guidedAssetType(value: string): AccountTransactionAssetInput['asset_type'] | null {
+  switch (value) {
+    case AccountTransactionAssetType.EQUITY:
+      return AccountTransactionAssetType.EQUITY
+    case AccountTransactionAssetType.ETF:
+      return AccountTransactionAssetType.ETF
+    case AccountTransactionAssetType.MUTUAL_FUND:
+      return AccountTransactionAssetType.MUTUAL_FUND
+    case AccountTransactionAssetType.CRYPTO:
+      return AccountTransactionAssetType.CRYPTO
+    case AccountTransactionAssetType.OTHER:
+      return AccountTransactionAssetType.OTHER
+    default:
+      return null
   }
-  const amount = Number(form.amount || 0)
-  const signed =
-    form.type === AccountTransactionRequestType.WITHDRAWAL || form.type === AccountTransactionRequestType.FEE ? -amount : amount
-  return `${form.type}: cash impact ${formatPreviewMoney(signed, currency)}`
 }
 
-function isManualTransaction(transaction: AccountTransaction) {
-  return transaction.source === 'MANUAL'
+function ledgerPreview(form: TransactionFormValues) {
+  const currency = form.currency.toUpperCase()
+  if (quantityPriceTypes.has(form.type)) {
+    const quantity = validLedgerDecimal(form.quantity) ? trimDecimal(form.quantity) : '0'
+    const gross = multiplyDecimals(form.quantity, form.price)
+    const fees = validLedgerDecimal(form.fees, true) ? parseDecimal(form.fees) : parseDecimal('0')
+    const cash = addDecimals(gross, fees, form.type === AccountTransactionRequestType.BUY ? -1n : 1n, -1n)
+    return {
+      kind: 'trade' as const,
+      type: form.type,
+      quantity,
+      cashImpact: formatMoney(decimalToString(cash), currency),
+    }
+  }
+  const amount = validLedgerDecimal(form.amount) ? trimDecimal(form.amount) : '0'
+  const signed =
+    form.type === AccountTransactionRequestType.WITHDRAWAL || form.type === AccountTransactionRequestType.FEE ? `-${amount}` : amount
+  return { kind: 'cash' as const, type: form.type, cashImpact: formatMoney(signed, currency) }
 }
 
 function guidedTransactionType(type?: AccountTransaction['type']): AccountTransactionRequest['type'] | undefined {
@@ -677,8 +848,68 @@ function amountFromTransaction(transaction?: AccountTransaction) {
   return trimDecimal(transaction.cash_impact.trim().replace(/^-/, ''))
 }
 
-function positiveString(value: string) {
-  return Number(value) > 0
+type ScaledDecimal = { units: bigint; scale: number }
+
+function validLedgerDecimal(value: string, allowZero = false) {
+  if (value.length === 0 || value.length > 39 || !unsignedDecimalPattern.test(value)) {
+    return false
+  }
+  const [integerPart, fractionPart = ''] = value.split('.')
+  const significantInteger = integerPart.replace(/^0+/, '')
+  const significantFraction = fractionPart.replace(/0+$/, '')
+  if (significantInteger.length > 26 || significantFraction.length > 12) {
+    return false
+  }
+  return allowZero || /[1-9]/.test(value)
+}
+
+function fitsLedgerDecimal(value: ScaledDecimal) {
+  const normalized = normalizeDecimal(value)
+  const absoluteDigits = (normalized.units < 0n ? -normalized.units : normalized.units).toString()
+  const integerDigits = Math.max(1, absoluteDigits.length - normalized.scale)
+  return normalized.scale <= 12 && integerDigits <= 26
+}
+
+function parseDecimal(value: string): ScaledDecimal {
+  const [integerPart, fractionPart = ''] = value.split('.')
+  return normalizeDecimal({ units: BigInt(`${integerPart}${fractionPart}`), scale: fractionPart.length })
+}
+
+function multiplyDecimals(left: string, right: string): ScaledDecimal {
+  if (!validLedgerDecimal(left) || !validLedgerDecimal(right)) {
+    return parseDecimal('0')
+  }
+  const leftDecimal = parseDecimal(left)
+  const rightDecimal = parseDecimal(right)
+  return normalizeDecimal({ units: leftDecimal.units * rightDecimal.units, scale: leftDecimal.scale + rightDecimal.scale })
+}
+
+function addDecimals(left: ScaledDecimal, right: ScaledDecimal, leftSign: bigint, rightSign: bigint): ScaledDecimal {
+  const scale = Math.max(left.scale, right.scale)
+  const leftUnits = left.units * 10n ** BigInt(scale - left.scale)
+  const rightUnits = right.units * 10n ** BigInt(scale - right.scale)
+  return normalizeDecimal({ units: leftUnits * leftSign + rightUnits * rightSign, scale })
+}
+
+function compareDecimals(left: ScaledDecimal, right: ScaledDecimal) {
+  const difference = addDecimals(left, right, 1n, -1n).units
+  return difference === 0n ? 0 : difference > 0n ? 1 : -1
+}
+
+function normalizeDecimal(value: ScaledDecimal): ScaledDecimal {
+  let { units, scale } = value
+  while (scale > 0 && units % 10n === 0n) {
+    units /= 10n
+    scale -= 1
+  }
+  return { units, scale }
+}
+
+function decimalToString(value: ScaledDecimal) {
+  const negative = value.units < 0n
+  const digits = (negative ? -value.units : value.units).toString().padStart(value.scale + 1, '0')
+  const unsigned = value.scale === 0 ? digits : `${digits.slice(0, -value.scale)}.${digits.slice(-value.scale)}`
+  return negative && value.units !== 0n ? `-${unsigned}` : unsigned
 }
 
 function formatDate(value: string) {
@@ -690,7 +921,7 @@ function formatOptionalDecimal(value?: string | null) {
 }
 
 function formatDecimal(value: string) {
-  return new Intl.NumberFormat('en-CA', { maximumFractionDigits: 6 }).format(Number(value))
+  return formatDecimalString(value, 6)
 }
 
 function formatOptionalMoney(value: string | null | undefined, currency: string) {
@@ -698,24 +929,56 @@ function formatOptionalMoney(value: string | null | undefined, currency: string)
 }
 
 function formatMoney(value: string, currency: string) {
-  return new Intl.NumberFormat('en-CA', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value))
+  const formatted = formatDecimalString(value, 2, 2)
+  if (!currencyPattern.test(currency) || !/^-?[\d,]+\.\d{2}$/.test(formatted)) {
+    return `${formatted} ${currency || '---'}`
+  }
+
+  const negative = formatted.startsWith('-')
+  const absolute = negative ? formatted.slice(1) : formatted
+  let insertedNumber = false
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency })
+    .formatToParts(negative ? -1 : 0)
+    .flatMap((part) => {
+      if (part.type === 'integer') {
+        if (insertedNumber) {
+          return []
+        }
+        insertedNumber = true
+        return absolute
+      }
+      if (part.type === 'group' || part.type === 'decimal' || part.type === 'fraction') {
+        return []
+      }
+      return part.value
+    })
+    .join('')
 }
 
-function formatPreviewMoney(value: number, currency: string) {
-  if (/^[A-Z]{3}$/.test(currency)) {
-    return formatMoney(String(value), currency)
+function formatDecimalString(value: string, maximumFractionDigits: number, minimumFractionDigits = 0) {
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value)
+  if (!match) {
+    return value
   }
-  const suffix = currency || '---'
-  const amount = new Intl.NumberFormat('en-CA', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-  return `${amount} ${suffix}`
+
+  const negative = match[1] === '-'
+  let integer = match[2].replace(/^0+(?=\d)/, '')
+  let fraction = match[3] ?? ''
+  if (fraction.length > maximumFractionDigits) {
+    const keptFraction = fraction.slice(0, maximumFractionDigits)
+    const combined = BigInt(`${integer}${keptFraction.padEnd(maximumFractionDigits, '0')}` || '0')
+    const rounded = Number(fraction[maximumFractionDigits]) >= 5 ? combined + 1n : combined
+    const digits = rounded.toString().padStart(maximumFractionDigits + 1, '0')
+    integer = maximumFractionDigits === 0 ? digits : digits.slice(0, -maximumFractionDigits)
+    fraction = maximumFractionDigits === 0 ? '' : digits.slice(-maximumFractionDigits)
+  }
+  while (fraction.length > minimumFractionDigits && fraction.endsWith('0')) {
+    fraction = fraction.slice(0, -1)
+  }
+  fraction = fraction.padEnd(minimumFractionDigits, '0')
+  const groupedInteger = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const isZero = /^0+$/.test(integer) && /^0*$/.test(fraction)
+  return `${negative && !isZero ? '-' : ''}${groupedInteger}${fraction ? `.${fraction}` : ''}`
 }
 
 function trimDecimal(value: string) {

@@ -9,6 +9,7 @@ var (
 	ErrInvalidTradeDate     = errors.New("invalid transaction trade date")
 	ErrInvalidSource        = errors.New("invalid transaction source")
 	ErrImportedMutation     = errors.New("imported transaction cannot be mutated")
+	ErrUnsupportedMutation  = errors.New("transaction type is not supported by manual CRUD")
 	ErrInvalidAmount        = errors.New("invalid transaction amount")
 	ErrInvalidAsset         = errors.New("invalid transaction asset")
 	ErrInvalidLedgerEntry   = errors.New("invalid ledger entry")

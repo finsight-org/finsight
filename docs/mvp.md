@@ -53,6 +53,7 @@ Broker, provider, and AI product names in these documents are examples only unle
 - Create accounts
 - Manage assets
 - Store transactions
+- Correct account data with a limited set of manually managed transactions
 - Calculate positions
 - Calculate cash balances
 - Multi-currency support
@@ -219,7 +220,7 @@ The MVP is not:
 - A broker synchronization platform
 - A broker API import platform
 - A screenshot import platform
-- A manual transaction entry platform
+- A general-purpose bookkeeping or manual transaction entry platform beyond account corrections
 - A portfolio management interface
 - A fine-grained agent permission system
 - An OpenAPI-first integration platform

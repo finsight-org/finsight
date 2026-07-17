@@ -84,6 +84,7 @@ type AccountTransaction struct {
 	CashImpact *decimal.Decimal
 	Currency   string
 	Entries    []AccountLedgerEntry
+	Editable   bool
 }
 
 type AccountLedgerEntry struct {
@@ -169,6 +170,24 @@ type CreateLedgerEntryInput struct {
 	OriginalCurrency *string
 	ExchangeRate     *decimal.Decimal
 	Direction        Direction
+	assetReference   ledgerAssetReference
+}
+
+type ledgerAssetReference string
+
+const (
+	ledgerAssetCash       ledgerAssetReference = "cash"
+	ledgerAssetInstrument ledgerAssetReference = "instrument"
+)
+
+type repositoryAssetUpsert struct {
+	Reference ledgerAssetReference
+	Input     asset.UpsertInput
+}
+
+type repositoryResult struct {
+	Transaction        Transaction
+	AccountTransaction *AccountTransaction
 }
 
 type createRepositoryInput struct {
@@ -182,6 +201,7 @@ type createRepositoryInput struct {
 	Description    string
 	Source         string
 	ExternalID     *string
+	AssetUpserts   []repositoryAssetUpsert
 	LedgerEntries  []CreateLedgerEntryInput
 }
 
@@ -193,6 +213,7 @@ type updateRepositoryInput struct {
 	TradeDate      time.Time
 	SettlementDate *time.Time
 	Description    string
+	AssetUpserts   []repositoryAssetUpsert
 	LedgerEntries  []CreateLedgerEntryInput
 	WorkspaceID    uuid.UUID
 }

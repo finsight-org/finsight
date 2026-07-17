@@ -27,14 +27,11 @@ func TestUpsertAssetRoutesCashThroughCashRepositoryPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertAsset() error = %v", err)
 	}
-	if !repository.upsertCashCalled {
-		t.Fatal("UpsertCash called = false, want true")
+	if !repository.upsertCalled {
+		t.Fatal("Upsert called = false, want true")
 	}
-	if repository.upsertCalled {
-		t.Fatal("Upsert called = true, want false")
-	}
-	if repository.input.WorkspaceID != workspaceID {
-		t.Fatalf("workspace id = %s, want %s", repository.input.WorkspaceID, workspaceID)
+	if repository.workspaceID != workspaceID {
+		t.Fatalf("workspace id = %s, want %s", repository.workspaceID, workspaceID)
 	}
 	if created.Type != TypeCash {
 		t.Fatalf("created type = %q, want %q", created.Type, TypeCash)
@@ -59,9 +56,6 @@ func TestUpsertAssetRoutesNonCashThroughProviderRepositoryPath(t *testing.T) {
 	if !repository.upsertCalled {
 		t.Fatal("Upsert called = false, want true")
 	}
-	if repository.upsertCashCalled {
-		t.Fatal("UpsertCash called = true, want false")
-	}
 }
 
 type fakeRegistryBootstrapper struct {
@@ -74,28 +68,20 @@ func (b fakeRegistryBootstrapper) BootstrapLocal(context.Context) (bootstrap.Res
 }
 
 type fakeRegistryRepository struct {
-	input            upsertRepositoryInput
-	upsertCalled     bool
-	upsertCashCalled bool
-	err              error
+	workspaceID  uuid.UUID
+	input        UpsertInput
+	upsertCalled bool
+	err          error
 }
 
-func (r *fakeRegistryRepository) Upsert(_ context.Context, input upsertRepositoryInput) (Asset, error) {
+func (r *fakeRegistryRepository) Upsert(_ context.Context, workspaceID uuid.UUID, input UpsertInput) (Asset, error) {
+	r.workspaceID = workspaceID
 	r.input = input
 	r.upsertCalled = true
 	if r.err != nil {
 		return Asset{}, r.err
 	}
-	return Asset{ID: uuid.New(), WorkspaceID: input.WorkspaceID, Name: input.Name, Type: input.Type, Currency: input.Currency, Symbol: input.Symbol, ProviderID: input.ProviderID, ProviderSymbol: input.ProviderSymbol}, nil
-}
-
-func (r *fakeRegistryRepository) UpsertCash(_ context.Context, input upsertRepositoryInput) (Asset, error) {
-	r.input = input
-	r.upsertCashCalled = true
-	if r.err != nil {
-		return Asset{}, r.err
-	}
-	return Asset{ID: uuid.New(), WorkspaceID: input.WorkspaceID, Name: input.Name, Type: input.Type, Currency: input.Currency, Symbol: input.Symbol, ProviderID: input.ProviderID, ProviderSymbol: input.ProviderSymbol}, nil
+	return Asset{ID: uuid.New(), WorkspaceID: workspaceID, Name: input.Name, Type: input.Type, Currency: input.Currency, Symbol: input.Symbol, ProviderID: input.ProviderID, ProviderSymbol: input.ProviderSymbol}, nil
 }
 
 func registryBootstrapResult(workspaceID uuid.UUID) bootstrap.Result {

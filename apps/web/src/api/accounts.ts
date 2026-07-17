@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, errorMessage } from '@/api/client'
 import {
+  AccountTransactionAssetType as GeneratedAccountTransactionAssetType,
   AccountTransactionRequestType as GeneratedAccountTransactionRequestType,
   AccountTransactionType as GeneratedAccountTransactionType,
   AccountType as GeneratedAccountType,
@@ -24,6 +25,7 @@ export type AccountCashBalance = components['schemas']['AccountCashBalance']
 export const AccountType = GeneratedAccountType
 export const AccountTransactionType = GeneratedAccountTransactionType
 export const AccountTransactionRequestType = GeneratedAccountTransactionRequestType
+export const AccountTransactionAssetType = GeneratedAccountTransactionAssetType
 export const accountTypes = Object.values(AccountType)
 export const accountTransactionTypes = Object.values(AccountTransactionRequestType)
 
@@ -183,24 +185,27 @@ export function useAccountQuery(accountId: string) {
   })
 }
 
-export function useAccountTransactionsQuery(accountId: string) {
+export function useAccountTransactionsQuery(accountId: string, enabled = true) {
   return useQuery({
     queryKey: accountTransactionsQueryKey(accountId),
     queryFn: () => listAccountTransactions(accountId),
+    enabled,
   })
 }
 
-export function useAccountPositionsQuery(accountId: string) {
+export function useAccountPositionsQuery(accountId: string, enabled = true) {
   return useQuery({
     queryKey: accountPositionsQueryKey(accountId),
     queryFn: () => listAccountPositions(accountId),
+    enabled,
   })
 }
 
-export function useAccountCashBalancesQuery(accountId: string) {
+export function useAccountCashBalancesQuery(accountId: string, enabled = true) {
   return useQuery({
     queryKey: accountCashBalancesQueryKey(accountId),
     queryFn: () => listAccountCashBalances(accountId),
+    enabled,
   })
 }
 

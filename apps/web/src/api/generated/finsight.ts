@@ -263,10 +263,12 @@ export interface components {
         AccountTransactionRequestType: AccountTransactionRequestType;
         /** @enum {string} */
         AccountTransactionType: AccountTransactionType;
+        /** @enum {string} */
+        AccountTransactionAssetType: AccountTransactionAssetType;
         AccountTransactionAssetInput: {
             name: string;
             symbol: string;
-            asset_type: components["schemas"]["AssetType"];
+            asset_type: components["schemas"]["AccountTransactionAssetType"];
             currency: string;
             provider_id: string;
             provider_symbol: string;
@@ -280,10 +282,15 @@ export interface components {
             settlement_date?: string | null;
             description: string;
             currency: string;
+            /** @description Required only for BUY, SELL, and DIVIDEND. */
             asset?: components["schemas"]["AccountTransactionAssetInput"];
+            /** @description Required only for BUY and SELL. */
             quantity?: string | null;
+            /** @description Required only for BUY and SELL. */
             price?: string | null;
+            /** @description Required only for DIVIDEND, DEPOSIT, WITHDRAWAL, FEE, and INTEREST. */
             amount?: string | null;
+            /** @description Optional only for BUY and SELL. */
             fees?: string | null;
         };
         AccountTransaction: {
@@ -305,6 +312,8 @@ export interface components {
             currency: string;
             source: string;
             status: string;
+            /** @description Whether this supported manual transaction can be edited or deleted through account CRUD. */
+            editable: boolean;
             ledger_entries: components["schemas"]["AccountTransactionLedgerEntry"][];
             /** Format: date-time */
             created_at: string;
@@ -781,7 +790,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Imported transaction cannot be edited through manual CRUD. */
+            /** @description Transaction is imported or its type is not supported by manual CRUD. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -829,7 +838,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Imported transaction cannot be deleted through manual CRUD. */
+            /** @description Transaction is imported or its type is not supported by manual CRUD. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1147,6 +1156,13 @@ export enum AccountTransactionType {
     SPLIT = "SPLIT",
     OPENING_BALANCE = "OPENING_BALANCE",
     ADJUSTMENT = "ADJUSTMENT"
+}
+export enum AccountTransactionAssetType {
+    EQUITY = "EQUITY",
+    ETF = "ETF",
+    MUTUAL_FUND = "MUTUAL_FUND",
+    CRYPTO = "CRYPTO",
+    OTHER = "OTHER"
 }
 export enum AssetType {
     EQUITY = "EQUITY",

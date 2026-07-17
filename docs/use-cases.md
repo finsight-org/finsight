@@ -322,11 +322,11 @@ Allow the user to understand their portfolio at a high level.
 
 ---
 
-# Use Case 6 — View Accounts
+# Use Case 6 — View and Correct an Account
 
 ## Goal
 
-Allow the user to see where their investments are held.
+Allow the user to understand one account and correct account data without editing derived positions or cash balances directly.
 
 ## Main Path
 
@@ -339,13 +339,17 @@ Allow the user to see where their investments are held.
    - currency
    - current value
    - cash balances
-4. User opens an account to see its positions and related imports.
+4. User opens an account to see its transactions, positions, and cash balances.
+5. User can add, edit, or delete a manually managed transaction when correcting account data.
+6. Finsight recalculates positions, cash balances, and portfolio value from the resulting ledger entries.
+7. Transactions created by a confirmed import remain read-only and retain their import provenance.
 
 ## Success State
 
 - User can understand which accounts contribute to the portfolio.
 - User can start an import for a specific account.
-- User can see account-level positions and cash.
+- User can see account-level transactions, positions, and cash.
+- User can correct manual transaction records while derived data remains internally consistent.
 
 ## Edge Cases
 
@@ -353,6 +357,8 @@ Allow the user to see where their investments are held.
 - Account has missing prices or FX rates.
 - Account no longer exists.
 - User attempts to access an account they do not own.
+- User attempts to modify a transaction created by a confirmed import.
+- A correction would create an invalid ledger effect, such as a sell fee greater than its proceeds.
 
 ---
 
@@ -552,6 +558,8 @@ Show a clear non-technical error and offer a safe retry action.
 - Transactions are the source of truth.
 - Transactions create ledger entries.
 - Transactions should not be created from imports until the user confirms review.
+- The account correction workflow supports CRUD only for supported, manually managed transaction types.
+- Transactions linked to confirmed imports are read-only; corrections to imported candidates happen during import review.
 
 ## Ledger Entry
 
