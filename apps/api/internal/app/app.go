@@ -14,6 +14,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/httpapi"
 	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
+	"github.com/finsight-org/finsight/apps/api/internal/startup"
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
 
@@ -29,11 +30,6 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 
-	if err := postgres.RunMigrations(ctx, cfg.DatabaseURL, migrations.Files); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("run postgres migrations: %w", err)
-	}
-
 	bootstrapRepository := bootstrap.NewPostgresRepository(db)
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
 	accountRepository := account.NewPostgresRepository(db)
@@ -41,6 +37,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	portfolioRepository := portfoliovalue.NewPostgresRepository(db)
 	portfolioService := portfoliovalue.NewService(bootstrapService, portfolioRepository)
 	assetFinder := asset.NewFinder(asset.NewYahooProvider())
+
+	initializer := startup.New(
+		postgres.NewMigrationRunner(cfg.DatabaseURL, migrations.Files),
+		bootstrapService,
+		cfg.DeploymentMode,
+	)
+	if err := initializer.Initialize(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize application: %w", err)
+	}
 
 	handler := httpapi.NewRouter(httpapi.Options{
 		ServiceName:  cfg.ServiceName,
