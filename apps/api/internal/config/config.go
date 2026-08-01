@@ -17,23 +17,33 @@ const (
 	defaultReadyTime   = 2 * time.Second
 )
 
+type DeploymentMode string
+
+const (
+	DeploymentModeLocal   DeploymentMode = "local"
+	DeploymentModeManaged DeploymentMode = "managed"
+	defaultDeploymentMode                = DeploymentModeLocal
+)
+
 type Config struct {
-	Env          string
-	HTTPAddr     string
-	ServiceName  string
-	Version      string
-	DatabaseURL  string
-	ReadyTimeout time.Duration
+	Env            string
+	DeploymentMode DeploymentMode
+	HTTPAddr       string
+	ServiceName    string
+	Version        string
+	DatabaseURL    string
+	ReadyTimeout   time.Duration
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		Env:          envString("FINSIGHT_ENV", defaultEnv),
-		HTTPAddr:     envString("FINSIGHT_HTTP_ADDR", defaultHTTPAddr),
-		ServiceName:  envString("FINSIGHT_SERVICE_NAME", defaultServiceName),
-		Version:      envString("FINSIGHT_VERSION", defaultVersion),
-		DatabaseURL:  envString("FINSIGHT_DATABASE_URL", defaultDatabaseURL),
-		ReadyTimeout: defaultReadyTime,
+		Env:            envString("FINSIGHT_ENV", defaultEnv),
+		DeploymentMode: DeploymentMode(envString("FINSIGHT_DEPLOYMENT_MODE", string(defaultDeploymentMode))),
+		HTTPAddr:       envString("FINSIGHT_HTTP_ADDR", defaultHTTPAddr),
+		ServiceName:    envString("FINSIGHT_SERVICE_NAME", defaultServiceName),
+		Version:        envString("FINSIGHT_VERSION", defaultVersion),
+		DatabaseURL:    envString("FINSIGHT_DATABASE_URL", defaultDatabaseURL),
+		ReadyTimeout:   defaultReadyTime,
 	}
 
 	if rawTimeout, ok := os.LookupEnv("FINSIGHT_READY_TIMEOUT"); ok {
@@ -44,6 +54,9 @@ func Load() (Config, error) {
 		cfg.ReadyTimeout = readyTimeout
 	}
 
+	if err := validateDeploymentMode(cfg.DeploymentMode); err != nil {
+		return Config{}, err
+	}
 	if err := validateDatabaseURL(cfg.DatabaseURL); err != nil {
 		return Config{}, err
 	}
@@ -52,6 +65,15 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func validateDeploymentMode(mode DeploymentMode) error {
+	switch mode {
+	case DeploymentModeLocal, DeploymentModeManaged:
+		return nil
+	default:
+		return fmt.Errorf("FINSIGHT_DEPLOYMENT_MODE must be %q or %q", DeploymentModeLocal, DeploymentModeManaged)
+	}
 }
 
 func envString(name, fallback string) string {

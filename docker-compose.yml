@@ -20,6 +20,7 @@ services:
       context: ./apps/api
     environment:
       FINSIGHT_ENV: local
+      FINSIGHT_DEPLOYMENT_MODE: local
       FINSIGHT_HTTP_ADDR: :8080
       FINSIGHT_SERVICE_NAME: finsight-api
       FINSIGHT_VERSION: dev

@@ -12,6 +12,8 @@ docker compose up --build
 
 PostgreSQL is exposed locally on port `5432`. The API is exposed locally on port `8080`.
 
+In local deployment mode, the API applies migrations and initializes the local user, workspace, and default portfolio before it starts serving requests.
+
 Useful checks:
 
 ```bash
