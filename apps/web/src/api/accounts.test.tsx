@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { AccountType, accountsQueryKey, useCreateAccountMutation } from '@/api/accounts'
+import { AccountType, useCreateAccountMutation } from '@/api/accounts'
 import { apiClient } from '@/api/client'
 import { portfolioAccountValuesQueryKey } from '@/api/portfolio'
 
@@ -15,7 +15,7 @@ vi.mock('@/api/client', () => ({
 }))
 
 describe('useCreateAccountMutation', () => {
-  it('invalidates account and portfolio account-value queries after create', async () => {
+  it('invalidates portfolio account-value queries after create', async () => {
     vi.mocked(apiClient.POST).mockResolvedValue({
       data: {
         id: '11111111-1111-1111-1111-111111111111',
@@ -47,7 +47,7 @@ describe('useCreateAccountMutation', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: accountsQueryKey })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: portfolioAccountValuesQueryKey })
+    expect(invalidateQueries).toHaveBeenCalledTimes(1)
   })
 })

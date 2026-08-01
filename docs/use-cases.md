@@ -20,7 +20,6 @@ Finsight uses a simple navigation model.
 
 ```text
 Portfolio Summary
-├── Accounts
 ├── Imports
 ├── Connected Agents
 ```
@@ -38,18 +37,11 @@ Shows the user’s overall portfolio situation:
 - cash balances
 - simple performance
 
-### Accounts
+### Account Creation and Details
 
-Shows where assets and cash are held.
+Portfolio Summary shows the account-value list and provides the entry point for creating accounts. Account details show where assets and cash are held, including institution, account type, and account currency.
 
-Examples:
-
-- Wealthsimple
-- Interactive Brokers
-- Binance
-- Manual account
-
-Broker and provider names are examples only unless explicitly listed as supported integrations.
+Examples of institutions include Wealthsimple, Interactive Brokers, Binance, and a manual account. Broker and provider names are examples only unless explicitly listed as supported integrations.
 
 ### Imports
 
@@ -176,7 +168,7 @@ Allow the user to create an account where assets, transactions, and cash will be
 
 ## Main Path
 
-1. User opens the Accounts area.
+1. User opens Portfolio Summary.
 2. User clicks **Create account**.
 3. User enters:
    - account name
@@ -189,7 +181,7 @@ Allow the user to create an account where assets, transactions, and cash will be
 ## Success State
 
 - The account exists.
-- The account appears in the Accounts area.
+- The account appears in the Portfolio Summary account-value list.
 - The account can receive imported transactions.
 
 ## Edge Cases
