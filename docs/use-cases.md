@@ -314,7 +314,7 @@ Allow the user to understand their portfolio at a high level.
 
 ---
 
-# Use Case 6 — View Accounts
+# Use Case 6 — View Account Details
 
 ## Goal
 
@@ -322,16 +322,18 @@ Allow the user to see where their investments are held.
 
 ## Main Path
 
-1. User opens Accounts.
-2. User sees a list of accounts.
-3. Each account shows:
+1. User opens Portfolio Summary.
+2. User sees the account-value list.
+3. User opens account details for an account.
+4. Account details show:
    - name
    - institution
    - type
    - currency
    - current value
    - cash balances
-4. User opens an account to see its positions and related imports.
+   - positions
+   - related imports
 
 ## Success State
 
