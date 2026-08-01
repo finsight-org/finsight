@@ -143,13 +143,9 @@ Allows:
 - Approve
 - Reject
 
-## Accounts
+## Account Creation and Details
 
-Displays:
-
-- Accounts
-- Institutions
-- Account currencies
+Portfolio Summary displays the account-value list and provides account creation. Account details display institution, account type, and account currency.
 
 ## Connected Agents
 

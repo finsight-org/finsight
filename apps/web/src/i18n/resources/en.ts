@@ -4,7 +4,6 @@ export const en = {
   },
   nav: {
     portfolio: 'Portfolio',
-    accounts: 'Accounts',
     imports: 'Imports',
     agents: 'Agents',
     settings: 'Settings',
@@ -66,23 +65,6 @@ export const en = {
   },
   accounts: {
     title: 'Accounts',
-    description: 'Where investment data and imported transactions are grouped.',
-    loading: 'Loading accounts',
-    loadErrorTitle: 'Accounts could not load',
-    emptyTitle: 'No accounts yet',
-    emptyDescription:
-      'Create the first account before importing investment data. Portfolio insights will appear after confirmed imports create transactions.',
-    noInstitution: 'No institution',
-    updatedAt: 'Updated {{date}}',
-    valuePending: 'Value pending',
-    valuePendingDescription: 'Import transactions to calculate value',
-    table: {
-      account: 'Account',
-      institution: 'Institution',
-      none: 'None',
-      type: 'Type',
-      currency: 'Currency',
-    },
     type: {
       BROKERAGE: 'Brokerage',
       BANK: 'Bank',
@@ -127,7 +109,6 @@ export const en = {
     },
   },
   errors: {
-    accountsLoad: 'Could not load accounts.',
     accountCreate: 'Could not create the account.',
     accountCreateNoData: 'The account was created, but the API returned no account data.',
     assetSearch: 'Could not search assets.',

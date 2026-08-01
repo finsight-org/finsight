@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient, errorMessage } from '@/api/client'
 import { AccountType as GeneratedAccountType, type components } from '@/api/generated/finsight'
@@ -11,18 +11,6 @@ export type CreateAccountRequest = components['schemas']['CreateAccountRequest']
 
 export const AccountType = GeneratedAccountType
 export const accountTypes = Object.values(AccountType)
-
-export const accountsQueryKey = ['accounts'] as const
-
-export async function listAccounts() {
-  const { data, error } = await apiClient.GET('/api/accounts')
-
-  if (error) {
-    throw new Error(errorMessage(error, i18n.t('errors.accountsLoad')))
-  }
-
-  return data?.accounts ?? []
-}
 
 export async function createAccount(body: CreateAccountRequest) {
   const { data, error } = await apiClient.POST('/api/accounts', {
@@ -40,23 +28,11 @@ export async function createAccount(body: CreateAccountRequest) {
   return data
 }
 
-export function useAccountsQuery() {
-  return useQuery({
-    queryKey: accountsQueryKey,
-    queryFn: listAccounts,
-  })
-}
-
 export function useCreateAccountMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: createAccount,
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: accountsQueryKey }),
-        queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey }),
-      ])
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey }),
   })
 }

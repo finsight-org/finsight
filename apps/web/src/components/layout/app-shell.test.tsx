@@ -1,21 +1,9 @@
 import { RouterProvider } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { AppProviders } from '@/app/providers'
 import { router } from '@/app/router'
-
-vi.mock('@/api/accounts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/api/accounts')>()
-  return {
-    ...actual,
-    useAccountsQuery: () => ({
-      data: [],
-      isLoading: false,
-      error: null,
-    }),
-  }
-})
 
 describe('AppShell', () => {
   it('renders translated navigation and account menu controls', async () => {
@@ -27,7 +15,7 @@ describe('AppShell', () => {
 
     expect(await screen.findByRole('link', { name: 'FinSight' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Portfolio' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Accounts' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Imports' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Agents' })).toBeInTheDocument()
     expect(screen.getByLabelText('Search name or symbol')).toBeInTheDocument()

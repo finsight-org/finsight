@@ -16,7 +16,6 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { labelKey: 'nav.portfolio', to: '/portfolio' },
-  { labelKey: 'nav.accounts', to: '/accounts' },
   { labelKey: 'nav.imports', to: '/imports' },
   { labelKey: 'nav.agents', to: '/agents' },
 ] as const
