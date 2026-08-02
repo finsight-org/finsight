@@ -5,13 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 )
-
-type LocalBootstrapper interface {
-	BootstrapLocal(context.Context) (bootstrap.Result, error)
-}
 
 type Repository interface {
 	Create(context.Context, createRepositoryInput) (Account, error)
@@ -20,18 +14,14 @@ type Repository interface {
 }
 
 type Service struct {
-	bootstrap  LocalBootstrapper
 	repository Repository
 }
 
-func NewService(bootstrap LocalBootstrapper, repository Repository) Service {
-	return Service{bootstrap: bootstrap, repository: repository}
+func NewService(repository Repository) Service {
+	return Service{repository: repository}
 }
 
-func (s Service) CreateAccount(ctx context.Context, input CreateInput) (Account, error) {
-	if s.bootstrap == nil {
-		return Account{}, fmt.Errorf("account bootstrapper is required")
-	}
+func (s Service) CreateAccount(ctx context.Context, portfolioID uuid.UUID, input CreateInput) (Account, error) {
 	if s.repository == nil {
 		return Account{}, fmt.Errorf("account repository is required")
 	}
@@ -47,13 +37,8 @@ func (s Service) CreateAccount(ctx context.Context, input CreateInput) (Account,
 		return Account{}, ErrInvalidCurrency
 	}
 
-	localContext, err := s.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return Account{}, fmt.Errorf("resolve local account context: %w", err)
-	}
-
 	account, err := s.repository.Create(ctx, createRepositoryInput{
-		PortfolioID:       localContext.Portfolio.ID,
+		PortfolioID:       portfolioID,
 		Name:              input.Name,
 		InstitutionName:   input.InstitutionName,
 		Type:              input.Type,
@@ -67,40 +52,24 @@ func (s Service) CreateAccount(ctx context.Context, input CreateInput) (Account,
 	return account, nil
 }
 
-func (s Service) ListAccounts(ctx context.Context) ([]Account, error) {
-	if s.bootstrap == nil {
-		return nil, fmt.Errorf("account bootstrapper is required")
-	}
+func (s Service) ListAccounts(ctx context.Context, portfolioID uuid.UUID) ([]Account, error) {
 	if s.repository == nil {
 		return nil, fmt.Errorf("account repository is required")
 	}
 
-	localContext, err := s.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("resolve local account context: %w", err)
-	}
-
-	accounts, err := s.repository.ListByPortfolio(ctx, localContext.Portfolio.ID)
+	accounts, err := s.repository.ListByPortfolio(ctx, portfolioID)
 	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
 	}
 	return accounts, nil
 }
 
-func (s Service) GetAccount(ctx context.Context, id uuid.UUID) (Account, error) {
-	if s.bootstrap == nil {
-		return Account{}, fmt.Errorf("account bootstrapper is required")
-	}
+func (s Service) GetAccount(ctx context.Context, portfolioID uuid.UUID, id uuid.UUID) (Account, error) {
 	if s.repository == nil {
 		return Account{}, fmt.Errorf("account repository is required")
 	}
 
-	localContext, err := s.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return Account{}, fmt.Errorf("resolve local account context: %w", err)
-	}
-
-	account, err := s.repository.GetByPortfolioAndID(ctx, localContext.Portfolio.ID, id)
+	account, err := s.repository.GetByPortfolioAndID(ctx, portfolioID, id)
 	if err != nil {
 		return Account{}, fmt.Errorf("get account: %w", err)
 	}

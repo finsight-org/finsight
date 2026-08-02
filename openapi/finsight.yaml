@@ -83,6 +83,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Local default portfolio context was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Account name already exists in the default portfolio.
           content:
@@ -91,6 +97,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Account creation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
@@ -105,8 +117,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccountListResponse"
+        "404":
+          description: Local default portfolio context was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Account listing failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
@@ -130,13 +154,135 @@ paths:
               schema:
                 $ref: "#/components/schemas/Account"
         "404":
-          description: Account was not found in the local default portfolio.
+          description: Account or local default portfolio context was not found.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Account lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/accounts:
+    post:
+      operationId: postPortfolioAccount
+      summary: Create an account in the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAccountRequest"
+      responses:
+        "201":
+          description: Account created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid account request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Account name already exists in the portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Account creation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: getPortfolioAccounts
+      summary: List accounts in the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
+      responses:
+        "200":
+          description: Accounts in the portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountListResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Account listing failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/accounts/{account_id}:
+    get:
+      operationId: getPortfolioAccount
+      summary: Get an account from the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account in the portfolio.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "404":
+          description: Requested portfolio or account was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Account lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
@@ -272,6 +418,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
+  parameters:
+    PortfolioID:
+      name: portfolio_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     AccountType:
       type: string

@@ -119,3 +119,7 @@ func (s *fakeLocalContextService) DefaultPortfolioID(context.Context) (uuid.UUID
 	s.calls++
 	return s.portfolioID, s.err
 }
+
+func (s *fakeLocalContextService) EnsurePortfolio(context.Context, uuid.UUID) error {
+	return s.err
+}

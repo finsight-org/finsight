@@ -30,3 +30,14 @@ func (s Service) DefaultPortfolioID(ctx context.Context) (uuid.UUID, error) {
 	}
 	return portfolioID, nil
 }
+
+func (s Service) EnsurePortfolio(ctx context.Context, portfolioID uuid.UUID) error {
+	defaultPortfolioID, err := s.DefaultPortfolioID(ctx)
+	if err != nil {
+		return err
+	}
+	if portfolioID != defaultPortfolioID {
+		return ErrPortfolioNotAllowed
+	}
+	return nil
+}

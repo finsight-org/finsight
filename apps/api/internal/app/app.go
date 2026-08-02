@@ -36,7 +36,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	localContextRepository := localcontext.NewPostgresRepository(db)
 	localContextService := localcontext.NewService(localContextRepository)
 	accountRepository := account.NewPostgresRepository(db)
-	accountService := account.NewService(bootstrapService, accountRepository)
+	accountService := account.NewService(accountRepository)
 	portfolioRepository := portfoliovalue.NewPostgresRepository(db)
 	portfolioService := portfoliovalue.NewService(bootstrapService, portfolioRepository)
 	assetFinder := asset.NewFinder(asset.NewYahooProvider())
