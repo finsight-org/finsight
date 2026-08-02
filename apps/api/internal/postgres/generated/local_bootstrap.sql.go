@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getLocalDefaultPortfolioID = `-- name: GetLocalDefaultPortfolioID :one
+select p.id
+from workspaces w
+join portfolios p on p.workspace_id = w.id
+    and p.is_default
+where w.auth_mode = 'local'
+limit 1
+`
+
+func (q *Queries) GetLocalDefaultPortfolioID(ctx context.Context) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getLocalDefaultPortfolioID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const upsertDefaultPortfolio = `-- name: UpsertDefaultPortfolio :one
 with inserted as (
     insert into portfolios (

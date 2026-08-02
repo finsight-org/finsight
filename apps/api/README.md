@@ -19,6 +19,7 @@ Useful checks:
 ```bash
 curl -i http://localhost:8080/health
 curl -i http://localhost:8080/ready
+curl -i http://localhost:8080/api/me
 ```
 
 Create or return the local development identity context:

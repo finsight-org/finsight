@@ -31,6 +31,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadyResponse"
+  /api/me:
+    get:
+      operationId: getMe
+      summary: Get the local default portfolio context.
+      responses:
+        "200":
+          description: Local default portfolio context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "404":
+          description: Local default portfolio context was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Local default portfolio lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/accounts:
     post:
       operationId: postAccount
@@ -503,6 +532,14 @@ components:
       properties:
         error:
           $ref: "#/components/schemas/ErrorDetail"
+    MeResponse:
+      type: object
+      required:
+        - default_portfolio_id
+      properties:
+        default_portfolio_id:
+          type: string
+          format: uuid
     HealthResponse:
       type: object
       required:
