@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { AccountType, accountTypes, useCreateAccountMutation, type AccountType as AccountTypeValue } from '@/api/accounts'
+import { useMeQuery } from '@/api/me'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,6 +38,7 @@ const defaultValues: AccountFormValues = {
 
 export function AddAccountDialog() {
   const [open, setOpen] = useState(false)
+  const meQuery = useMeQuery()
   const createAccount = useCreateAccountMutation()
   const { t } = useTranslation()
   const accountSchema = z.object({
@@ -50,12 +52,20 @@ export function AddAccountDialog() {
     defaultValues,
   })
 
+  const portfolioId = meQuery.data?.default_portfolio_id ?? ''
+  if (!portfolioId) {
+    return null
+  }
+
   async function onSubmit(values: AccountFormValues) {
     await createAccount.mutateAsync({
-      name: values.name.trim(),
-      institution_name: values.institutionName?.trim() || null,
-      type: values.type,
-      base_currency: values.baseCurrency.trim().toUpperCase(),
+      portfolioId,
+      body: {
+        name: values.name.trim(),
+        institution_name: values.institutionName?.trim() || null,
+        type: values.type,
+        base_currency: values.baseCurrency.trim().toUpperCase(),
+      },
     })
     form.reset(defaultValues)
     setOpen(false)
