@@ -9,15 +9,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
-	"github.com/finsight-org/finsight/apps/api/internal/identity"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
+
+var testPortfolioID = uuid.MustParse("33333333-3333-3333-3333-333333333333")
 
 func TestGetOverviewCalculatesCashAndPricedAssetValue(t *testing.T) {
 	accountID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	assetID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries: []valuationEntry{
@@ -28,7 +28,7 @@ func TestGetOverviewCalculatesCashAndPricedAssetValue(t *testing.T) {
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -40,17 +40,33 @@ func TestGetOverviewCalculatesCashAndPricedAssetValue(t *testing.T) {
 	}
 }
 
+func TestGetOverviewPassesOnlyPortfolioIDAndValuationDateToRepository(t *testing.T) {
+	repository := &recordingRepository{data: valuationData{BaseCurrency: "CAD"}}
+	service := NewServiceWithClock(repository, fixedClock("2026-07-07"))
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+
+	if _, err := service.GetOverview(context.Background(), portfolioID); err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if repository.portfolioID != portfolioID {
+		t.Fatalf("portfolio id = %s, want %s", repository.portfolioID, portfolioID)
+	}
+	if !repository.endDate.Equal(date("2026-07-07")) {
+		t.Fatalf("valuation date = %s, want 2026-07-07", repository.endDate)
+	}
+}
+
 func TestGetOverviewWarnsAndExcludesMissingPrice(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "10")},
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -65,7 +81,7 @@ func TestGetOverviewWarnsAndExcludesMissingPrice(t *testing.T) {
 func TestGetOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
@@ -90,7 +106,7 @@ func TestGetOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -102,7 +118,7 @@ func TestGetOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
 func TestGetOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
@@ -127,7 +143,7 @@ func TestGetOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *te
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -141,7 +157,7 @@ func TestGetOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *te
 
 func TestGetOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{cashEntryWithCurrency(accountID, "USD Cash", "100", "USD")},
@@ -149,7 +165,7 @@ func TestGetOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -164,7 +180,7 @@ func TestGetOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
 func TestGetOverviewConvertsForeignPricedAssetToBaseCurrency(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{assetEntryWithCurrency(accountID, assetID, "VOO", "10", "USD")},
@@ -173,7 +189,7 @@ func TestGetOverviewConvertsForeignPricedAssetToBaseCurrency(t *testing.T) {
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -187,14 +203,14 @@ func TestGetOverviewConvertsForeignPricedAssetToBaseCurrency(t *testing.T) {
 
 func TestGetOverviewWarnsAndExcludesMissingFXRate(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{cashEntryWithCurrency(accountID, "USD Cash", "100", "USD")},
 		},
 	}, fixedClock("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background())
+	overview, err := service.GetOverview(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetOverview() error = %v", err)
 	}
@@ -208,14 +224,14 @@ func TestGetOverviewWarnsAndExcludesMissingFXRate(t *testing.T) {
 
 func TestGetValueHistoryReturnsDailyPoints(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{cashEntryOn(accountID, "CAD Cash", "100", "2026-07-05")},
 		},
 	}, fixedClock("2026-07-07"))
 
-	history, err := service.GetValueHistory(context.Background(), portfolio.RangeOneWeek)
+	history, err := service.GetValueHistory(context.Background(), testPortfolioID, portfolio.RangeOneWeek)
 	if err != nil {
 		t.Fatalf("GetValueHistory() error = %v", err)
 	}
@@ -232,7 +248,7 @@ func TestGetValueHistoryReturnsDailyPoints(t *testing.T) {
 
 func TestGetValueHistoryUsesHistoricalFXRates(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
 			Entries:  []valuationEntry{cashEntryForAccountOnWithCurrency(accountID, "TFSA", "USD Cash", "100", "USD", "2026-07-05")},
@@ -243,7 +259,7 @@ func TestGetValueHistoryUsesHistoricalFXRates(t *testing.T) {
 		},
 	}, fixedClock("2026-07-07"))
 
-	history, err := service.GetValueHistory(context.Background(), portfolio.RangeOneWeek)
+	history, err := service.GetValueHistory(context.Background(), testPortfolioID, portfolio.RangeOneWeek)
 	if err != nil {
 		t.Fatalf("GetValueHistory() error = %v", err)
 	}
@@ -261,7 +277,7 @@ func TestGetValueHistoryUsesHistoricalFXRates(t *testing.T) {
 func TestGetAccountValuesCalculatesAllocationPercent(t *testing.T) {
 	firstAccountID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	secondAccountID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{
 				{ID: firstAccountID, Name: "First"},
@@ -274,7 +290,7 @@ func TestGetAccountValuesCalculatesAllocationPercent(t *testing.T) {
 		},
 	}, fixedClock("2026-07-07"))
 
-	values, err := service.GetAccountValues(context.Background())
+	values, err := service.GetAccountValues(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetAccountValues() error = %v", err)
 	}
@@ -292,7 +308,7 @@ func TestGetAccountValuesCalculatesAllocationPercent(t *testing.T) {
 func TestGetAccountValuesCalculatesAllocationPercentAfterCurrencyConversion(t *testing.T) {
 	firstAccountID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	secondAccountID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{
+	service := NewServiceWithClock(fakeRepository{
 		data: valuationData{
 			Accounts: []valuationAccount{
 				{ID: firstAccountID, Name: "First"},
@@ -306,7 +322,7 @@ func TestGetAccountValuesCalculatesAllocationPercentAfterCurrencyConversion(t *t
 		},
 	}, fixedClock("2026-07-07"))
 
-	values, err := service.GetAccountValues(context.Background())
+	values, err := service.GetAccountValues(context.Background(), testPortfolioID)
 	if err != nil {
 		t.Fatalf("GetAccountValues() error = %v", err)
 	}
@@ -322,36 +338,35 @@ func TestGetAccountValuesCalculatesAllocationPercentAfterCurrencyConversion(t *t
 }
 
 func TestGetValueHistoryRejectsInvalidRange(t *testing.T) {
-	service := NewServiceWithClock(fakeBootstrapper{portfolioID: uuid.New()}, fakeRepository{}, fixedClock("2026-07-07"))
-	_, err := service.GetValueHistory(context.Background(), portfolio.Range("BAD"))
+	service := NewServiceWithClock(fakeRepository{}, fixedClock("2026-07-07"))
+	_, err := service.GetValueHistory(context.Background(), testPortfolioID, portfolio.Range("BAD"))
 	if !errors.Is(err, portfolio.ErrInvalidRange) {
 		t.Fatalf("GetValueHistory() error = %v, want %v", err, portfolio.ErrInvalidRange)
 	}
-}
-
-type fakeBootstrapper struct {
-	portfolioID  uuid.UUID
-	workspaceID  uuid.UUID
-	baseCurrency string
-}
-
-func (b fakeBootstrapper) BootstrapLocal(context.Context) (bootstrap.Result, error) {
-	baseCurrency := b.baseCurrency
-	if baseCurrency == "" {
-		baseCurrency = "CAD"
-	}
-	return bootstrap.Result{
-		Workspace: identity.Workspace{ID: b.workspaceID},
-		Portfolio: portfolio.Portfolio{ID: b.portfolioID, BaseCurrency: baseCurrency},
-	}, nil
 }
 
 type fakeRepository struct {
 	data valuationData
 }
 
-func (r fakeRepository) LoadValuationData(context.Context, uuid.UUID, uuid.UUID, string, time.Time) (valuationData, error) {
+type recordingRepository struct {
+	data        valuationData
+	portfolioID uuid.UUID
+	endDate     time.Time
+}
+
+func (r *recordingRepository) LoadValuationData(_ context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
+	r.portfolioID = portfolioID
+	r.endDate = endDate
 	return r.data, nil
+}
+
+func (r fakeRepository) LoadValuationData(context.Context, uuid.UUID, time.Time) (valuationData, error) {
+	data := r.data
+	if data.BaseCurrency == "" {
+		data.BaseCurrency = "CAD"
+	}
+	return data, nil
 }
 
 func cashEntry(accountID uuid.UUID, assetName string, amount string) valuationEntry {

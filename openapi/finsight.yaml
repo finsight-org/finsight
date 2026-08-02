@@ -346,7 +346,7 @@ paths:
   /api/portfolio/overview:
     get:
       operationId: getPortfolioOverview
-      summary: Get the current read-only portfolio value overview.
+      summary: Get the local default portfolio value overview.
       responses:
         "200":
           description: Current portfolio overview.
@@ -354,8 +354,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortfolioOverviewResponse"
+        "404":
+          description: Local default portfolio context or portfolio was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Portfolio overview calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
@@ -363,7 +375,7 @@ paths:
   /api/portfolio/value-history:
     get:
       operationId: getPortfolioValueHistory
-      summary: Get portfolio value history for a selected range.
+      summary: Get local default portfolio value history for a selected range.
       parameters:
         - name: range
           in: query
@@ -383,8 +395,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Local default portfolio context or portfolio was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Portfolio value history calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
@@ -392,7 +416,7 @@ paths:
   /api/portfolio/account-values:
     get:
       operationId: getPortfolioAccountValues
-      summary: Get current read-only value by account.
+      summary: Get local default portfolio value by account.
       responses:
         "200":
           description: Current account values.
@@ -400,8 +424,136 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortfolioAccountValuesResponse"
+        "404":
+          description: Local default portfolio context or portfolio was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Account value calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/overview:
+    get:
+      operationId: getPortfolioOverviewByID
+      summary: Get the requested local default portfolio value overview.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
+      responses:
+        "200":
+          description: Portfolio overview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioOverviewResponse"
+        "400":
+          description: Invalid portfolio identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Portfolio overview calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/value-history:
+    get:
+      operationId: getPortfolioValueHistoryByID
+      summary: Get the requested local default portfolio value history.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
+        - name: range
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/PortfolioRange"
+      responses:
+        "200":
+          description: Portfolio value history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioValueHistoryResponse"
+        "400":
+          description: Invalid portfolio identifier or portfolio value history range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Portfolio value history calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/account-values:
+    get:
+      operationId: getPortfolioAccountValuesByID
+      summary: Get current value by account for the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
+      responses:
+        "200":
+          description: Portfolio account values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioAccountValuesResponse"
+        "400":
+          description: Invalid portfolio identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Portfolio account value calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:

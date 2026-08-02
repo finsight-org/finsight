@@ -9,17 +9,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/dateutil"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
-type LocalBootstrapper interface {
-	BootstrapLocal(context.Context) (bootstrap.Result, error)
-}
-
 type Repository interface {
-	LoadValuationData(context.Context, uuid.UUID, uuid.UUID, string, time.Time) (valuationData, error)
+	LoadValuationData(context.Context, uuid.UUID, time.Time) (valuationData, error)
 }
 
 type valuationAccount struct {
@@ -60,32 +55,32 @@ type fxRate struct {
 }
 
 type valuationData struct {
-	Accounts []valuationAccount
-	Entries  []valuationEntry
-	Prices   []marketPrice
-	FXRates  []fxRate
+	BaseCurrency string
+	Accounts     []valuationAccount
+	Entries      []valuationEntry
+	Prices       []marketPrice
+	FXRates      []fxRate
 }
 
 type Service struct {
-	bootstrap  LocalBootstrapper
 	repository Repository
 	now        func() time.Time
 }
 
-func NewService(bootstrap LocalBootstrapper, repository Repository) Service {
-	return Service{bootstrap: bootstrap, repository: repository, now: time.Now}
+func NewService(repository Repository) Service {
+	return Service{repository: repository, now: time.Now}
 }
 
-func NewServiceWithClock(bootstrap LocalBootstrapper, repository Repository, now func() time.Time) Service {
-	return Service{bootstrap: bootstrap, repository: repository, now: now}
+func NewServiceWithClock(repository Repository, now func() time.Time) Service {
+	return Service{repository: repository, now: now}
 }
 
-func (s Service) GetOverview(ctx context.Context) (portfolio.Overview, error) {
-	loaded, err := s.loadData(ctx)
+func (s Service) GetOverview(ctx context.Context, portfolioID uuid.UUID) (portfolio.Overview, error) {
+	loaded, err := s.loadData(ctx, portfolioID)
 	if err != nil {
 		return portfolio.Overview{}, err
 	}
-	baseCurrency := loaded.localContext.Portfolio.BaseCurrency
+	baseCurrency := loaded.data.BaseCurrency
 	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
 	return portfolio.Overview{
 		BaseCurrency:  baseCurrency,
@@ -95,12 +90,12 @@ func (s Service) GetOverview(ctx context.Context) (portfolio.Overview, error) {
 	}, nil
 }
 
-func (s Service) GetAccountValues(ctx context.Context) (portfolio.AccountValues, error) {
-	loaded, err := s.loadData(ctx)
+func (s Service) GetAccountValues(ctx context.Context, portfolioID uuid.UUID) (portfolio.AccountValues, error) {
+	loaded, err := s.loadData(ctx, portfolioID)
 	if err != nil {
 		return portfolio.AccountValues{}, err
 	}
-	baseCurrency := loaded.localContext.Portfolio.BaseCurrency
+	baseCurrency := loaded.data.BaseCurrency
 	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
 	return portfolio.AccountValues{
 		BaseCurrency:  baseCurrency,
@@ -110,16 +105,16 @@ func (s Service) GetAccountValues(ctx context.Context) (portfolio.AccountValues,
 	}, nil
 }
 
-func (s Service) GetValueHistory(ctx context.Context, valueRange portfolio.Range) (portfolio.ValueHistory, error) {
+func (s Service) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, valueRange portfolio.Range) (portfolio.ValueHistory, error) {
 	if !portfolio.ValidRange(valueRange) {
 		return portfolio.ValueHistory{}, portfolio.ErrInvalidRange
 	}
 
-	loaded, err := s.loadData(ctx)
+	loaded, err := s.loadData(ctx, portfolioID)
 	if err != nil {
 		return portfolio.ValueHistory{}, err
 	}
-	baseCurrency := loaded.localContext.Portfolio.BaseCurrency
+	baseCurrency := loaded.data.BaseCurrency
 
 	startDate := historyStartDate(valueRange, loaded.valuationDate, loaded.data.Entries)
 	if startDate.IsZero() {
@@ -144,14 +139,10 @@ func (s Service) GetValueHistory(ctx context.Context, valueRange portfolio.Range
 
 type loadedData struct {
 	data          valuationData
-	localContext  bootstrap.Result
 	valuationDate time.Time
 }
 
-func (s Service) loadData(ctx context.Context) (loadedData, error) {
-	if s.bootstrap == nil {
-		return loadedData{}, fmt.Errorf("portfolio bootstrapper is required")
-	}
+func (s Service) loadData(ctx context.Context, portfolioID uuid.UUID) (loadedData, error) {
 	if s.repository == nil {
 		return loadedData{}, fmt.Errorf("portfolio repository is required")
 	}
@@ -161,16 +152,11 @@ func (s Service) loadData(ctx context.Context) (loadedData, error) {
 	}
 	valuationDate := dateutil.DateOnly(now().UTC())
 
-	localContext, err := s.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return loadedData{}, fmt.Errorf("resolve local portfolio context: %w", err)
-	}
-
-	data, err := s.repository.LoadValuationData(ctx, localContext.Workspace.ID, localContext.Portfolio.ID, localContext.Portfolio.BaseCurrency, valuationDate)
+	data, err := s.repository.LoadValuationData(ctx, portfolioID, valuationDate)
 	if err != nil {
 		return loadedData{}, fmt.Errorf("load portfolio valuation data: %w", err)
 	}
-	return loadedData{data: data, localContext: localContext, valuationDate: valuationDate}, nil
+	return loadedData{data: data, valuationDate: valuationDate}, nil
 }
 
 type accountAssetKey struct {

@@ -2,6 +2,7 @@ package portfoliovalue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
@@ -27,15 +29,27 @@ func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
 	insertTestFXRate(t, ctx, pool, workspaceID, "USD", "CAD", "2026-07-01", "1.35")
 	insertTestFXRate(t, ctx, pool, workspaceID, "EUR", "CAD", "2026-07-01", "1.50")
 
-	data, err := NewPostgresRepository(pool).LoadValuationData(ctx, workspaceID, portfolioID, "CAD", mustDate("2026-07-07"))
+	data, err := NewPostgresRepository(pool).LoadValuationData(ctx, portfolioID, mustDate("2026-07-07"))
 	if err != nil {
 		t.Fatalf("LoadValuationData() error = %v", err)
+	}
+	if data.BaseCurrency != "CAD" {
+		t.Fatalf("base currency = %q, want CAD", data.BaseCurrency)
 	}
 	if len(data.FXRates) != 1 {
 		t.Fatalf("fx rate count = %d, want 1", len(data.FXRates))
 	}
 	if data.FXRates[0].FromCurrency != "USD" || data.FXRates[0].ToCurrency != "CAD" {
 		t.Fatalf("fx rate = %#v, want USD to CAD", data.FXRates[0])
+	}
+}
+
+func TestPostgresRepositoryReturnsNotFoundForMissingPortfolio(t *testing.T) {
+	pool := postgresTestPool(t)
+
+	_, err := NewPostgresRepository(pool).LoadValuationData(context.Background(), uuid.New(), mustDate("2026-07-07"))
+	if !errors.Is(err, portfolio.ErrNotFound) {
+		t.Fatalf("LoadValuationData() error = %v, want %v", err, portfolio.ErrNotFound)
 	}
 }
 

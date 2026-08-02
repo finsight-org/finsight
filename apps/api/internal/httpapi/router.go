@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,9 +41,9 @@ type AssetFinder interface {
 }
 
 type PortfolioService interface {
-	GetOverview(context.Context) (portfolio.Overview, error)
-	GetValueHistory(context.Context, portfolio.Range) (portfolio.ValueHistory, error)
-	GetAccountValues(context.Context) (portfolio.AccountValues, error)
+	GetOverview(context.Context, uuid.UUID) (portfolio.Overview, error)
+	GetValueHistory(context.Context, uuid.UUID, portfolio.Range) (portfolio.ValueHistory, error)
+	GetAccountValues(context.Context, uuid.UUID) (portfolio.AccountValues, error)
 }
 
 type Options struct {
@@ -76,12 +78,12 @@ func NewRouter(options Options) http.Handler {
 	})
 }
 
-func generatedParameterError(w http.ResponseWriter, r *http.Request, _ error) {
+func generatedParameterError(w http.ResponseWriter, r *http.Request, err error) {
 	if r.URL.Path == "/api/assets/search" {
 		writeAssetError(w, http.StatusBadRequest, "invalid_asset_search_query", "asset search query is invalid")
 		return
 	}
-	if r.URL.Path == "/api/portfolio/value-history" {
+	if strings.HasSuffix(r.URL.Path, "/value-history") && isPortfolioRangeParameterError(err) {
 		writePortfolioError(w, http.StatusBadRequest, "invalid_portfolio_range", "portfolio range is invalid")
 		return
 	}
@@ -92,4 +94,14 @@ func generatedParameterError(w http.ResponseWriter, r *http.Request, _ error) {
 			Message: "request parameters are invalid",
 		},
 	})
+}
+
+func isPortfolioRangeParameterError(err error) bool {
+	var requiredParameterError *generated.RequiredParamError
+	if errors.As(err, &requiredParameterError) {
+		return requiredParameterError.ParamName == "range"
+	}
+
+	var invalidParameterError *generated.InvalidParamFormatError
+	return errors.As(err, &invalidParameterError) && invalidParameterError.ParamName == "range"
 }

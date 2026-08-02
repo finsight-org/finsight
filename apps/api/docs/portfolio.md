@@ -2,7 +2,7 @@
 
 Portfolio values are read-only derived views. Transactions and ledger entries remain the source of truth; the portfolio service derives current value, value history, and account values from confirmed ledger entries plus market prices and FX rates.
 
-Values are reported in the default portfolio base currency. Cash ledger amounts and priced asset market values are converted with direct FX rates into that base currency when needed. Missing prices or FX rates are returned as warnings and the incomplete values are excluded from totals rather than estimated.
+Values are reported in the selected portfolio base currency. Cash ledger amounts and priced asset market values are converted with direct FX rates into that base currency when needed. Missing prices or FX rates are returned as warnings and the incomplete values are excluded from totals rather than estimated.
 
 ## Demo Seed
 
@@ -29,9 +29,13 @@ Demo records use stable markers such as `source = 'DEMO'`, `external_id = 'finsi
 
 ## Endpoints
 
-- `GET /api/portfolio/overview`
-- `GET /api/portfolio/value-history?range=1Y`
-- `GET /api/portfolio/account-values`
+Canonical endpoints:
+
+- `GET /api/portfolios/{portfolio_id}/overview`
+- `GET /api/portfolios/{portfolio_id}/value-history?range=1Y`
+- `GET /api/portfolios/{portfolio_id}/account-values`
+
+In local deployment mode, the API reads the default portfolio ID from PostgreSQL for each request and only allows that ID. The unscoped `GET /api/portfolio/overview`, `GET /api/portfolio/value-history`, and `GET /api/portfolio/account-values` endpoints are temporary compatibility routes; they resolve that default ID and delegate to the same valuation service.
 
 Supported ranges:
 
