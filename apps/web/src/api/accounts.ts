@@ -41,6 +41,7 @@ export function useCreateAccountMutation() {
 
   return useMutation({
     mutationFn: ({ portfolioId, body }: CreateAccountMutationInput) => createAccount(portfolioId, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey }),
+    onSuccess: (_account, { portfolioId }) =>
+      queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey(portfolioId) }),
   })
 }

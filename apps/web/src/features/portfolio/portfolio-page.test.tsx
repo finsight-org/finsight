@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { PortfolioPage } from '@/features/portfolio/portfolio-page'
 
 const portfolioState = vi.hoisted(() => ({
+  portfolioId: '33333333-3333-3333-3333-333333333333',
   overview: {
     data: {
       base_currency: 'CAD',
@@ -54,15 +55,23 @@ const portfolioState = vi.hoisted(() => ({
   },
 }))
 
+const portfolioHooks = vi.hoisted(() => ({
+  usePortfolioOverviewQuery: vi.fn(() => portfolioState.overview),
+  usePortfolioValueHistoryQuery: vi.fn(() => portfolioState.history),
+  usePortfolioAccountValuesQuery: vi.fn(() => portfolioState.accountValues),
+}))
+
 vi.mock('@/api/portfolio', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/portfolio')>()
   return {
     ...actual,
-    usePortfolioOverviewQuery: () => portfolioState.overview,
-    usePortfolioValueHistoryQuery: () => portfolioState.history,
-    usePortfolioAccountValuesQuery: () => portfolioState.accountValues,
+    ...portfolioHooks,
   }
 })
+
+vi.mock('@/api/me', () => ({
+  useMeQuery: () => ({ data: { default_portfolio_id: portfolioState.portfolioId } }),
+}))
 
 describe('PortfolioPage', () => {
   beforeEach(() => {
@@ -72,6 +81,9 @@ describe('PortfolioPage', () => {
     portfolioState.history.error = null
     portfolioState.accountValues.isLoading = false
     portfolioState.accountValues.error = null
+    portfolioHooks.usePortfolioOverviewQuery.mockClear()
+    portfolioHooks.usePortfolioValueHistoryQuery.mockClear()
+    portfolioHooks.usePortfolioAccountValuesQuery.mockClear()
   })
 
   it('renders API-backed portfolio value, chart, and account values', () => {
@@ -91,6 +103,9 @@ describe('PortfolioPage', () => {
     expect(screen.getByRole('heading', { name: /wealthsimple tfsa/i })).toBeInTheDocument()
     expect(screen.getByText(/\$53,220.00/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /questrade margin/i })).toBeInTheDocument()
+    expect(portfolioHooks.usePortfolioOverviewQuery).toHaveBeenCalledWith(portfolioState.portfolioId)
+    expect(portfolioHooks.usePortfolioValueHistoryQuery).toHaveBeenCalledWith(portfolioState.portfolioId, '1Y')
+    expect(portfolioHooks.usePortfolioAccountValuesQuery).toHaveBeenCalledWith(portfolioState.portfolioId)
   })
 
   it('renders independent loading and error states', () => {
