@@ -21,12 +21,15 @@ export const timeRanges = [
   { value: PortfolioRange.ALL, labelKey: 'portfolio.tabs.ranges.all' },
 ] as const
 
-export const portfolioOverviewQueryKey = ['portfolio', 'overview'] as const
-export const portfolioValueHistoryQueryKey = (range: PortfolioRange) => ['portfolio', 'value-history', range] as const
-export const portfolioAccountValuesQueryKey = ['portfolio', 'account-values'] as const
+export const portfolioOverviewQueryKey = (portfolioId: string) => ['portfolio', portfolioId, 'overview'] as const
+export const portfolioValueHistoryQueryKey = (portfolioId: string, range: PortfolioRange) =>
+  ['portfolio', portfolioId, 'value-history', range] as const
+export const portfolioAccountValuesQueryKey = (portfolioId: string) => ['portfolio', portfolioId, 'account-values'] as const
 
-export async function getPortfolioOverview() {
-  const { data, error } = await apiClient.GET('/api/portfolio/overview')
+export async function getPortfolioOverview(portfolioId: string) {
+  const { data, error } = await apiClient.GET('/api/portfolios/{portfolio_id}/overview', {
+    params: { path: { portfolio_id: portfolioId } },
+  })
 
   if (error) {
     throw new Error(errorMessage(error, i18n.t('errors.portfolioOverview')))
@@ -38,9 +41,10 @@ export async function getPortfolioOverview() {
   return data
 }
 
-export async function getPortfolioValueHistory(range: PortfolioRange) {
-  const { data, error } = await apiClient.GET('/api/portfolio/value-history', {
+export async function getPortfolioValueHistory(portfolioId: string, range: PortfolioRange) {
+  const { data, error } = await apiClient.GET('/api/portfolios/{portfolio_id}/value-history', {
     params: {
+      path: { portfolio_id: portfolioId },
       query: { range },
     },
   })
@@ -55,8 +59,10 @@ export async function getPortfolioValueHistory(range: PortfolioRange) {
   return data
 }
 
-export async function getPortfolioAccountValues() {
-  const { data, error } = await apiClient.GET('/api/portfolio/account-values')
+export async function getPortfolioAccountValues(portfolioId: string) {
+  const { data, error } = await apiClient.GET('/api/portfolios/{portfolio_id}/account-values', {
+    params: { path: { portfolio_id: portfolioId } },
+  })
 
   if (error) {
     throw new Error(errorMessage(error, i18n.t('errors.portfolioAccountValues')))
@@ -68,23 +74,26 @@ export async function getPortfolioAccountValues() {
   return data
 }
 
-export function usePortfolioOverviewQuery() {
+export function usePortfolioOverviewQuery(portfolioId?: string) {
   return useQuery({
-    queryKey: portfolioOverviewQueryKey,
-    queryFn: getPortfolioOverview,
+    queryKey: portfolioOverviewQueryKey(portfolioId ?? ''),
+    queryFn: () => getPortfolioOverview(portfolioId!),
+    enabled: Boolean(portfolioId),
   })
 }
 
-export function usePortfolioValueHistoryQuery(range: PortfolioRange) {
+export function usePortfolioValueHistoryQuery(portfolioId: string | undefined, range: PortfolioRange) {
   return useQuery({
-    queryKey: portfolioValueHistoryQueryKey(range),
-    queryFn: () => getPortfolioValueHistory(range),
+    queryKey: portfolioValueHistoryQueryKey(portfolioId ?? '', range),
+    queryFn: () => getPortfolioValueHistory(portfolioId!, range),
+    enabled: Boolean(portfolioId),
   })
 }
 
-export function usePortfolioAccountValuesQuery() {
+export function usePortfolioAccountValuesQuery(portfolioId?: string) {
   return useQuery({
-    queryKey: portfolioAccountValuesQueryKey,
-    queryFn: getPortfolioAccountValues,
+    queryKey: portfolioAccountValuesQueryKey(portfolioId ?? ''),
+    queryFn: () => getPortfolioAccountValues(portfolioId!),
+    enabled: Boolean(portfolioId),
   })
 }

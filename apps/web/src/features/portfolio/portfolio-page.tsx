@@ -10,6 +10,7 @@ import {
   usePortfolioValueHistoryQuery,
   type PortfolioAccountValues,
 } from '@/api/portfolio'
+import { useMeQuery } from '@/api/me'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,9 +21,11 @@ import { PortfolioChart } from '@/features/portfolio/portfolio-chart'
 
 export function PortfolioPage() {
   const [range, setRange] = useState(PortfolioRange.Value1Y)
-  const overviewQuery = usePortfolioOverviewQuery()
-  const valueHistoryQuery = usePortfolioValueHistoryQuery(range)
-  const accountValuesQuery = usePortfolioAccountValuesQuery()
+  const meQuery = useMeQuery()
+  const portfolioId = meQuery.data?.default_portfolio_id
+  const overviewQuery = usePortfolioOverviewQuery(portfolioId)
+  const valueHistoryQuery = usePortfolioValueHistoryQuery(portfolioId, range)
+  const accountValuesQuery = usePortfolioAccountValuesQuery(portfolioId)
   const { t } = useTranslation()
   const overview = overviewQuery.data
   const totalValue = overview ? formatMoney(overview.total_value, overview.base_currency) : null
