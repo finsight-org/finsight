@@ -3,12 +3,14 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
+import { meQueryKey } from '@/api/me'
 import { AddAccountDialog } from '@/features/accounts/add-account-dialog'
 
 function renderWithQueryClient() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } },
   })
+  queryClient.setQueryData(meQueryKey, { default_portfolio_id: '11111111-1111-1111-1111-111111111111' })
 
   return render(
     <QueryClientProvider client={queryClient}>
