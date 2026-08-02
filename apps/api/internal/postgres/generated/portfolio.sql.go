@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getPortfolioValuationContext = `-- name: GetPortfolioValuationContext :one
+select workspace_id, base_currency
+from portfolios
+where id = $1
+`
+
+type GetPortfolioValuationContextRow struct {
+	WorkspaceID  pgtype.UUID
+	BaseCurrency string
+}
+
+func (q *Queries) GetPortfolioValuationContext(ctx context.Context, portfolioID pgtype.UUID) (GetPortfolioValuationContextRow, error) {
+	row := q.db.QueryRow(ctx, getPortfolioValuationContext, portfolioID)
+	var i GetPortfolioValuationContextRow
+	err := row.Scan(&i.WorkspaceID, &i.BaseCurrency)
+	return i, err
+}
+
 const listPortfolioAccountsForValuation = `-- name: ListPortfolioAccountsForValuation :many
 select id, name
 from accounts

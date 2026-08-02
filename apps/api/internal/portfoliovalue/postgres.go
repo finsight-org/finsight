@@ -2,12 +2,15 @@ package portfoliovalue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
@@ -20,12 +23,24 @@ func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
 	return PostgresRepository{db: db}
 }
 
-func (r PostgresRepository) LoadValuationData(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID, baseCurrency string, endDate time.Time) (valuationData, error) {
+func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
 	if r.db == nil {
 		return valuationData{}, fmt.Errorf("postgres pool is required")
 	}
 
 	queries := db.New(r.db)
+	portfolioContext, err := queries.GetPortfolioValuationContext(ctx, pgconv.UUID(portfolioID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return valuationData{}, portfolio.ErrNotFound
+		}
+		return valuationData{}, fmt.Errorf("select portfolio valuation context: %w", err)
+	}
+	workspaceID, err := pgconv.DomainUUID(portfolioContext.WorkspaceID)
+	if err != nil {
+		return valuationData{}, fmt.Errorf("map portfolio workspace id: %w", err)
+	}
+
 	accountRows, err := queries.ListPortfolioAccountsForValuation(ctx, pgconv.UUID(portfolioID))
 	if err != nil {
 		return valuationData{}, fmt.Errorf("select portfolio accounts: %w", err)
@@ -50,7 +65,7 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, workspaceID u
 	fxRateRows, err := queries.ListPortfolioFxRatesForValuation(ctx, db.ListPortfolioFxRatesForValuationParams{
 		WorkspaceID:  pgconv.UUID(workspaceID),
 		PortfolioID:  pgconv.UUID(portfolioID),
-		BaseCurrency: baseCurrency,
+		BaseCurrency: portfolioContext.BaseCurrency,
 		EndDate:      pgconv.Date(endDate),
 	})
 	if err != nil {
@@ -58,10 +73,11 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, workspaceID u
 	}
 
 	data := valuationData{
-		Accounts: make([]valuationAccount, 0, len(accountRows)),
-		Entries:  make([]valuationEntry, 0, len(entryRows)),
-		Prices:   make([]marketPrice, 0, len(priceRows)),
-		FXRates:  make([]fxRate, 0, len(fxRateRows)),
+		BaseCurrency: portfolioContext.BaseCurrency,
+		Accounts:     make([]valuationAccount, 0, len(accountRows)),
+		Entries:      make([]valuationEntry, 0, len(entryRows)),
+		Prices:       make([]marketPrice, 0, len(priceRows)),
+		FXRates:      make([]fxRate, 0, len(fxRateRows)),
 	}
 
 	for _, row := range accountRows {
