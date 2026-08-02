@@ -10,6 +10,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
+	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
@@ -20,6 +21,10 @@ type DatabasePinger interface {
 
 type LocalBootstrapper interface {
 	BootstrapLocal(context.Context) (bootstrap.Result, error)
+}
+
+type LocalContextService interface {
+	DefaultPortfolioID(context.Context) (uuid.UUID, error)
 }
 
 type AccountService interface {
@@ -39,26 +44,30 @@ type PortfolioService interface {
 }
 
 type Options struct {
-	ServiceName  string
-	Version      string
-	ReadyTimeout time.Duration
-	Database     DatabasePinger
-	Bootstrap    LocalBootstrapper
-	Accounts     AccountService
-	Assets       AssetFinder
-	Portfolio    PortfolioService
+	ServiceName    string
+	Version        string
+	ReadyTimeout   time.Duration
+	DeploymentMode config.DeploymentMode
+	Database       DatabasePinger
+	Bootstrap      LocalBootstrapper
+	LocalContext   LocalContextService
+	Accounts       AccountService
+	Assets         AssetFinder
+	Portfolio      PortfolioService
 }
 
 func NewRouter(options Options) http.Handler {
 	handler := apiServer{
-		serviceName:  options.ServiceName,
-		version:      options.Version,
-		readyTimeout: options.ReadyTimeout,
-		database:     options.Database,
-		bootstrap:    options.Bootstrap,
-		accounts:     options.Accounts,
-		assets:       options.Assets,
-		portfolio:    options.Portfolio,
+		serviceName:    options.ServiceName,
+		version:        options.Version,
+		readyTimeout:   options.ReadyTimeout,
+		deploymentMode: options.DeploymentMode,
+		database:       options.Database,
+		bootstrap:      options.Bootstrap,
+		localContext:   options.LocalContext,
+		accounts:       options.Accounts,
+		assets:         options.Assets,
+		portfolio:      options.Portfolio,
 	}
 
 	return generated.HandlerWithOptions(handler, generated.StdHTTPServerOptions{

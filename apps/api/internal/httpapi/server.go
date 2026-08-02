@@ -4,17 +4,21 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/finsight-org/finsight/apps/api/internal/config"
 )
 
 type apiServer struct {
-	serviceName  string
-	version      string
-	readyTimeout time.Duration
-	database     DatabasePinger
-	bootstrap    LocalBootstrapper
-	accounts     AccountService
-	assets       AssetFinder
-	portfolio    PortfolioService
+	serviceName    string
+	version        string
+	readyTimeout   time.Duration
+	deploymentMode config.DeploymentMode
+	database       DatabasePinger
+	bootstrap      LocalBootstrapper
+	localContext   LocalContextService
+	accounts       AccountService
+	assets         AssetFinder
+	portfolio      PortfolioService
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

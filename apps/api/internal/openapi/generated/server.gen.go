@@ -180,6 +180,11 @@ type LocalBootstrapResponse struct {
 	Workspace  BootstrapWorkspace           `json:"workspace"`
 }
 
+// MeResponse defines model for MeResponse.
+type MeResponse struct {
+	DefaultPortfolioId openapi_types.UUID `json:"default_portfolio_id"`
+}
+
 // PortfolioAccountValue defines model for PortfolioAccountValue.
 type PortfolioAccountValue struct {
 	AccountId         openapi_types.UUID `json:"account_id"`
@@ -267,6 +272,9 @@ type ServerInterface interface {
 	// Create or return the local development identity context.
 	// (POST /api/local/bootstrap)
 	PostLocalBootstrap(w http.ResponseWriter, r *http.Request)
+	// Get the local default portfolio context.
+	// (GET /api/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 	// Get current read-only value by account.
 	// (GET /api/portfolio/account-values)
 	GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request)
@@ -393,6 +401,20 @@ func (siw *ServerInterfaceWrapper) PostLocalBootstrap(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostLocalBootstrap(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -617,6 +639,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}", wrapper.GetAccount)
 	m.HandleFunc("GET "+options.BaseURL+"/api/assets/search", wrapper.SearchAssets)
 	m.HandleFunc("POST "+options.BaseURL+"/api/local/bootstrap", wrapper.PostLocalBootstrap)
+	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
 	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/account-values", wrapper.GetPortfolioAccountValues)
 	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/overview", wrapper.GetPortfolioOverview)
 	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/value-history", wrapper.GetPortfolioValueHistory)

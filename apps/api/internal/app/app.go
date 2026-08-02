@@ -12,6 +12,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/httpapi"
+	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
 	"github.com/finsight-org/finsight/apps/api/internal/startup"
@@ -32,6 +33,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	bootstrapRepository := bootstrap.NewPostgresRepository(db)
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
+	localContextRepository := localcontext.NewPostgresRepository(db)
+	localContextService := localcontext.NewService(localContextRepository)
 	accountRepository := account.NewPostgresRepository(db)
 	accountService := account.NewService(bootstrapService, accountRepository)
 	portfolioRepository := portfoliovalue.NewPostgresRepository(db)
@@ -49,14 +52,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	handler := httpapi.NewRouter(httpapi.Options{
-		ServiceName:  cfg.ServiceName,
-		Version:      cfg.Version,
-		ReadyTimeout: cfg.ReadyTimeout,
-		Database:     db,
-		Bootstrap:    bootstrapService,
-		Accounts:     accountService,
-		Assets:       assetFinder,
-		Portfolio:    portfolioService,
+		ServiceName:    cfg.ServiceName,
+		Version:        cfg.Version,
+		ReadyTimeout:   cfg.ReadyTimeout,
+		Database:       db,
+		DeploymentMode: cfg.DeploymentMode,
+		Bootstrap:      bootstrapService,
+		LocalContext:   localContextService,
+		Accounts:       accountService,
+		Assets:         assetFinder,
+		Portfolio:      portfolioService,
 	})
 
 	return &App{
