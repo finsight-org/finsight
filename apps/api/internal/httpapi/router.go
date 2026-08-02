@@ -25,12 +25,13 @@ type LocalBootstrapper interface {
 
 type LocalContextService interface {
 	DefaultPortfolioID(context.Context) (uuid.UUID, error)
+	EnsurePortfolio(context.Context, uuid.UUID) error
 }
 
 type AccountService interface {
-	CreateAccount(context.Context, account.CreateInput) (account.Account, error)
-	ListAccounts(context.Context) ([]account.Account, error)
-	GetAccount(context.Context, uuid.UUID) (account.Account, error)
+	CreateAccount(context.Context, uuid.UUID, account.CreateInput) (account.Account, error)
+	ListAccounts(context.Context, uuid.UUID) ([]account.Account, error)
+	GetAccount(context.Context, uuid.UUID, uuid.UUID) (account.Account, error)
 }
 
 type AssetFinder interface {

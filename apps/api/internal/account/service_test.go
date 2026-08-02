@@ -7,19 +7,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
-	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
-func TestCreateAccountUsesDefaultPortfolioAndNormalizesInput(t *testing.T) {
+func TestCreateAccountUsesProvidedPortfolioAndNormalizesInput(t *testing.T) {
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	repository := &fakeRepository{}
-	service := NewService(fakeBootstrapper{result: bootstrapResult(portfolioID)}, repository)
+	service := NewService(repository)
 
 	institution := "  Questrade  "
 	externalReference := "  margin-1  "
-	created, err := service.CreateAccount(context.Background(), CreateInput{
+	created, err := service.CreateAccount(context.Background(), portfolioID, CreateInput{
 		Name:              "  Margin  ",
 		InstitutionName:   &institution,
 		Type:              TypeBrokerage,
@@ -71,8 +68,8 @@ func TestCreateAccountValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewService(fakeBootstrapper{result: bootstrapResult(uuid.New())}, &fakeRepository{})
-			_, err := service.CreateAccount(context.Background(), tt.input)
+			service := NewService(&fakeRepository{})
+			_, err := service.CreateAccount(context.Background(), uuid.New(), tt.input)
 			if !errors.Is(err, tt.want) {
 				t.Fatalf("CreateAccount() error = %v, want %v", err, tt.want)
 			}
@@ -80,12 +77,12 @@ func TestCreateAccountValidation(t *testing.T) {
 	}
 }
 
-func TestListAccountsUsesDefaultPortfolio(t *testing.T) {
+func TestListAccountsUsesProvidedPortfolio(t *testing.T) {
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	repository := &fakeRepository{}
-	service := NewService(fakeBootstrapper{result: bootstrapResult(portfolioID)}, repository)
+	service := NewService(repository)
 
-	_, err := service.ListAccounts(context.Background())
+	_, err := service.ListAccounts(context.Background(), portfolioID)
 	if err != nil {
 		t.Fatalf("ListAccounts() error = %v", err)
 	}
@@ -94,13 +91,13 @@ func TestListAccountsUsesDefaultPortfolio(t *testing.T) {
 	}
 }
 
-func TestGetAccountUsesDefaultPortfolio(t *testing.T) {
+func TestGetAccountUsesProvidedPortfolio(t *testing.T) {
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
 	repository := &fakeRepository{}
-	service := NewService(fakeBootstrapper{result: bootstrapResult(portfolioID)}, repository)
+	service := NewService(repository)
 
-	_, err := service.GetAccount(context.Background(), accountID)
+	_, err := service.GetAccount(context.Background(), portfolioID, accountID)
 	if err != nil {
 		t.Fatalf("GetAccount() error = %v", err)
 	}
@@ -110,15 +107,6 @@ func TestGetAccountUsesDefaultPortfolio(t *testing.T) {
 	if repository.getAccountID != accountID {
 		t.Fatalf("account id = %s, want %s", repository.getAccountID, accountID)
 	}
-}
-
-type fakeBootstrapper struct {
-	result bootstrap.Result
-	err    error
-}
-
-func (b fakeBootstrapper) BootstrapLocal(context.Context) (bootstrap.Result, error) {
-	return b.result, b.err
 }
 
 type fakeRepository struct {
@@ -151,16 +139,4 @@ func (r *fakeRepository) GetByPortfolioAndID(_ context.Context, portfolioID uuid
 	}
 	now := time.Now()
 	return Account{ID: id, PortfolioID: portfolioID, Name: "Margin", Type: TypeBrokerage, BaseCurrency: "CAD", CreatedAt: now, UpdatedAt: now}, nil
-}
-
-func bootstrapResult(portfolioID uuid.UUID) bootstrap.Result {
-	return bootstrap.Result{
-		Portfolio: portfolio.Portfolio{
-			ID:           portfolioID,
-			WorkspaceID:  uuid.New(),
-			Name:         "Default Portfolio",
-			BaseCurrency: "CAD",
-			IsDefault:    true,
-		},
-	}
 }

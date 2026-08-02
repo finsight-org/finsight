@@ -40,6 +40,33 @@ func TestDefaultPortfolioIDWrapsRepositoryError(t *testing.T) {
 	}
 }
 
+func TestEnsurePortfolioAllowsDefaultPortfolio(t *testing.T) {
+	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	service := NewService(fakeRepository{portfolioID: portfolioID})
+
+	if err := service.EnsurePortfolio(context.Background(), portfolioID); err != nil {
+		t.Fatalf("EnsurePortfolio() error = %v", err)
+	}
+}
+
+func TestEnsurePortfolioRejectsNonDefaultPortfolio(t *testing.T) {
+	service := NewService(fakeRepository{portfolioID: uuid.MustParse("11111111-1111-1111-1111-111111111111")})
+
+	err := service.EnsurePortfolio(context.Background(), uuid.MustParse("22222222-2222-2222-2222-222222222222"))
+	if !errors.Is(err, ErrPortfolioNotAllowed) {
+		t.Fatalf("EnsurePortfolio() error = %v, want ErrPortfolioNotAllowed", err)
+	}
+}
+
+func TestEnsurePortfolioPreservesDefaultPortfolioLookupError(t *testing.T) {
+	service := NewService(fakeRepository{err: ErrNotFound})
+
+	err := service.EnsurePortfolio(context.Background(), uuid.New())
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("EnsurePortfolio() error = %v, want ErrNotFound", err)
+	}
+}
+
 type fakeRepository struct {
 	portfolioID uuid.UUID
 	err         error
