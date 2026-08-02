@@ -237,6 +237,41 @@ func TestPostPortfolioAccountInvalidBody(t *testing.T) {
 	assertErrorCode(t, response, "invalid_request")
 }
 
+func TestPortfolioAccountRoutesRejectInvalidPathIDs(t *testing.T) {
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	tests := []struct {
+		name string
+		path string
+	}{
+		{
+			name: "list invalid portfolio id",
+			path: "/api/portfolios/not-a-uuid/accounts",
+		},
+		{
+			name: "get invalid account id",
+			path: "/api/portfolios/" + portfolioID.String() + "/accounts/not-a-uuid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			accounts := &fakeAccountService{}
+			router := newLocalAccountRouter(portfolioID, accounts, &fakeAccountLocalContext{})
+
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+			assertErrorCode(t, response, "invalid_request")
+			if accounts.calls != 0 {
+				t.Fatalf("account service calls = %d, want 0", accounts.calls)
+			}
+		})
+	}
+}
+
 func TestAccountValidationErrorMapping(t *testing.T) {
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	tests := []struct {

@@ -652,6 +652,15 @@ export interface operations {
                     "application/json": components["schemas"]["AccountListResponse"];
                 };
             };
+            /** @description Invalid portfolio identifier. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Requested portfolio is not available in the local context. */
             404: {
                 headers: {
@@ -771,6 +780,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Invalid portfolio or account identifier. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Requested portfolio or account was not found. */

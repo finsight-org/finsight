@@ -232,6 +232,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccountListResponse"
+        "400":
+          description: Invalid portfolio identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Requested portfolio is not available in the local context.
           content:
@@ -269,6 +275,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid portfolio or account identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Requested portfolio or account was not found.
           content:
