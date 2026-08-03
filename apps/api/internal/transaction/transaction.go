@@ -113,7 +113,6 @@ type CreateLedgerEntryInput struct {
 }
 
 type createRepositoryInput struct {
-	WorkspaceID    uuid.UUID
 	PortfolioID    uuid.UUID
 	AccountID      uuid.UUID
 	ImportID       *uuid.UUID

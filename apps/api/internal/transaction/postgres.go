@@ -38,7 +38,11 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 	if err := validateAccount(ctx, queries, input.PortfolioID, input.AccountID); err != nil {
 		return Transaction{}, err
 	}
-	if err := validateLedgerAssets(ctx, queries, input.WorkspaceID, input.LedgerEntries); err != nil {
+	workspaceID, err := transactionWorkspaceID(ctx, queries, input.PortfolioID)
+	if err != nil {
+		return Transaction{}, err
+	}
+	if err := validateLedgerAssets(ctx, queries, workspaceID, input.LedgerEntries); err != nil {
 		return Transaction{}, err
 	}
 
@@ -91,6 +95,18 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 		return Transaction{}, fmt.Errorf("commit transaction insert: %w", err)
 	}
 	return created, nil
+}
+
+func transactionWorkspaceID(ctx context.Context, queries *db.Queries, portfolioID uuid.UUID) (uuid.UUID, error) {
+	value, err := queries.GetTransactionWorkspaceID(ctx, pgconv.UUID(portfolioID))
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("get transaction workspace: %w", err)
+	}
+	workspaceID, err := pgconv.DomainUUID(value)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("map transaction workspace id: %w", err)
+	}
+	return workspaceID, nil
 }
 
 func validateAccount(ctx context.Context, queries *db.Queries, portfolioID uuid.UUID, accountID uuid.UUID) error {

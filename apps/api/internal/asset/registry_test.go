@@ -5,18 +5,14 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
-	"github.com/finsight-org/finsight/apps/api/internal/identity"
-	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
 func TestUpsertAssetRoutesCashThroughCashRepositoryPath(t *testing.T) {
 	workspaceID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	repository := &fakeRegistryRepository{}
-	registry := NewRegistry(fakeRegistryBootstrapper{result: registryBootstrapResult(workspaceID)}, repository)
+	registry := NewRegistry(repository)
 
-	created, err := registry.UpsertAsset(context.Background(), UpsertInput{
+	created, err := registry.UpsertAsset(context.Background(), workspaceID, UpsertInput{
 		Name:           "Canadian Dollar",
 		Type:           TypeCash,
 		Currency:       "CAD",
@@ -43,9 +39,9 @@ func TestUpsertAssetRoutesCashThroughCashRepositoryPath(t *testing.T) {
 
 func TestUpsertAssetRoutesNonCashThroughProviderRepositoryPath(t *testing.T) {
 	repository := &fakeRegistryRepository{}
-	registry := NewRegistry(fakeRegistryBootstrapper{result: registryBootstrapResult(uuid.New())}, repository)
+	registry := NewRegistry(repository)
 
-	_, err := registry.UpsertAsset(context.Background(), UpsertInput{
+	_, err := registry.UpsertAsset(context.Background(), uuid.New(), UpsertInput{
 		Name:           "iShares Core Equity ETF",
 		Type:           TypeETF,
 		Currency:       "CAD",
@@ -62,15 +58,6 @@ func TestUpsertAssetRoutesNonCashThroughProviderRepositoryPath(t *testing.T) {
 	if repository.upsertCashCalled {
 		t.Fatal("UpsertCash called = true, want false")
 	}
-}
-
-type fakeRegistryBootstrapper struct {
-	result bootstrap.Result
-	err    error
-}
-
-func (b fakeRegistryBootstrapper) BootstrapLocal(context.Context) (bootstrap.Result, error) {
-	return b.result, b.err
 }
 
 type fakeRegistryRepository struct {
@@ -96,23 +83,4 @@ func (r *fakeRegistryRepository) UpsertCash(_ context.Context, input upsertRepos
 		return Asset{}, r.err
 	}
 	return Asset{ID: uuid.New(), WorkspaceID: input.WorkspaceID, Name: input.Name, Type: input.Type, Currency: input.Currency, Symbol: input.Symbol, ProviderID: input.ProviderID, ProviderSymbol: input.ProviderSymbol}, nil
-}
-
-func registryBootstrapResult(workspaceID uuid.UUID) bootstrap.Result {
-	return bootstrap.Result{
-		User: identity.User{ID: uuid.New(), Email: "local@finsight.local", DisplayName: "Local User"},
-		Workspace: identity.Workspace{
-			ID:           workspaceID,
-			Name:         "Local Workspace",
-			BaseCurrency: "CAD",
-			AuthMode:     "local",
-		},
-		Portfolio: portfolio.Portfolio{
-			ID:           uuid.New(),
-			WorkspaceID:  workspaceID,
-			Name:         "Default Portfolio",
-			BaseCurrency: "CAD",
-			IsDefault:    true,
-		},
-	}
 }

@@ -4,12 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
+	"github.com/google/uuid"
 )
-
-type LocalBootstrapper interface {
-	BootstrapLocal(context.Context) (bootstrap.Result, error)
-}
 
 type Repository interface {
 	Upsert(context.Context, upsertRepositoryInput) (Asset, error)
@@ -17,18 +13,14 @@ type Repository interface {
 }
 
 type Registry struct {
-	bootstrap  LocalBootstrapper
 	repository Repository
 }
 
-func NewRegistry(bootstrap LocalBootstrapper, repository Repository) Registry {
-	return Registry{bootstrap: bootstrap, repository: repository}
+func NewRegistry(repository Repository) Registry {
+	return Registry{repository: repository}
 }
 
-func (r Registry) UpsertAsset(ctx context.Context, input UpsertInput) (Asset, error) {
-	if r.bootstrap == nil {
-		return Asset{}, fmt.Errorf("asset bootstrapper is required")
-	}
+func (r Registry) UpsertAsset(ctx context.Context, workspaceID uuid.UUID, input UpsertInput) (Asset, error) {
 	if r.repository == nil {
 		return Asset{}, fmt.Errorf("asset repository is required")
 	}
@@ -50,13 +42,8 @@ func (r Registry) UpsertAsset(ctx context.Context, input UpsertInput) (Asset, er
 		return Asset{}, ErrInvalidProvider
 	}
 
-	localContext, err := r.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return Asset{}, fmt.Errorf("resolve local asset context: %w", err)
-	}
-
 	repositoryInput := upsertRepositoryInput{
-		WorkspaceID:    localContext.Workspace.ID,
+		WorkspaceID:    workspaceID,
 		Name:           input.Name,
 		Type:           input.Type,
 		Currency:       input.Currency,
@@ -69,7 +56,10 @@ func (r Registry) UpsertAsset(ctx context.Context, input UpsertInput) (Asset, er
 		Sector:         input.Sector,
 	}
 
-	var created Asset
+	var (
+		created Asset
+		err     error
+	)
 	if input.Type == TypeCash {
 		created, err = r.repository.UpsertCash(ctx, repositoryInput)
 	} else {

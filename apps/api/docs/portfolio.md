@@ -18,9 +18,10 @@ Or from the API module:
 FINSIGHT_DATABASE_URL=postgres://finsight:finsight@localhost:5432/finsight?sslmode=disable go run ./cmd/finsight-seed-demo
 ```
 
-The seed command:
+The seed command runs the local startup initialization, then reads the persisted local workspace and default portfolio.
 
-- Bootstraps the local workspace and default portfolio.
+It:
+
 - Upserts demo accounts and assets.
 - Replaces only demo-marked transactions and market prices.
 - Preserves non-demo user data.
@@ -35,7 +36,7 @@ Canonical endpoints:
 - `GET /api/portfolios/{portfolio_id}/value-history?range=1Y`
 - `GET /api/portfolios/{portfolio_id}/account-values`
 
-In local deployment mode, the API reads the default portfolio ID from PostgreSQL for each request and only allows that ID. The unscoped `GET /api/portfolio/overview`, `GET /api/portfolio/value-history`, and `GET /api/portfolio/account-values` endpoints are temporary compatibility routes; they resolve that default ID and delegate to the same valuation service.
+In local deployment mode, the API reads the default portfolio ID from PostgreSQL for each request and only allows that ID.
 
 Supported ranges:
 

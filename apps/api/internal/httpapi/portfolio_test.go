@@ -84,26 +84,19 @@ func TestScopedPortfolioValueRoutesRejectUnavailablePortfolio(t *testing.T) {
 	}
 }
 
-func TestPortfolioValueHistoryMissingRangeUsesPortfolioErrorForBothRoutes(t *testing.T) {
+func TestPortfolioValueHistoryMissingRangeUsesPortfolioError(t *testing.T) {
 	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	for _, path := range []string{
-		"/api/portfolio/value-history",
-		"/api/portfolios/" + portfolioID.String() + "/value-history",
-	} {
-		t.Run(path, func(t *testing.T) {
-			service := &fakePortfolioService{}
-			router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{defaultPortfolioID: portfolioID})
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	service := &fakePortfolioService{}
+	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/value-history", nil))
 
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-			}
-			assertErrorCode(t, response, "invalid_portfolio_range")
-			if service.calls != 0 {
-				t.Fatalf("portfolio service calls = %d, want 0", service.calls)
-			}
-		})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	assertErrorCode(t, response, "invalid_portfolio_range")
+	if service.calls != 0 {
+		t.Fatalf("portfolio service calls = %d, want 0", service.calls)
 	}
 }
 
@@ -140,54 +133,34 @@ func TestScopedPortfolioValueRoutesRejectManagedModeBeforeLookup(t *testing.T) {
 	}
 }
 
-func TestLegacyPortfolioValueRoutesUseLocalDefaultPortfolio(t *testing.T) {
+func TestPortfolioValueHistoryInvalidRangeUsesPortfolioError(t *testing.T) {
 	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	tests := []struct {
-		name string
-		path string
-	}{
-		{name: "overview", path: "/api/portfolio/overview"},
-		{name: "history", path: "/api/portfolio/value-history?range=1W"},
-		{name: "account values", path: "/api/portfolio/account-values"},
-	}
+	service := &fakePortfolioService{err: portfolio.ErrInvalidRange}
+	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/value-history?range=BAD", nil))
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service := &fakePortfolioService{history: portfolio.ValueHistory{BaseCurrency: "CAD", Range: portfolio.RangeOneWeek}}
-			localContext := &fakePortfolioLocalContext{defaultPortfolioID: portfolioID}
-			router := newLocalPortfolioRouter(service, localContext)
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tt.path, nil))
-
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-			}
-			if localContext.defaultCalls != 1 {
-				t.Fatalf("DefaultPortfolioID() calls = %d, want 1", localContext.defaultCalls)
-			}
-			if service.portfolioID != portfolioID {
-				t.Fatalf("portfolio id = %s, want %s", service.portfolioID, portfolioID)
-			}
-		})
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
+	assertErrorCode(t, response, "invalid_portfolio_range")
 }
 
-func TestPortfolioValueHistoryInvalidRangeUsesPortfolioErrorForBothRoutes(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+func TestLegacyPortfolioValueRoutesAreNotRegistered(t *testing.T) {
+	service := &fakePortfolioService{}
+	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
+
 	for _, path := range []string{
-		"/api/portfolio/value-history?range=BAD",
-		"/api/portfolios/" + portfolioID.String() + "/value-history?range=BAD",
+		"/api/portfolio/overview",
+		"/api/portfolio/value-history?range=1W",
+		"/api/portfolio/account-values",
 	} {
 		t.Run(path, func(t *testing.T) {
-			service := &fakePortfolioService{err: portfolio.ErrInvalidRange}
-			router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{defaultPortfolioID: portfolioID})
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-
-			if response.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 			}
-			assertErrorCode(t, response, "invalid_portfolio_range")
 		})
 	}
 }

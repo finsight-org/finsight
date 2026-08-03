@@ -1,3 +1,8 @@
+-- name: GetTransactionWorkspaceID :one
+select workspace_id
+from portfolios
+where id = @portfolio_id;
+
 -- name: CreateTransaction :one
 insert into transactions (
     portfolio_id,

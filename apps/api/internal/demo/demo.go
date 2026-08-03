@@ -10,7 +10,6 @@ import (
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 )
 
@@ -18,16 +17,12 @@ const (
 	sourceDemo = "DEMO"
 )
 
-type LocalBootstrapper interface {
-	BootstrapLocal(context.Context) (bootstrap.Result, error)
-}
-
 type AssetRegistry interface {
-	UpsertAsset(context.Context, asset.UpsertInput) (asset.Asset, error)
+	UpsertAsset(context.Context, uuid.UUID, asset.UpsertInput) (asset.Asset, error)
 }
 
 type TransactionRecorder interface {
-	RecordTransaction(context.Context, transaction.CreateInput) (transaction.Transaction, error)
+	RecordTransaction(context.Context, uuid.UUID, transaction.CreateInput) (transaction.Transaction, error)
 }
 
 type Repository interface {
@@ -38,7 +33,6 @@ type Repository interface {
 }
 
 type Seeder struct {
-	bootstrap    LocalBootstrapper
 	assets       AssetRegistry
 	transactions TransactionRecorder
 	repository   Repository
@@ -68,14 +62,11 @@ type upsertFXRateInput struct {
 	Rate         decimal.Decimal
 }
 
-func NewSeeder(bootstrap LocalBootstrapper, assets AssetRegistry, transactions TransactionRecorder, repository Repository) Seeder {
-	return Seeder{bootstrap: bootstrap, assets: assets, transactions: transactions, repository: repository}
+func NewSeeder(assets AssetRegistry, transactions TransactionRecorder, repository Repository) Seeder {
+	return Seeder{assets: assets, transactions: transactions, repository: repository}
 }
 
-func (s Seeder) Seed(ctx context.Context) error {
-	if s.bootstrap == nil {
-		return fmt.Errorf("demo bootstrapper is required")
-	}
+func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID) error {
 	if s.assets == nil {
 		return fmt.Errorf("demo asset registry is required")
 	}
@@ -86,16 +77,12 @@ func (s Seeder) Seed(ctx context.Context) error {
 		return fmt.Errorf("demo repository is required")
 	}
 
-	localContext, err := s.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return fmt.Errorf("bootstrap local demo context: %w", err)
-	}
-	if err := s.repository.DeleteDemoData(ctx, localContext.Workspace.ID, localContext.Portfolio.ID); err != nil {
+	if err := s.repository.DeleteDemoData(ctx, workspaceID, portfolioID); err != nil {
 		return fmt.Errorf("delete existing demo data: %w", err)
 	}
 
 	tfsa, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
-		PortfolioID:       localContext.Portfolio.ID,
+		PortfolioID:       portfolioID,
 		Name:              "Wealthsimple TFSA",
 		InstitutionName:   "Wealthsimple",
 		Type:              account.TypeRetirement,
@@ -106,7 +93,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 		return fmt.Errorf("upsert demo TFSA account: %w", err)
 	}
 	margin, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
-		PortfolioID:       localContext.Portfolio.ID,
+		PortfolioID:       portfolioID,
 		Name:              "Questrade Margin",
 		InstitutionName:   "Questrade",
 		Type:              account.TypeBrokerage,
@@ -117,7 +104,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 		return fmt.Errorf("upsert demo margin account: %w", err)
 	}
 
-	cash, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+	cash, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "CAD Cash",
 		Type:           asset.TypeCash,
 		Currency:       "CAD",
@@ -128,7 +115,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("upsert demo cash asset: %w", err)
 	}
-	usdCash, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+	usdCash, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "USD Cash",
 		Type:           asset.TypeCash,
 		Currency:       "USD",
@@ -139,7 +126,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("upsert demo USD cash asset: %w", err)
 	}
-	xeqt, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+	xeqt, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "iShares Core Equity ETF Portfolio",
 		Type:           asset.TypeETF,
 		Currency:       "CAD",
@@ -151,7 +138,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("upsert demo XEQT asset: %w", err)
 	}
-	vfv, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+	vfv, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "Vanguard S&P 500 Index ETF",
 		Type:           asset.TypeETF,
 		Currency:       "CAD",
@@ -163,7 +150,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("upsert demo VFV asset: %w", err)
 	}
-	voo, err := s.assets.UpsertAsset(ctx, asset.UpsertInput{
+	voo, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "Vanguard S&P 500 ETF",
 		Type:           asset.TypeETF,
 		Currency:       "USD",
@@ -206,7 +193,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 	}); err != nil {
 		return fmt.Errorf("upsert demo VOO prices: %w", err)
 	}
-	if err := s.upsertFXRates(ctx, localContext.Workspace.ID, "USD", "CAD", []datedRate{
+	if err := s.upsertFXRates(ctx, workspaceID, "USD", "CAD", []datedRate{
 		{date: "2026-01-01", rate: "1.36"},
 		{date: "2026-02-01", rate: "1.35"},
 		{date: "2026-03-01", rate: "1.34"},
@@ -229,7 +216,7 @@ func (s Seeder) Seed(ctx context.Context) error {
 		dividend(tfsa.ID, cash.ID, "2026-05-01", "120", "finsight-demo:tfsa-dividend-1"),
 	}
 	for _, record := range records {
-		if _, err := s.transactions.RecordTransaction(ctx, record); err != nil {
+		if _, err := s.transactions.RecordTransaction(ctx, portfolioID, record); err != nil {
 			return fmt.Errorf("record demo transaction %s: %w", *record.ExternalID, err)
 		}
 	}

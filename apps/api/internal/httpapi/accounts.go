@@ -12,15 +12,6 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 )
 
-func (s apiServer) PostAccount(w http.ResponseWriter, r *http.Request) {
-	portfolioID, err := s.localDefaultPortfolioID(r.Context())
-	if err != nil {
-		writeLocalContextError(w, err)
-		return
-	}
-	s.postAccountForPortfolio(w, r, portfolioID)
-}
-
 func (s apiServer) PostPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
 	requestedPortfolioID := uuid.UUID(portfolioID)
 	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
@@ -36,7 +27,7 @@ func (s apiServer) postAccountForPortfolio(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var request generated.PostAccountJSONRequestBody
+	var request generated.PostPortfolioAccountJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeAccountError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
 		return
@@ -55,15 +46,6 @@ func (s apiServer) postAccountForPortfolio(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusCreated, accountResponse(created))
-}
-
-func (s apiServer) GetAccounts(w http.ResponseWriter, r *http.Request) {
-	portfolioID, err := s.localDefaultPortfolioID(r.Context())
-	if err != nil {
-		writeLocalContextError(w, err)
-		return
-	}
-	s.getAccountsForPortfolio(w, r, portfolioID)
 }
 
 func (s apiServer) GetPortfolioAccounts(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
@@ -92,15 +74,6 @@ func (s apiServer) getAccountsForPortfolio(w http.ResponseWriter, r *http.Reques
 		response.Accounts = append(response.Accounts, accountResponse(value))
 	}
 	writeJSON(w, http.StatusOK, response)
-}
-
-func (s apiServer) GetAccount(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
-	portfolioID, err := s.localDefaultPortfolioID(r.Context())
-	if err != nil {
-		writeLocalContextError(w, err)
-		return
-	}
-	s.getAccountForPortfolio(w, r, portfolioID, uuid.UUID(id))
 }
 
 func (s apiServer) GetPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID, accountID openapi_types.UUID) {

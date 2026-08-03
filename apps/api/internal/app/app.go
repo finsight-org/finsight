@@ -57,7 +57,6 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		ReadyTimeout:   cfg.ReadyTimeout,
 		Database:       db,
 		DeploymentMode: cfg.DeploymentMode,
-		Bootstrap:      bootstrapService,
 		LocalContext:   localContextService,
 		Accounts:       accountService,
 		Assets:         assetFinder,

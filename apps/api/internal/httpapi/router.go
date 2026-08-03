@@ -11,7 +11,6 @@ import (
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
@@ -19,10 +18,6 @@ import (
 
 type DatabasePinger interface {
 	Ping(context.Context) error
-}
-
-type LocalBootstrapper interface {
-	BootstrapLocal(context.Context) (bootstrap.Result, error)
 }
 
 type LocalContextService interface {
@@ -52,7 +47,6 @@ type Options struct {
 	ReadyTimeout   time.Duration
 	DeploymentMode config.DeploymentMode
 	Database       DatabasePinger
-	Bootstrap      LocalBootstrapper
 	LocalContext   LocalContextService
 	Accounts       AccountService
 	Assets         AssetFinder
@@ -66,7 +60,6 @@ func NewRouter(options Options) http.Handler {
 		readyTimeout:   options.ReadyTimeout,
 		deploymentMode: options.DeploymentMode,
 		database:       options.Database,
-		bootstrap:      options.Bootstrap,
 		localContext:   options.LocalContext,
 		accounts:       options.Accounts,
 		assets:         options.Assets,
