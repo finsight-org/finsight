@@ -8,9 +8,6 @@ import (
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
-	"github.com/finsight-org/finsight/apps/api/internal/identity"
-	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 )
 
@@ -18,15 +15,15 @@ func TestSeederReplacesDemoDataBeforeCreatingRecords(t *testing.T) {
 	workspaceID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	portfolioID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	repository := &fakeRepository{}
+	assets := &fakeAssetRegistry{}
 	transactions := &fakeTransactionRecorder{}
 	seeder := NewSeeder(
-		fakeBootstrapper{workspaceID: workspaceID, portfolioID: portfolioID},
-		fakeAssetRegistry{},
+		assets,
 		transactions,
 		repository,
 	)
 
-	if err := seeder.Seed(context.Background()); err != nil {
+	if err := seeder.Seed(context.Background(), workspaceID, portfolioID); err != nil {
 		t.Fatalf("Seed() error = %v", err)
 	}
 	if repository.deletedWorkspaceID != workspaceID {
@@ -50,23 +47,27 @@ func TestSeederReplacesDemoDataBeforeCreatingRecords(t *testing.T) {
 	if transactions.count != 8 {
 		t.Fatalf("transaction count = %d, want 8", transactions.count)
 	}
+	if len(assets.workspaceIDs) != 5 {
+		t.Fatalf("asset workspace ID count = %d, want 5", len(assets.workspaceIDs))
+	}
+	for _, assetWorkspaceID := range assets.workspaceIDs {
+		if assetWorkspaceID != workspaceID {
+			t.Fatalf("asset workspace id = %s, want %s", assetWorkspaceID, workspaceID)
+		}
+	}
+	for index := range transactions.portfolioIDs {
+		if transactions.portfolioIDs[index] != portfolioID {
+			t.Fatalf("transaction %d portfolio id = %s, want %s", index, transactions.portfolioIDs[index], portfolioID)
+		}
+	}
 }
 
-type fakeBootstrapper struct {
-	workspaceID uuid.UUID
-	portfolioID uuid.UUID
+type fakeAssetRegistry struct {
+	workspaceIDs []uuid.UUID
 }
 
-func (b fakeBootstrapper) BootstrapLocal(context.Context) (bootstrap.Result, error) {
-	return bootstrap.Result{
-		Workspace: identity.Workspace{ID: b.workspaceID},
-		Portfolio: portfolio.Portfolio{ID: b.portfolioID},
-	}, nil
-}
-
-type fakeAssetRegistry struct{}
-
-func (fakeAssetRegistry) UpsertAsset(_ context.Context, input asset.UpsertInput) (asset.Asset, error) {
+func (r *fakeAssetRegistry) UpsertAsset(_ context.Context, workspaceID uuid.UUID, input asset.UpsertInput) (asset.Asset, error) {
+	r.workspaceIDs = append(r.workspaceIDs, workspaceID)
 	ids := map[string]uuid.UUID{
 		"finsight-demo:cash-cad": uuid.MustParse("33333333-3333-3333-3333-333333333333"),
 		"finsight-demo:cash-usd": uuid.MustParse("44444444-4444-4444-4444-444444444444"),
@@ -109,10 +110,12 @@ func (r *fakeRepository) UpsertFXRate(context.Context, upsertFXRateInput) error 
 }
 
 type fakeTransactionRecorder struct {
-	count int
+	count        int
+	portfolioIDs []uuid.UUID
 }
 
-func (r *fakeTransactionRecorder) RecordTransaction(_ context.Context, input transaction.CreateInput) (transaction.Transaction, error) {
+func (r *fakeTransactionRecorder) RecordTransaction(_ context.Context, portfolioID uuid.UUID, input transaction.CreateInput) (transaction.Transaction, error) {
 	r.count++
+	r.portfolioIDs = append(r.portfolioIDs, portfolioID)
 	return transaction.Transaction{ExternalID: input.ExternalID}, nil
 }

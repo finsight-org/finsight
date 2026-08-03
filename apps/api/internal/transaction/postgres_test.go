@@ -27,7 +27,6 @@ func TestPostgresRepositoryRejectsAccountOutsidePortfolio(t *testing.T) {
 	assetID := insertTestAsset(t, ctx, pool, workspaceID)
 
 	_, err := NewPostgresRepository(pool).CreateWithEntries(ctx, createRepositoryInput{
-		WorkspaceID: workspaceID,
 		PortfolioID: portfolioID,
 		AccountID:   accountID,
 		Type:        TypeOpeningBalance,
@@ -48,7 +47,7 @@ func TestPostgresRepositoryRejectsAccountOutsidePortfolio(t *testing.T) {
 	}
 }
 
-func TestPostgresRepositoryRejectsAssetOutsideWorkspace(t *testing.T) {
+func TestPostgresRepositoryDerivesWorkspaceFromPortfolioForAssetValidation(t *testing.T) {
 	pool := postgresTestPool(t)
 	ctx := context.Background()
 	workspaceID := insertTestWorkspace(t, ctx, pool)
@@ -60,7 +59,6 @@ func TestPostgresRepositoryRejectsAssetOutsideWorkspace(t *testing.T) {
 	assetID := insertTestAsset(t, ctx, pool, otherWorkspaceID)
 
 	_, err := NewPostgresRepository(pool).CreateWithEntries(ctx, createRepositoryInput{
-		WorkspaceID: workspaceID,
 		PortfolioID: portfolioID,
 		AccountID:   accountID,
 		Type:        TypeOpeningBalance,

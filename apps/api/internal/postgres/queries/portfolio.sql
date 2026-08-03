@@ -1,3 +1,11 @@
+-- TODO: Derive the FX-rate workspace by joining portfolios in
+-- ListPortfolioFxRatesForValuation, so workspace_id does not need to be
+-- loaded here and passed through Go.
+-- name: GetPortfolioValuationContext :one
+select workspace_id, base_currency
+from portfolios
+where id = @portfolio_id;
+
 -- name: ListPortfolioAccountsForValuation :many
 select id, name
 from accounts

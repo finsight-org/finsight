@@ -39,15 +39,29 @@ describe('useCreateAccountMutation', () => {
 
     const { result } = renderHook(() => useCreateAccountMutation(), { wrapper: Wrapper })
     result.current.mutate({
-      name: 'Margin',
-      type: AccountType.BROKERAGE,
-      base_currency: 'CAD',
-      institution_name: null,
+      portfolioId: '22222222-2222-2222-2222-222222222222',
+      body: {
+        name: 'Margin',
+        type: AccountType.BROKERAGE,
+        base_currency: 'CAD',
+        institution_name: null,
+      },
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: portfolioAccountValuesQueryKey })
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: portfolioAccountValuesQueryKey('22222222-2222-2222-2222-222222222222'),
+    })
     expect(invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(apiClient.POST).toHaveBeenCalledWith('/api/portfolios/{portfolio_id}/accounts', {
+      params: { path: { portfolio_id: '22222222-2222-2222-2222-222222222222' } },
+      body: {
+        name: 'Margin',
+        type: AccountType.BROKERAGE,
+        base_currency: 'CAD',
+        institution_name: null,
+      },
+    })
   })
 })

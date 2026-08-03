@@ -9,7 +9,9 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/demo"
+	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
+	"github.com/finsight-org/finsight/apps/api/internal/startup"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
@@ -28,6 +30,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	if cfg.DeploymentMode != config.DeploymentModeLocal {
+		return fmt.Errorf("demo seeding requires local deployment mode")
+	}
 
 	db, err := postgres.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -35,18 +40,28 @@ func run() error {
 	}
 	defer db.Close()
 
-	if err := postgres.RunMigrations(ctx, cfg.DatabaseURL, migrations.Files); err != nil {
-		return fmt.Errorf("run postgres migrations: %w", err)
-	}
-
 	bootstrapRepository := bootstrap.NewPostgresRepository(db)
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
-	assetRepository := asset.NewPostgresRepository(db)
-	assetRegistry := asset.NewRegistry(bootstrapService, assetRepository)
-	transactionRepository := transaction.NewPostgresRepository(db)
-	transactionService := transaction.NewService(bootstrapService, transactionRepository)
-	demoRepository := demo.NewPostgresRepository(db)
-	seeder := demo.NewSeeder(bootstrapService, assetRegistry, transactionService, demoRepository)
+	initializer := startup.New(
+		postgres.NewMigrationRunner(cfg.DatabaseURL, migrations.Files),
+		bootstrapService,
+		cfg.DeploymentMode,
+	)
+	if err := initializer.Initialize(ctx); err != nil {
+		return fmt.Errorf("initialize demo startup: %w", err)
+	}
+	localContext := localcontext.NewService(localcontext.NewPostgresRepository(db))
+	scope, err := localContext.DefaultScope(ctx)
+	if err != nil {
+		return fmt.Errorf("get local demo scope: %w", err)
+	}
 
-	return seeder.Seed(ctx)
+	assetRepository := asset.NewPostgresRepository(db)
+	assetRegistry := asset.NewRegistry(assetRepository)
+	transactionRepository := transaction.NewPostgresRepository(db)
+	transactionService := transaction.NewService(transactionRepository)
+	demoRepository := demo.NewPostgresRepository(db)
+	seeder := demo.NewSeeder(assetRegistry, transactionService, demoRepository)
+
+	return seeder.Seed(ctx, scope.WorkspaceID, scope.PortfolioID)
 }

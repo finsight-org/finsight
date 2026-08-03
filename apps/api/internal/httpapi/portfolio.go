@@ -4,17 +4,29 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
-func (s apiServer) GetPortfolioOverview(w http.ResponseWriter, r *http.Request) {
+func (s apiServer) GetPortfolioOverviewByID(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
+	requestedPortfolioID := uuid.UUID(portfolioID)
+	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
+		writeLocalContextError(w, err)
+		return
+	}
+	s.getPortfolioOverview(w, r, requestedPortfolioID)
+}
+
+func (s apiServer) getPortfolioOverview(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID) {
 	if s.portfolio == nil {
 		writePortfolioError(w, http.StatusInternalServerError, "portfolio_unavailable", "portfolio service is unavailable")
 		return
 	}
 
-	overview, err := s.portfolio.GetOverview(r.Context())
+	overview, err := s.portfolio.GetOverview(r.Context(), portfolioID)
 	if err != nil {
 		writePortfolioServiceError(w, err)
 		return
@@ -23,13 +35,22 @@ func (s apiServer) GetPortfolioOverview(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, portfolioOverviewResponse(overview))
 }
 
-func (s apiServer) GetPortfolioValueHistory(w http.ResponseWriter, r *http.Request, params generated.GetPortfolioValueHistoryParams) {
+func (s apiServer) GetPortfolioValueHistoryByID(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID, params generated.GetPortfolioValueHistoryByIDParams) {
+	requestedPortfolioID := uuid.UUID(portfolioID)
+	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
+		writeLocalContextError(w, err)
+		return
+	}
+	s.getPortfolioValueHistory(w, r, requestedPortfolioID, portfolio.Range(params.Range))
+}
+
+func (s apiServer) getPortfolioValueHistory(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID, valueRange portfolio.Range) {
 	if s.portfolio == nil {
 		writePortfolioError(w, http.StatusInternalServerError, "portfolio_unavailable", "portfolio service is unavailable")
 		return
 	}
 
-	history, err := s.portfolio.GetValueHistory(r.Context(), portfolio.Range(params.Range))
+	history, err := s.portfolio.GetValueHistory(r.Context(), portfolioID, valueRange)
 	if err != nil {
 		writePortfolioServiceError(w, err)
 		return
@@ -38,13 +59,22 @@ func (s apiServer) GetPortfolioValueHistory(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, portfolioValueHistoryResponse(history))
 }
 
-func (s apiServer) GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request) {
+func (s apiServer) GetPortfolioAccountValuesByID(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
+	requestedPortfolioID := uuid.UUID(portfolioID)
+	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
+		writeLocalContextError(w, err)
+		return
+	}
+	s.getPortfolioAccountValues(w, r, requestedPortfolioID)
+}
+
+func (s apiServer) getPortfolioAccountValues(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID) {
 	if s.portfolio == nil {
 		writePortfolioError(w, http.StatusInternalServerError, "portfolio_unavailable", "portfolio service is unavailable")
 		return
 	}
 
-	values, err := s.portfolio.GetAccountValues(r.Context())
+	values, err := s.portfolio.GetAccountValues(r.Context(), portfolioID)
 	if err != nil {
 		writePortfolioServiceError(w, err)
 		return
@@ -108,6 +138,8 @@ func writePortfolioServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, portfolio.ErrInvalidRange):
 		writePortfolioError(w, http.StatusBadRequest, "invalid_portfolio_range", "portfolio range is invalid")
+	case errors.Is(err, portfolio.ErrNotFound):
+		writePortfolioError(w, http.StatusNotFound, "portfolio_not_found", "portfolio was not found")
 	default:
 		writePortfolioError(w, http.StatusInternalServerError, "portfolio_operation_failed", "portfolio operation failed")
 	}

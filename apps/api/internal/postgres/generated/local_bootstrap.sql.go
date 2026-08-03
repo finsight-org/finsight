@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getLocalDefaultScope = `-- name: GetLocalDefaultScope :one
+select p.workspace_id, p.id as portfolio_id
+from workspaces w
+join portfolios p on p.workspace_id = w.id
+    and p.is_default
+where w.auth_mode = 'local'
+limit 1
+`
+
+type GetLocalDefaultScopeRow struct {
+	WorkspaceID pgtype.UUID
+	PortfolioID pgtype.UUID
+}
+
+func (q *Queries) GetLocalDefaultScope(ctx context.Context) (GetLocalDefaultScopeRow, error) {
+	row := q.db.QueryRow(ctx, getLocalDefaultScope)
+	var i GetLocalDefaultScopeRow
+	err := row.Scan(&i.WorkspaceID, &i.PortfolioID)
+	return i, err
+}
+
 const upsertDefaultPortfolio = `-- name: UpsertDefaultPortfolio :one
 with inserted as (
     insert into portfolios (

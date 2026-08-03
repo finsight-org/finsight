@@ -72,3 +72,11 @@ where workspace_id = @workspace_id
     and is_default
     and not exists (select 1 from inserted)
 limit 1;
+
+-- name: GetLocalDefaultScope :one
+select p.workspace_id, p.id as portfolio_id
+from workspaces w
+join portfolios p on p.workspace_id = w.id
+    and p.is_default
+where w.auth_mode = 'local'
+limit 1;

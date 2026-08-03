@@ -9,11 +9,19 @@ export type Account = components['schemas']['Account']
 export type AccountType = components['schemas']['AccountType']
 export type CreateAccountRequest = components['schemas']['CreateAccountRequest']
 
+type CreateAccountMutationInput = {
+  portfolioId: string
+  body: CreateAccountRequest
+}
+
 export const AccountType = GeneratedAccountType
 export const accountTypes = Object.values(AccountType)
 
-export async function createAccount(body: CreateAccountRequest) {
-  const { data, error } = await apiClient.POST('/api/accounts', {
+export async function createAccount(portfolioId: string, body: CreateAccountRequest) {
+  const { data, error } = await apiClient.POST('/api/portfolios/{portfolio_id}/accounts', {
+    params: {
+      path: { portfolio_id: portfolioId },
+    },
     body,
   })
 
@@ -32,7 +40,8 @@ export function useCreateAccountMutation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: createAccount,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey }),
+    mutationFn: ({ portfolioId, body }: CreateAccountMutationInput) => createAccount(portfolioId, body),
+    onSuccess: (_account, { portfolioId }) =>
+      queryClient.invalidateQueries({ queryKey: portfolioAccountValuesQueryKey(portfolioId) }),
   })
 }

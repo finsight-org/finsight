@@ -101,38 +101,6 @@ type AssetSearchResult struct {
 // AssetType defines model for AssetType.
 type AssetType string
 
-// BootstrapPortfolio defines model for BootstrapPortfolio.
-type BootstrapPortfolio struct {
-	BaseCurrency string             `json:"base_currency"`
-	Id           openapi_types.UUID `json:"id"`
-	IsDefault    bool               `json:"is_default"`
-	Name         string             `json:"name"`
-	WorkspaceId  openapi_types.UUID `json:"workspace_id"`
-}
-
-// BootstrapUser defines model for BootstrapUser.
-type BootstrapUser struct {
-	DisplayName string              `json:"display_name"`
-	Email       openapi_types.Email `json:"email"`
-	Id          openapi_types.UUID  `json:"id"`
-}
-
-// BootstrapWorkspace defines model for BootstrapWorkspace.
-type BootstrapWorkspace struct {
-	AuthMode     string             `json:"auth_mode"`
-	BaseCurrency string             `json:"base_currency"`
-	Id           openapi_types.UUID `json:"id"`
-	Name         string             `json:"name"`
-}
-
-// BootstrapWorkspaceMembership defines model for BootstrapWorkspaceMembership.
-type BootstrapWorkspaceMembership struct {
-	Id          openapi_types.UUID `json:"id"`
-	Role        string             `json:"role"`
-	UserId      openapi_types.UUID `json:"user_id"`
-	WorkspaceId openapi_types.UUID `json:"workspace_id"`
-}
-
 // CheckState defines model for CheckState.
 type CheckState struct {
 	Status CheckStateStatus `json:"status"`
@@ -171,13 +139,9 @@ type HealthResponse struct {
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
 
-// LocalBootstrapResponse defines model for LocalBootstrapResponse.
-type LocalBootstrapResponse struct {
-	Created    bool                         `json:"created"`
-	Membership BootstrapWorkspaceMembership `json:"membership"`
-	Portfolio  BootstrapPortfolio           `json:"portfolio"`
-	User       BootstrapUser                `json:"user"`
-	Workspace  BootstrapWorkspace           `json:"workspace"`
+// MeResponse defines model for MeResponse.
+type MeResponse struct {
+	DefaultPortfolioId openapi_types.UUID `json:"default_portfolio_id"`
 }
 
 // PortfolioAccountValue defines model for PortfolioAccountValue.
@@ -236,46 +200,49 @@ type ReadyResponse struct {
 // ReadyResponseStatus defines model for ReadyResponse.Status.
 type ReadyResponseStatus string
 
+// PortfolioID defines model for PortfolioID.
+type PortfolioID = openapi_types.UUID
+
 // SearchAssetsParams defines parameters for SearchAssets.
 type SearchAssetsParams struct {
 	Q     string `form:"q" json:"q"`
 	Limit *int   `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// GetPortfolioValueHistoryParams defines parameters for GetPortfolioValueHistory.
-type GetPortfolioValueHistoryParams struct {
+// GetPortfolioValueHistoryByIDParams defines parameters for GetPortfolioValueHistoryByID.
+type GetPortfolioValueHistoryByIDParams struct {
 	Range PortfolioRange `form:"range" json:"range"`
 }
 
-// PostAccountJSONRequestBody defines body for PostAccount for application/json ContentType.
-type PostAccountJSONRequestBody = CreateAccountRequest
+// PostPortfolioAccountJSONRequestBody defines body for PostPortfolioAccount for application/json ContentType.
+type PostPortfolioAccountJSONRequestBody = CreateAccountRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// List accounts in the local default portfolio.
-	// (GET /api/accounts)
-	GetAccounts(w http.ResponseWriter, r *http.Request)
-	// Create an account in the local default portfolio.
-	// (POST /api/accounts)
-	PostAccount(w http.ResponseWriter, r *http.Request)
-	// Get an account from the local default portfolio.
-	// (GET /api/accounts/{id})
-	GetAccount(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Search provider-backed asset candidates.
 	// (GET /api/assets/search)
 	SearchAssets(w http.ResponseWriter, r *http.Request, params SearchAssetsParams)
-	// Create or return the local development identity context.
-	// (POST /api/local/bootstrap)
-	PostLocalBootstrap(w http.ResponseWriter, r *http.Request)
-	// Get current read-only value by account.
-	// (GET /api/portfolio/account-values)
-	GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request)
-	// Get the current read-only portfolio value overview.
-	// (GET /api/portfolio/overview)
-	GetPortfolioOverview(w http.ResponseWriter, r *http.Request)
-	// Get portfolio value history for a selected range.
-	// (GET /api/portfolio/value-history)
-	GetPortfolioValueHistory(w http.ResponseWriter, r *http.Request, params GetPortfolioValueHistoryParams)
+	// Get the local default portfolio context.
+	// (GET /api/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
+	// Get current value by account for the requested local default portfolio.
+	// (GET /api/portfolios/{portfolio_id}/account-values)
+	GetPortfolioAccountValuesByID(w http.ResponseWriter, r *http.Request, portfolioId PortfolioID)
+	// List accounts in the requested local default portfolio.
+	// (GET /api/portfolios/{portfolio_id}/accounts)
+	GetPortfolioAccounts(w http.ResponseWriter, r *http.Request, portfolioId PortfolioID)
+	// Create an account in the requested local default portfolio.
+	// (POST /api/portfolios/{portfolio_id}/accounts)
+	PostPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioId PortfolioID)
+	// Get an account from the requested local default portfolio.
+	// (GET /api/portfolios/{portfolio_id}/accounts/{account_id})
+	GetPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioId PortfolioID, accountId openapi_types.UUID)
+	// Get the requested local default portfolio value overview.
+	// (GET /api/portfolios/{portfolio_id}/overview)
+	GetPortfolioOverviewByID(w http.ResponseWriter, r *http.Request, portfolioId PortfolioID)
+	// Get the requested local default portfolio value history.
+	// (GET /api/portfolios/{portfolio_id}/value-history)
+	GetPortfolioValueHistoryByID(w http.ResponseWriter, r *http.Request, portfolioId PortfolioID, params GetPortfolioValueHistoryByIDParams)
 	// Check API liveness.
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -292,59 +259,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
-
-// GetAccounts operation middleware
-func (siw *ServerInterfaceWrapper) GetAccounts(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetAccounts(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PostAccount operation middleware
-func (siw *ServerInterfaceWrapper) PostAccount(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostAccount(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetAccount operation middleware
-func (siw *ServerInterfaceWrapper) GetAccount(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetAccount(w, r, id)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
 
 // SearchAssets operation middleware
 func (siw *ServerInterfaceWrapper) SearchAssets(w http.ResponseWriter, r *http.Request) {
@@ -388,11 +302,11 @@ func (siw *ServerInterfaceWrapper) SearchAssets(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// PostLocalBootstrap operation middleware
-func (siw *ServerInterfaceWrapper) PostLocalBootstrap(w http.ResponseWriter, r *http.Request) {
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostLocalBootstrap(w, r)
+		siw.Handler.GetMe(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -402,41 +316,156 @@ func (siw *ServerInterfaceWrapper) PostLocalBootstrap(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// GetPortfolioAccountValues operation middleware
-func (siw *ServerInterfaceWrapper) GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetPortfolioAccountValues(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetPortfolioOverview operation middleware
-func (siw *ServerInterfaceWrapper) GetPortfolioOverview(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetPortfolioOverview(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetPortfolioValueHistory operation middleware
-func (siw *ServerInterfaceWrapper) GetPortfolioValueHistory(w http.ResponseWriter, r *http.Request) {
+// GetPortfolioAccountValuesByID operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioAccountValuesByID(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
+	// ------------- Path parameter "portfolio_id" -------------
+	var portfolioId PortfolioID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "portfolio_id", r.PathValue("portfolio_id"), &portfolioId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "portfolio_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioAccountValuesByID(w, r, portfolioId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioAccounts operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioAccounts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "portfolio_id" -------------
+	var portfolioId PortfolioID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "portfolio_id", r.PathValue("portfolio_id"), &portfolioId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "portfolio_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioAccounts(w, r, portfolioId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostPortfolioAccount operation middleware
+func (siw *ServerInterfaceWrapper) PostPortfolioAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "portfolio_id" -------------
+	var portfolioId PortfolioID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "portfolio_id", r.PathValue("portfolio_id"), &portfolioId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "portfolio_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostPortfolioAccount(w, r, portfolioId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "portfolio_id" -------------
+	var portfolioId PortfolioID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "portfolio_id", r.PathValue("portfolio_id"), &portfolioId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "portfolio_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "account_id" -------------
+	var accountId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "account_id", r.PathValue("account_id"), &accountId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "account_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioAccount(w, r, portfolioId, accountId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioOverviewByID operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioOverviewByID(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "portfolio_id" -------------
+	var portfolioId PortfolioID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "portfolio_id", r.PathValue("portfolio_id"), &portfolioId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "portfolio_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioOverviewByID(w, r, portfolioId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioValueHistoryByID operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioValueHistoryByID(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "portfolio_id" -------------
+	var portfolioId PortfolioID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "portfolio_id", r.PathValue("portfolio_id"), &portfolioId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "portfolio_id", Err: err})
+		return
+	}
+
 	// Parameter object where we will unmarshal all parameters from the context
-	var params GetPortfolioValueHistoryParams
+	var params GetPortfolioValueHistoryByIDParams
 
 	// ------------- Required query parameter "range" -------------
 
@@ -454,7 +483,7 @@ func (siw *ServerInterfaceWrapper) GetPortfolioValueHistory(w http.ResponseWrite
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetPortfolioValueHistory(w, r, params)
+		siw.Handler.GetPortfolioValueHistoryByID(w, r, portfolioId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -612,14 +641,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc("GET "+options.BaseURL+"/api/accounts", wrapper.GetAccounts)
-	m.HandleFunc("POST "+options.BaseURL+"/api/accounts", wrapper.PostAccount)
-	m.HandleFunc("GET "+options.BaseURL+"/api/accounts/{id}", wrapper.GetAccount)
 	m.HandleFunc("GET "+options.BaseURL+"/api/assets/search", wrapper.SearchAssets)
-	m.HandleFunc("POST "+options.BaseURL+"/api/local/bootstrap", wrapper.PostLocalBootstrap)
-	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/account-values", wrapper.GetPortfolioAccountValues)
-	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/overview", wrapper.GetPortfolioOverview)
-	m.HandleFunc("GET "+options.BaseURL+"/api/portfolio/value-history", wrapper.GetPortfolioValueHistory)
+	m.HandleFunc("GET "+options.BaseURL+"/api/me", wrapper.GetMe)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolios/{portfolio_id}/account-values", wrapper.GetPortfolioAccountValuesByID)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolios/{portfolio_id}/accounts", wrapper.GetPortfolioAccounts)
+	m.HandleFunc("POST "+options.BaseURL+"/api/portfolios/{portfolio_id}/accounts", wrapper.PostPortfolioAccount)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolios/{portfolio_id}/accounts/{account_id}", wrapper.GetPortfolioAccount)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolios/{portfolio_id}/overview", wrapper.GetPortfolioOverviewByID)
+	m.HandleFunc("GET "+options.BaseURL+"/api/portfolios/{portfolio_id}/value-history", wrapper.GetPortfolioValueHistoryByID)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.GetHealth)
 	m.HandleFunc("GET "+options.BaseURL+"/ready", wrapper.GetReady)
 

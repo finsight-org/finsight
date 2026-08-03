@@ -2,6 +2,11 @@ export const en = {
   app: {
     brand: 'FinSight',
   },
+  appContext: {
+    loading: 'Loading application context…',
+    errorTitle: 'Application context could not load',
+    retry: 'Retry',
+  },
   nav: {
     portfolio: 'Portfolio',
     imports: 'Imports',
@@ -109,6 +114,8 @@ export const en = {
     },
   },
   errors: {
+    me: 'Could not load the application context.',
+    meNoData: 'The application context API returned no data.',
     accountCreate: 'Could not create the account.',
     accountCreateNoData: 'The account was created, but the API returned no account data.',
     assetSearch: 'Could not search assets.',

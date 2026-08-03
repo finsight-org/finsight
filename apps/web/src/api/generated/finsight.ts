@@ -38,33 +38,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/accounts": {
+    "/api/me": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List accounts in the local default portfolio. */
-        get: operations["getAccounts"];
+        /** Get the local default portfolio context. */
+        get: operations["getMe"];
         put?: never;
-        /** Create an account in the local default portfolio. */
-        post: operations["postAccount"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/accounts/{id}": {
+    "/api/portfolios/{portfolio_id}/accounts": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get an account from the local default portfolio. */
-        get: operations["getAccount"];
+        /** List accounts in the requested local default portfolio. */
+        get: operations["getPortfolioAccounts"];
+        put?: never;
+        /** Create an account in the requested local default portfolio. */
+        post: operations["postPortfolioAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolios/{portfolio_id}/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an account from the requested local default portfolio. */
+        get: operations["getPortfolioAccount"];
         put?: never;
         post?: never;
         delete?: never;
@@ -90,15 +107,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/portfolio/overview": {
+    "/api/portfolios/{portfolio_id}/overview": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get the current read-only portfolio value overview. */
-        get: operations["getPortfolioOverview"];
+        /** Get the requested local default portfolio value overview. */
+        get: operations["getPortfolioOverviewByID"];
         put?: never;
         post?: never;
         delete?: never;
@@ -107,15 +124,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/portfolio/value-history": {
+    "/api/portfolios/{portfolio_id}/value-history": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get portfolio value history for a selected range. */
-        get: operations["getPortfolioValueHistory"];
+        /** Get the requested local default portfolio value history. */
+        get: operations["getPortfolioValueHistoryByID"];
         put?: never;
         post?: never;
         delete?: never;
@@ -124,34 +141,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/portfolio/account-values": {
+    "/api/portfolios/{portfolio_id}/account-values": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get current read-only value by account. */
-        get: operations["getPortfolioAccountValues"];
+        /** Get current value by account for the requested local default portfolio. */
+        get: operations["getPortfolioAccountValuesByID"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/local/bootstrap": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create or return the local development identity context. */
-        post: operations["postLocalBootstrap"];
         delete?: never;
         options?: never;
         head?: never;
@@ -252,50 +252,15 @@ export interface components {
         ErrorResponse: {
             error: components["schemas"]["ErrorDetail"];
         };
+        MeResponse: {
+            /** Format: uuid */
+            default_portfolio_id: string;
+        };
         HealthResponse: {
             /** @enum {string} */
             status: HealthResponseStatus;
             service: string;
             version: string;
-        };
-        LocalBootstrapResponse: {
-            created: boolean;
-            user: components["schemas"]["BootstrapUser"];
-            workspace: components["schemas"]["BootstrapWorkspace"];
-            membership: components["schemas"]["BootstrapWorkspaceMembership"];
-            portfolio: components["schemas"]["BootstrapPortfolio"];
-        };
-        BootstrapPortfolio: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspace_id: string;
-            name: string;
-            base_currency: string;
-            is_default: boolean;
-        };
-        BootstrapUser: {
-            /** Format: uuid */
-            id: string;
-            /** Format: email */
-            email: string;
-            display_name: string;
-        };
-        BootstrapWorkspace: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            base_currency: string;
-            auth_mode: string;
-        };
-        BootstrapWorkspaceMembership: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspace_id: string;
-            /** Format: uuid */
-            user_id: string;
-            role: string;
         };
         ReadyResponse: {
             /** @enum {string} */
@@ -306,7 +271,9 @@ export interface components {
         };
     };
     responses: never;
-    parameters: never;
+    parameters: {
+        PortfolioID: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -362,7 +329,7 @@ export interface operations {
             };
         };
     };
-    getAccounts: {
+    getMe: {
         parameters: {
             query?: never;
             header?: never;
@@ -371,13 +338,80 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Accounts in the local default portfolio. */
+            /** @description Local default portfolio context. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Local default portfolio context was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Local default portfolio lookup failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Managed deployment identity is not implemented. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getPortfolioAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                portfolio_id: components["parameters"]["PortfolioID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accounts in the portfolio. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AccountListResponse"];
+                };
+            };
+            /** @description Invalid portfolio identifier. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requested portfolio is not available in the local context. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Account listing failed. */
@@ -389,13 +423,24 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Managed deployment identity is not implemented. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    postAccount: {
+    postPortfolioAccount: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                portfolio_id: components["parameters"]["PortfolioID"];
+            };
             cookie?: never;
         };
         requestBody: {
@@ -422,7 +467,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Account name already exists in the default portfolio. */
+            /** @description Requested portfolio is not available in the local context. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Account name already exists in the portfolio. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -440,20 +494,30 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Managed deployment identity is not implemented. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    getAccount: {
+    getPortfolioAccount: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                portfolio_id: components["parameters"]["PortfolioID"];
+                account_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Account in the local default portfolio. */
+            /** @description Account in the portfolio. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -462,7 +526,16 @@ export interface operations {
                     "application/json": components["schemas"]["Account"];
                 };
             };
-            /** @description Account was not found in the local default portfolio. */
+            /** @description Invalid portfolio or account identifier. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requested portfolio or account was not found. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -473,6 +546,15 @@ export interface operations {
             };
             /** @description Account lookup failed. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Managed deployment identity is not implemented. */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -532,22 +614,42 @@ export interface operations {
             };
         };
     };
-    getPortfolioOverview: {
+    getPortfolioOverviewByID: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                portfolio_id: components["parameters"]["PortfolioID"];
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Current portfolio overview. */
+            /** @description Portfolio overview. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PortfolioOverviewResponse"];
+                };
+            };
+            /** @description Invalid portfolio identifier. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requested portfolio is not available in the local context. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Portfolio overview calculation failed. */
@@ -559,15 +661,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Managed deployment identity is not implemented. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    getPortfolioValueHistory: {
+    getPortfolioValueHistoryByID: {
         parameters: {
             query: {
                 range: components["schemas"]["PortfolioRange"];
             };
             header?: never;
-            path?: never;
+            path: {
+                portfolio_id: components["parameters"]["PortfolioID"];
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -581,8 +694,17 @@ export interface operations {
                     "application/json": components["schemas"]["PortfolioValueHistoryResponse"];
                 };
             };
-            /** @description Invalid portfolio value history range. */
+            /** @description Invalid portfolio identifier or portfolio value history range. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Requested portfolio is not available in the local context. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -599,28 +721,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-        };
-    };
-    getPortfolioAccountValues: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current account values. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortfolioAccountValuesResponse"];
-                };
-            };
-            /** @description Account value calculation failed. */
-            500: {
+            /** @description Managed deployment identity is not implemented. */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -630,35 +732,55 @@ export interface operations {
             };
         };
     };
-    postLocalBootstrap: {
+    getPortfolioAccountValuesByID: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                portfolio_id: components["parameters"]["PortfolioID"];
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Local identity context already existed. */
+            /** @description Portfolio account values. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LocalBootstrapResponse"];
+                    "application/json": components["schemas"]["PortfolioAccountValuesResponse"];
                 };
             };
-            /** @description Local identity context was created. */
-            201: {
+            /** @description Invalid portfolio identifier. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LocalBootstrapResponse"];
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Bootstrap failed. */
+            /** @description Requested portfolio is not available in the local context. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Portfolio account value calculation failed. */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Managed deployment identity is not implemented. */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };

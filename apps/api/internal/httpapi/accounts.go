@@ -12,19 +12,28 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
 )
 
-func (s apiServer) PostAccount(w http.ResponseWriter, r *http.Request) {
+func (s apiServer) PostPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
+	requestedPortfolioID := uuid.UUID(portfolioID)
+	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
+		writeLocalContextError(w, err)
+		return
+	}
+	s.postAccountForPortfolio(w, r, requestedPortfolioID)
+}
+
+func (s apiServer) postAccountForPortfolio(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID) {
 	if s.accounts == nil {
 		writeAccountError(w, http.StatusInternalServerError, "accounts_unavailable", "account service is unavailable")
 		return
 	}
 
-	var request generated.PostAccountJSONRequestBody
+	var request generated.PostPortfolioAccountJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeAccountError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
 		return
 	}
 
-	created, err := s.accounts.CreateAccount(r.Context(), account.CreateInput{
+	created, err := s.accounts.CreateAccount(r.Context(), portfolioID, account.CreateInput{
 		Name:              request.Name,
 		InstitutionName:   request.InstitutionName,
 		Type:              account.Type(request.Type),
@@ -39,13 +48,22 @@ func (s apiServer) PostAccount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, accountResponse(created))
 }
 
-func (s apiServer) GetAccounts(w http.ResponseWriter, r *http.Request) {
+func (s apiServer) GetPortfolioAccounts(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
+	requestedPortfolioID := uuid.UUID(portfolioID)
+	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
+		writeLocalContextError(w, err)
+		return
+	}
+	s.getAccountsForPortfolio(w, r, requestedPortfolioID)
+}
+
+func (s apiServer) getAccountsForPortfolio(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID) {
 	if s.accounts == nil {
 		writeAccountError(w, http.StatusInternalServerError, "accounts_unavailable", "account service is unavailable")
 		return
 	}
 
-	accounts, err := s.accounts.ListAccounts(r.Context())
+	accounts, err := s.accounts.ListAccounts(r.Context(), portfolioID)
 	if err != nil {
 		writeAccountServiceError(w, err)
 		return
@@ -58,13 +76,22 @@ func (s apiServer) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s apiServer) GetAccount(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (s apiServer) GetPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID, accountID openapi_types.UUID) {
+	requestedPortfolioID := uuid.UUID(portfolioID)
+	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
+		writeLocalContextError(w, err)
+		return
+	}
+	s.getAccountForPortfolio(w, r, requestedPortfolioID, uuid.UUID(accountID))
+}
+
+func (s apiServer) getAccountForPortfolio(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID, accountID uuid.UUID) {
 	if s.accounts == nil {
 		writeAccountError(w, http.StatusInternalServerError, "accounts_unavailable", "account service is unavailable")
 		return
 	}
 
-	found, err := s.accounts.GetAccount(r.Context(), uuid.UUID(id))
+	found, err := s.accounts.GetAccount(r.Context(), portfolioID, accountID)
 	if err != nil {
 		writeAccountServiceError(w, err)
 		return

@@ -2,8 +2,10 @@ import { Link, Outlet } from '@tanstack/react-router'
 import { ChevronDown, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { useMeQuery } from '@/api/me'
 import { Button } from '@/components/ui/button'
 import { AssetSearch } from '@/components/layout/asset-search'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +23,38 @@ const navItems = [
 ] as const
 
 export function AppShell() {
+  const meQuery = useMeQuery()
   const { t } = useTranslation()
+
+  if (meQuery.isPending) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background px-4 text-foreground">
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+          {t('appContext.loading')}
+        </p>
+      </div>
+    )
+  }
+
+  if (meQuery.isError) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background px-4 text-foreground">
+        <Alert variant="destructive" className="max-w-lg">
+          <AlertTitle>{t('appContext.errorTitle')}</AlertTitle>
+          <AlertDescription>{meQuery.error.message}</AlertDescription>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 w-fit"
+            onClick={() => void meQuery.refetch()}
+            disabled={meQuery.isFetching}
+          >
+            {t('appContext.retry')}
+          </Button>
+        </Alert>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-svh bg-background text-foreground">

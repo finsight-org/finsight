@@ -9,6 +9,7 @@ import (
 func TestLoadDefaults(t *testing.T) {
 	unsetEnv(t,
 		"FINSIGHT_ENV",
+		"FINSIGHT_DEPLOYMENT_MODE",
 		"FINSIGHT_HTTP_ADDR",
 		"FINSIGHT_SERVICE_NAME",
 		"FINSIGHT_VERSION",
@@ -24,6 +25,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Env != defaultEnv {
 		t.Fatalf("Env = %q, want %q", cfg.Env, defaultEnv)
 	}
+	if cfg.DeploymentMode != defaultDeploymentMode {
+		t.Fatalf("DeploymentMode = %q, want %q", cfg.DeploymentMode, defaultDeploymentMode)
+	}
 	if cfg.HTTPAddr != defaultHTTPAddr {
 		t.Fatalf("HTTPAddr = %q, want %q", cfg.HTTPAddr, defaultHTTPAddr)
 	}
@@ -38,6 +42,36 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.ReadyTimeout != defaultReadyTime {
 		t.Fatalf("ReadyTimeout = %s, want %s", cfg.ReadyTimeout, defaultReadyTime)
+	}
+}
+
+func TestLoadParsesDeploymentMode(t *testing.T) {
+	for _, mode := range []DeploymentMode{DeploymentModeLocal, DeploymentModeManaged} {
+		t.Run(string(mode), func(t *testing.T) {
+			unsetEnv(t, "FINSIGHT_DEPLOYMENT_MODE")
+			t.Setenv("FINSIGHT_DEPLOYMENT_MODE", string(mode))
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.DeploymentMode != mode {
+				t.Fatalf("DeploymentMode = %q, want %q", cfg.DeploymentMode, mode)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidDeploymentMode(t *testing.T) {
+	for _, value := range []string{"", "production"} {
+		t.Run(value, func(t *testing.T) {
+			unsetEnv(t, "FINSIGHT_DEPLOYMENT_MODE")
+			t.Setenv("FINSIGHT_DEPLOYMENT_MODE", value)
+
+			if _, err := Load(); err == nil {
+				t.Fatal("Load() error = nil, want error")
+			}
+		})
 	}
 }
 

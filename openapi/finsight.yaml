@@ -31,10 +31,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadyResponse"
-  /api/accounts:
+  /api/me:
+    get:
+      operationId: getMe
+      summary: Get the local default portfolio context.
+      responses:
+        "200":
+          description: Local default portfolio context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "404":
+          description: Local default portfolio context was not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Local default portfolio lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/accounts:
     post:
-      operationId: postAccount
-      summary: Create an account in the local default portfolio.
+      operationId: postPortfolioAccount
+      summary: Create an account in the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
       requestBody:
         required: true
         content:
@@ -54,8 +85,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Account name already exists in the default portfolio.
+          description: Account name already exists in the portfolio.
           content:
             application/json:
               schema:
@@ -66,28 +103,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     get:
-      operationId: getAccounts
-      summary: List accounts in the local default portfolio.
+      operationId: getPortfolioAccounts
+      summary: List accounts in the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
       responses:
         "200":
-          description: Accounts in the local default portfolio.
+          description: Accounts in the portfolio.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccountListResponse"
+        "400":
+          description: Invalid portfolio identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Account listing failed.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/accounts/{id}:
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/accounts/{account_id}:
     get:
-      operationId: getAccount
-      summary: Get an account from the local default portfolio.
+      operationId: getPortfolioAccount
+      summary: Get an account from the requested local default portfolio.
       parameters:
-        - name: id
+        - $ref: "#/components/parameters/PortfolioID"
+        - name: account_id
           in: path
           required: true
           schema:
@@ -95,19 +159,31 @@ paths:
             format: uuid
       responses:
         "200":
-          description: Account in the local default portfolio.
+          description: Account in the portfolio.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Account"
+        "400":
+          description: Invalid portfolio or account identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Account was not found in the local default portfolio.
+          description: Requested portfolio or account was not found.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Account lookup failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
@@ -156,28 +232,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/portfolio/overview:
+  /api/portfolios/{portfolio_id}/overview:
     get:
-      operationId: getPortfolioOverview
-      summary: Get the current read-only portfolio value overview.
+      operationId: getPortfolioOverviewByID
+      summary: Get the requested local default portfolio value overview.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
       responses:
         "200":
-          description: Current portfolio overview.
+          description: Portfolio overview.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortfolioOverviewResponse"
+        "400":
+          description: Invalid portfolio identifier.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Portfolio overview calculation failed.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/portfolio/value-history:
+        "501":
+          description: Managed deployment identity is not implemented.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/portfolios/{portfolio_id}/value-history:
     get:
-      operationId: getPortfolioValueHistory
-      summary: Get portfolio value history for a selected range.
+      operationId: getPortfolioValueHistoryByID
+      summary: Get the requested local default portfolio value history.
       parameters:
+        - $ref: "#/components/parameters/PortfolioID"
         - name: range
           in: query
           required: true
@@ -191,7 +288,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PortfolioValueHistoryResponse"
         "400":
-          description: Invalid portfolio value history range.
+          description: Invalid portfolio identifier or portfolio value history range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
           content:
             application/json:
               schema:
@@ -202,47 +305,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/portfolio/account-values:
-    get:
-      operationId: getPortfolioAccountValues
-      summary: Get current read-only value by account.
-      responses:
-        "200":
-          description: Current account values.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PortfolioAccountValuesResponse"
-        "500":
-          description: Account value calculation failed.
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /api/local/bootstrap:
-    post:
-      operationId: postLocalBootstrap
-      summary: Create or return the local development identity context.
+  /api/portfolios/{portfolio_id}/account-values:
+    get:
+      operationId: getPortfolioAccountValuesByID
+      summary: Get current value by account for the requested local default portfolio.
+      parameters:
+        - $ref: "#/components/parameters/PortfolioID"
       responses:
         "200":
-          description: Local identity context already existed.
+          description: Portfolio account values.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LocalBootstrapResponse"
-        "201":
-          description: Local identity context was created.
+                $ref: "#/components/schemas/PortfolioAccountValuesResponse"
+        "400":
+          description: Invalid portfolio identifier.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LocalBootstrapResponse"
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Requested portfolio is not available in the local context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
-          description: Bootstrap failed.
+          description: Portfolio account value calculation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Managed deployment identity is not implemented.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 components:
+  parameters:
+    PortfolioID:
+      name: portfolio_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
     AccountType:
       type: string
@@ -503,6 +617,14 @@ components:
       properties:
         error:
           $ref: "#/components/schemas/ErrorDetail"
+    MeResponse:
+      type: object
+      required:
+        - default_portfolio_id
+      properties:
+        default_portfolio_id:
+          type: string
+          format: uuid
     HealthResponse:
       type: object
       required:
@@ -517,97 +639,6 @@ components:
         service:
           type: string
         version:
-          type: string
-    LocalBootstrapResponse:
-      type: object
-      required:
-        - created
-        - user
-        - workspace
-        - membership
-        - portfolio
-      properties:
-        created:
-          type: boolean
-        user:
-          $ref: "#/components/schemas/BootstrapUser"
-        workspace:
-          $ref: "#/components/schemas/BootstrapWorkspace"
-        membership:
-          $ref: "#/components/schemas/BootstrapWorkspaceMembership"
-        portfolio:
-          $ref: "#/components/schemas/BootstrapPortfolio"
-    BootstrapPortfolio:
-      type: object
-      required:
-        - id
-        - workspace_id
-        - name
-        - base_currency
-        - is_default
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        base_currency:
-          type: string
-        is_default:
-          type: boolean
-    BootstrapUser:
-      type: object
-      required:
-        - id
-        - email
-        - display_name
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        display_name:
-          type: string
-    BootstrapWorkspace:
-      type: object
-      required:
-        - id
-        - name
-        - base_currency
-        - auth_mode
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        base_currency:
-          type: string
-        auth_mode:
-          type: string
-    BootstrapWorkspaceMembership:
-      type: object
-      required:
-        - id
-        - workspace_id
-        - user_id
-        - role
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        role:
           type: string
     ReadyResponse:
       type: object
