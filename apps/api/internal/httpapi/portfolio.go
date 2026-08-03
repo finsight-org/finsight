@@ -11,15 +11,6 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
-func (s apiServer) GetPortfolioOverview(w http.ResponseWriter, r *http.Request) {
-	portfolioID, err := s.localDefaultPortfolioID(r.Context())
-	if err != nil {
-		writeLocalContextError(w, err)
-		return
-	}
-	s.getPortfolioOverview(w, r, portfolioID)
-}
-
 func (s apiServer) GetPortfolioOverviewByID(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
 	requestedPortfolioID := uuid.UUID(portfolioID)
 	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
@@ -44,15 +35,6 @@ func (s apiServer) getPortfolioOverview(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, portfolioOverviewResponse(overview))
 }
 
-func (s apiServer) GetPortfolioValueHistory(w http.ResponseWriter, r *http.Request, params generated.GetPortfolioValueHistoryParams) {
-	portfolioID, err := s.localDefaultPortfolioID(r.Context())
-	if err != nil {
-		writeLocalContextError(w, err)
-		return
-	}
-	s.getPortfolioValueHistory(w, r, portfolioID, portfolio.Range(params.Range))
-}
-
 func (s apiServer) GetPortfolioValueHistoryByID(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID, params generated.GetPortfolioValueHistoryByIDParams) {
 	requestedPortfolioID := uuid.UUID(portfolioID)
 	if err := s.ensureLocalPortfolio(r.Context(), requestedPortfolioID); err != nil {
@@ -75,15 +57,6 @@ func (s apiServer) getPortfolioValueHistory(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, portfolioValueHistoryResponse(history))
-}
-
-func (s apiServer) GetPortfolioAccountValues(w http.ResponseWriter, r *http.Request) {
-	portfolioID, err := s.localDefaultPortfolioID(r.Context())
-	if err != nil {
-		writeLocalContextError(w, err)
-		return
-	}
-	s.getPortfolioAccountValues(w, r, portfolioID)
 }
 
 func (s apiServer) GetPortfolioAccountValuesByID(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {

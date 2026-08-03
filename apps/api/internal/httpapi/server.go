@@ -14,7 +14,6 @@ type apiServer struct {
 	readyTimeout   time.Duration
 	deploymentMode config.DeploymentMode
 	database       DatabasePinger
-	bootstrap      LocalBootstrapper
 	localContext   LocalContextService
 	accounts       AccountService
 	assets         AssetFinder

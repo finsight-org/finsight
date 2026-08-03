@@ -8,8 +8,6 @@ Canonical endpoints:
 - `GET /api/portfolios/{portfolio_id}/accounts`
 - `GET /api/portfolios/{portfolio_id}/accounts/{account_id}`
 
-The unscoped `POST /api/accounts`, `GET /api/accounts`, and `GET /api/accounts/{id}` endpoints are temporary compatibility routes. They resolve the local default portfolio from PostgreSQL, then delegate to the same account service.
-
 ```mermaid
 sequenceDiagram
     participant C as Client

@@ -22,6 +22,9 @@ type GetPortfolioValuationContextRow struct {
 	BaseCurrency string
 }
 
+// TODO: Derive the FX-rate workspace by joining portfolios in
+// ListPortfolioFxRatesForValuation, so workspace_id does not need to be
+// loaded here and passed through Go.
 func (q *Queries) GetPortfolioValuationContext(ctx context.Context, portfolioID pgtype.UUID) (GetPortfolioValuationContextRow, error) {
 	row := q.db.QueryRow(ctx, getPortfolioValuationContext, portfolioID)
 	var i GetPortfolioValuationContextRow

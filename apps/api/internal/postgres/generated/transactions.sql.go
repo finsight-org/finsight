@@ -160,3 +160,16 @@ func (q *Queries) CreateTransaction(ctx context.Context, arg CreateTransactionPa
 	)
 	return i, err
 }
+
+const getTransactionWorkspaceID = `-- name: GetTransactionWorkspaceID :one
+select workspace_id
+from portfolios
+where id = $1
+`
+
+func (q *Queries) GetTransactionWorkspaceID(ctx context.Context, portfolioID pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getTransactionWorkspaceID, portfolioID)
+	var workspace_id pgtype.UUID
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/demo"
+	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
 	"github.com/finsight-org/finsight/apps/api/internal/startup"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
@@ -49,13 +50,18 @@ func run() error {
 	if err := initializer.Initialize(ctx); err != nil {
 		return fmt.Errorf("initialize demo startup: %w", err)
 	}
+	localContext := localcontext.NewService(localcontext.NewPostgresRepository(db))
+	scope, err := localContext.DefaultScope(ctx)
+	if err != nil {
+		return fmt.Errorf("get local demo scope: %w", err)
+	}
 
 	assetRepository := asset.NewPostgresRepository(db)
-	assetRegistry := asset.NewRegistry(bootstrapService, assetRepository)
+	assetRegistry := asset.NewRegistry(assetRepository)
 	transactionRepository := transaction.NewPostgresRepository(db)
-	transactionService := transaction.NewService(bootstrapService, transactionRepository)
+	transactionService := transaction.NewService(transactionRepository)
 	demoRepository := demo.NewPostgresRepository(db)
-	seeder := demo.NewSeeder(bootstrapService, assetRegistry, transactionService, demoRepository)
+	seeder := demo.NewSeeder(assetRegistry, transactionService, demoRepository)
 
-	return seeder.Seed(ctx)
+	return seeder.Seed(ctx, scope.WorkspaceID, scope.PortfolioID)
 }

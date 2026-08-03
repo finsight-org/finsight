@@ -22,12 +22,6 @@ curl -i http://localhost:8080/ready
 curl -i http://localhost:8080/api/me
 ```
 
-Create or return the local development identity context:
-
-```bash
-curl -i -X POST http://localhost:8080/api/local/bootstrap
-```
-
 Seed deterministic local portfolio demo data:
 
 ```bash

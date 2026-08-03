@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -21,22 +20,26 @@ func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
 	return PostgresRepository{db: db}
 }
 
-func (r PostgresRepository) DefaultPortfolioID(ctx context.Context) (uuid.UUID, error) {
+func (r PostgresRepository) DefaultScope(ctx context.Context) (Scope, error) {
 	if r.db == nil {
-		return uuid.Nil, fmt.Errorf("postgres pool is required")
+		return Scope{}, fmt.Errorf("postgres pool is required")
 	}
 
-	id, err := db.New(r.db).GetLocalDefaultPortfolioID(ctx)
+	row, err := db.New(r.db).GetLocalDefaultScope(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return uuid.Nil, ErrNotFound
+			return Scope{}, ErrNotFound
 		}
-		return uuid.Nil, fmt.Errorf("select local default portfolio: %w", err)
+		return Scope{}, fmt.Errorf("select local default scope: %w", err)
 	}
 
-	portfolioID, err := pgconv.DomainUUID(id)
+	workspaceID, err := pgconv.DomainUUID(row.WorkspaceID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("map local default portfolio id: %w", err)
+		return Scope{}, fmt.Errorf("map local default workspace id: %w", err)
 	}
-	return portfolioID, nil
+	portfolioID, err := pgconv.DomainUUID(row.PortfolioID)
+	if err != nil {
+		return Scope{}, fmt.Errorf("map local default portfolio id: %w", err)
+	}
+	return Scope{WorkspaceID: workspaceID, PortfolioID: portfolioID}, nil
 }

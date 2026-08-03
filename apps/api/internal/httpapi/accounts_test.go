@@ -166,49 +166,6 @@ func TestPortfolioAccountRoutesRejectManagedModeBeforeLookup(t *testing.T) {
 	}
 }
 
-func TestPostAccountUsesLocalDefaultPortfolio(t *testing.T) {
-	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
-	accountID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
-	accounts := &fakeAccountService{account: testAccount(accountID, portfolioID, "Margin")}
-	localContext := &fakeAccountLocalContext{defaultPortfolioID: portfolioID}
-	router := newLocalAccountRouter(portfolioID, accounts, localContext)
-
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/accounts", strings.NewReader(`{"name":"Margin","type":"BROKERAGE","base_currency":"CAD"}`))
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusCreated)
-	}
-	if localContext.defaultCalls != 1 {
-		t.Fatalf("DefaultPortfolioID() calls = %d, want 1", localContext.defaultCalls)
-	}
-	if accounts.createPortfolioID != portfolioID {
-		t.Fatalf("create portfolio id = %s, want %s", accounts.createPortfolioID, portfolioID)
-	}
-}
-
-func TestGetAccountsUsesLocalDefaultPortfolio(t *testing.T) {
-	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
-	accounts := &fakeAccountService{accounts: []account.Account{testAccount(uuid.New(), portfolioID, "Margin")}}
-	localContext := &fakeAccountLocalContext{defaultPortfolioID: portfolioID}
-	router := newLocalAccountRouter(portfolioID, accounts, localContext)
-
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/accounts", nil)
-	router.ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-	if localContext.defaultCalls != 1 {
-		t.Fatalf("DefaultPortfolioID() calls = %d, want 1", localContext.defaultCalls)
-	}
-	if accounts.listPortfolioID != portfolioID {
-		t.Fatalf("list portfolio id = %s, want %s", accounts.listPortfolioID, portfolioID)
-	}
-}
-
 func TestGetAccountNotFound(t *testing.T) {
 	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
 	router := newLocalAccountRouter(portfolioID, &fakeAccountService{err: account.ErrNotFound}, &fakeAccountLocalContext{})
@@ -235,6 +192,28 @@ func TestPostPortfolioAccountInvalidBody(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
 	assertErrorCode(t, response, "invalid_request")
+}
+
+func TestLegacyAccountRoutesAreNotRegistered(t *testing.T) {
+	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	router := newLocalAccountRouter(portfolioID, &fakeAccountService{}, &fakeAccountLocalContext{})
+
+	for _, request := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/accounts"},
+		{method: http.MethodGet, path: "/api/accounts"},
+		{method: http.MethodGet, path: "/api/accounts/55555555-5555-5555-5555-555555555555"},
+	} {
+		t.Run(request.method+" "+request.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(request.method, request.path, nil))
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+			}
+		})
+	}
 }
 
 func TestPortfolioAccountRoutesRejectInvalidPathIDs(t *testing.T) {

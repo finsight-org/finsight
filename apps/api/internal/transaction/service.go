@@ -7,31 +7,22 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/dateutil"
 )
-
-type LocalBootstrapper interface {
-	BootstrapLocal(context.Context) (bootstrap.Result, error)
-}
 
 type Repository interface {
 	CreateWithEntries(context.Context, createRepositoryInput) (Transaction, error)
 }
 
 type Service struct {
-	bootstrap  LocalBootstrapper
 	repository Repository
 }
 
-func NewService(bootstrap LocalBootstrapper, repository Repository) Service {
-	return Service{bootstrap: bootstrap, repository: repository}
+func NewService(repository Repository) Service {
+	return Service{repository: repository}
 }
 
-func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Transaction, error) {
-	if s.bootstrap == nil {
-		return Transaction{}, fmt.Errorf("transaction bootstrapper is required")
-	}
+func (s Service) RecordTransaction(ctx context.Context, portfolioID uuid.UUID, input CreateInput) (Transaction, error) {
 	if s.repository == nil {
 		return Transaction{}, fmt.Errorf("transaction repository is required")
 	}
@@ -70,14 +61,8 @@ func (s Service) RecordTransaction(ctx context.Context, input CreateInput) (Tran
 		}
 	}
 
-	localContext, err := s.bootstrap.BootstrapLocal(ctx)
-	if err != nil {
-		return Transaction{}, fmt.Errorf("resolve local transaction context: %w", err)
-	}
-
 	recorded, err := s.repository.CreateWithEntries(ctx, createRepositoryInput{
-		WorkspaceID:    localContext.Workspace.ID,
-		PortfolioID:    localContext.Portfolio.ID,
+		PortfolioID:    portfolioID,
 		AccountID:      input.AccountID,
 		ImportID:       input.ImportID,
 		Type:           input.Type,
