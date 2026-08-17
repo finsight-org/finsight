@@ -2,20 +2,21 @@ package portfoliovalue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
 	"github.com/finsight-org/finsight/apps/api/internal/dateutil"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
+	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
-
-type Repository interface {
-	LoadValuationData(context.Context, uuid.UUID, time.Time) (valuationData, error)
-}
 
 type valuationAccount struct {
 	ID   uuid.UUID
@@ -63,16 +64,16 @@ type valuationData struct {
 }
 
 type Service struct {
-	repository Repository
-	now        func() time.Time
+	pool *pgxpool.Pool
+	now  func() time.Time
 }
 
-func NewService(repository Repository) Service {
-	return Service{repository: repository, now: time.Now}
+func NewService(pool *pgxpool.Pool) Service {
+	return NewServiceWithClock(pool, time.Now)
 }
 
-func NewServiceWithClock(repository Repository, now func() time.Time) Service {
-	return Service{repository: repository, now: now}
+func NewServiceWithClock(pool *pgxpool.Pool, now func() time.Time) Service {
+	return Service{pool: pool, now: now}
 }
 
 func (s Service) GetOverview(ctx context.Context, portfolioID uuid.UUID) (portfolio.Overview, error) {
@@ -80,14 +81,7 @@ func (s Service) GetOverview(ctx context.Context, portfolioID uuid.UUID) (portfo
 	if err != nil {
 		return portfolio.Overview{}, err
 	}
-	baseCurrency := loaded.data.BaseCurrency
-	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
-	return portfolio.Overview{
-		BaseCurrency:  baseCurrency,
-		TotalValue:    snapshot.total,
-		ValuationDate: loaded.valuationDate,
-		Warnings:      snapshot.warnings.list(),
-	}, nil
+	return calculateOverview(loaded.data, loaded.valuationDate), nil
 }
 
 func (s Service) GetAccountValues(ctx context.Context, portfolioID uuid.UUID) (portfolio.AccountValues, error) {
@@ -95,14 +89,7 @@ func (s Service) GetAccountValues(ctx context.Context, portfolioID uuid.UUID) (p
 	if err != nil {
 		return portfolio.AccountValues{}, err
 	}
-	baseCurrency := loaded.data.BaseCurrency
-	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
-	return portfolio.AccountValues{
-		BaseCurrency:  baseCurrency,
-		ValuationDate: loaded.valuationDate,
-		Accounts:      snapshot.accounts,
-		Warnings:      snapshot.warnings.list(),
-	}, nil
+	return calculateAccountValues(loaded.data, loaded.valuationDate), nil
 }
 
 func (s Service) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, valueRange portfolio.Range) (portfolio.ValueHistory, error) {
@@ -114,17 +101,40 @@ func (s Service) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, val
 	if err != nil {
 		return portfolio.ValueHistory{}, err
 	}
-	baseCurrency := loaded.data.BaseCurrency
+	return calculateValueHistory(loaded.data, valueRange, loaded.valuationDate), nil
+}
 
-	startDate := historyStartDate(valueRange, loaded.valuationDate, loaded.data.Entries)
+func calculateOverview(data valuationData, valuationDate time.Time) portfolio.Overview {
+	snapshot := calculateSnapshot(data, data.BaseCurrency, valuationDate)
+	return portfolio.Overview{
+		BaseCurrency:  data.BaseCurrency,
+		TotalValue:    snapshot.total,
+		ValuationDate: valuationDate,
+		Warnings:      snapshot.warnings.list(),
+	}
+}
+
+func calculateAccountValues(data valuationData, valuationDate time.Time) portfolio.AccountValues {
+	snapshot := calculateSnapshot(data, data.BaseCurrency, valuationDate)
+	return portfolio.AccountValues{
+		BaseCurrency:  data.BaseCurrency,
+		ValuationDate: valuationDate,
+		Accounts:      snapshot.accounts,
+		Warnings:      snapshot.warnings.list(),
+	}
+}
+
+func calculateValueHistory(data valuationData, valueRange portfolio.Range, valuationDate time.Time) portfolio.ValueHistory {
+	baseCurrency := data.BaseCurrency
+	startDate := historyStartDate(valueRange, valuationDate, data.Entries)
 	if startDate.IsZero() {
-		return portfolio.ValueHistory{BaseCurrency: baseCurrency, Range: valueRange, Points: []portfolio.ValuePoint{}}, nil
+		return portfolio.ValueHistory{BaseCurrency: baseCurrency, Range: valueRange, Points: []portfolio.ValuePoint{}}
 	}
 
 	warnings := newWarningSet()
-	points := make([]portfolio.ValuePoint, 0, int(loaded.valuationDate.Sub(startDate).Hours()/24)+1)
-	for current := startDate; !current.After(loaded.valuationDate); current = current.AddDate(0, 0, 1) {
-		snapshot := calculateSnapshot(loaded.data, baseCurrency, current)
+	points := make([]portfolio.ValuePoint, 0, int(valuationDate.Sub(startDate).Hours()/24)+1)
+	for current := startDate; !current.After(valuationDate); current = current.AddDate(0, 0, 1) {
+		snapshot := calculateSnapshot(data, baseCurrency, current)
 		warnings.merge(snapshot.warnings)
 		points = append(points, portfolio.ValuePoint{Date: current, Value: snapshot.total})
 	}
@@ -134,7 +144,7 @@ func (s Service) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, val
 		Range:        valueRange,
 		Points:       points,
 		Warnings:     warnings.list(),
-	}, nil
+	}
 }
 
 type loadedData struct {
@@ -143,8 +153,8 @@ type loadedData struct {
 }
 
 func (s Service) loadData(ctx context.Context, portfolioID uuid.UUID) (loadedData, error) {
-	if s.repository == nil {
-		return loadedData{}, fmt.Errorf("portfolio repository is required")
+	if s.pool == nil {
+		return loadedData{}, fmt.Errorf("postgres pool is required")
 	}
 	now := time.Now
 	if s.now != nil {
@@ -152,11 +162,143 @@ func (s Service) loadData(ctx context.Context, portfolioID uuid.UUID) (loadedDat
 	}
 	valuationDate := dateutil.DateOnly(now().UTC())
 
-	data, err := s.repository.LoadValuationData(ctx, portfolioID, valuationDate)
+	data, err := s.loadValuationData(ctx, portfolioID, valuationDate)
 	if err != nil {
 		return loadedData{}, fmt.Errorf("load portfolio valuation data: %w", err)
 	}
 	return loadedData{data: data, valuationDate: valuationDate}, nil
+}
+
+func (s Service) loadValuationData(ctx context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
+	queries := db.New(s.pool)
+	portfolioContext, err := queries.GetPortfolioValuationContext(ctx, pgconv.UUID(portfolioID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return valuationData{}, portfolio.ErrNotFound
+		}
+		return valuationData{}, fmt.Errorf("select portfolio valuation context: %w", err)
+	}
+	workspaceID, err := pgconv.DomainUUID(portfolioContext.WorkspaceID)
+	if err != nil {
+		return valuationData{}, fmt.Errorf("map portfolio workspace id: %w", err)
+	}
+
+	accountRows, err := queries.ListPortfolioAccountsForValuation(ctx, pgconv.UUID(portfolioID))
+	if err != nil {
+		return valuationData{}, fmt.Errorf("select portfolio accounts: %w", err)
+	}
+	entryRows, err := queries.ListPortfolioLedgerEntriesForValuation(ctx, db.ListPortfolioLedgerEntriesForValuationParams{
+		PortfolioID: pgconv.UUID(portfolioID),
+		EndDate:     pgconv.Date(endDate),
+	})
+	if err != nil {
+		return valuationData{}, fmt.Errorf("select portfolio ledger entries: %w", err)
+	}
+	priceRows, err := queries.ListPortfolioMarketPricesForValuation(ctx, db.ListPortfolioMarketPricesForValuationParams{
+		EndDate:     pgconv.Date(endDate),
+		PortfolioID: pgconv.UUID(portfolioID),
+	})
+	if err != nil {
+		return valuationData{}, fmt.Errorf("select portfolio market prices: %w", err)
+	}
+	fxRateRows, err := queries.ListPortfolioFxRatesForValuation(ctx, db.ListPortfolioFxRatesForValuationParams{
+		WorkspaceID:  pgconv.UUID(workspaceID),
+		PortfolioID:  pgconv.UUID(portfolioID),
+		BaseCurrency: portfolioContext.BaseCurrency,
+		EndDate:      pgconv.Date(endDate),
+	})
+	if err != nil {
+		return valuationData{}, fmt.Errorf("select portfolio fx rates: %w", err)
+	}
+
+	data := valuationData{
+		BaseCurrency: portfolioContext.BaseCurrency,
+		Accounts:     make([]valuationAccount, 0, len(accountRows)),
+		Entries:      make([]valuationEntry, 0, len(entryRows)),
+		Prices:       make([]marketPrice, 0, len(priceRows)),
+		FXRates:      make([]fxRate, 0, len(fxRateRows)),
+	}
+	for _, row := range accountRows {
+		id, err := pgconv.DomainUUID(row.ID)
+		if err != nil {
+			return valuationData{}, fmt.Errorf("map account id: %w", err)
+		}
+		data.Accounts = append(data.Accounts, valuationAccount{ID: id, Name: row.Name})
+	}
+	for _, row := range entryRows {
+		entry, err := mapValuationEntry(row)
+		if err != nil {
+			return valuationData{}, fmt.Errorf("map ledger entry: %w", err)
+		}
+		data.Entries = append(data.Entries, entry)
+	}
+	for _, row := range priceRows {
+		price, err := mapMarketPrice(row)
+		if err != nil {
+			return valuationData{}, fmt.Errorf("map market price: %w", err)
+		}
+		data.Prices = append(data.Prices, price)
+	}
+	for _, row := range fxRateRows {
+		rate, err := mapFXRate(row)
+		if err != nil {
+			return valuationData{}, fmt.Errorf("map fx rate: %w", err)
+		}
+		data.FXRates = append(data.FXRates, rate)
+	}
+	return data, nil
+}
+
+func mapValuationEntry(row db.ListPortfolioLedgerEntriesForValuationRow) (valuationEntry, error) {
+	accountID, err := pgconv.DomainUUID(row.AccountID)
+	if err != nil {
+		return valuationEntry{}, fmt.Errorf("account id: %w", err)
+	}
+	assetID, err := pgconv.DomainUUID(row.AssetID)
+	if err != nil {
+		return valuationEntry{}, fmt.Errorf("asset id: %w", err)
+	}
+	quantity, err := pgconv.DomainNumeric(row.Quantity)
+	if err != nil {
+		return valuationEntry{}, fmt.Errorf("quantity: %w", err)
+	}
+	amount, err := pgconv.DomainNumeric(row.Amount)
+	if err != nil {
+		return valuationEntry{}, fmt.Errorf("amount: %w", err)
+	}
+	tradeDate, err := pgconv.DomainDate(row.TradeDate)
+	if err != nil {
+		return valuationEntry{}, fmt.Errorf("trade date: %w", err)
+	}
+	return valuationEntry{AccountID: accountID, AccountName: row.AccountName, AssetID: assetID, AssetName: row.AssetName, AssetType: row.AssetType, AssetCurrency: row.AssetCurrency, EntryType: row.EntryType, Quantity: quantity, Amount: amount, EntryCurrency: row.EntryCurrency, TradeDate: tradeDate}, nil
+}
+
+func mapMarketPrice(row db.ListPortfolioMarketPricesForValuationRow) (marketPrice, error) {
+	assetID, err := pgconv.DomainUUID(row.AssetID)
+	if err != nil {
+		return marketPrice{}, fmt.Errorf("asset id: %w", err)
+	}
+	date, err := pgconv.DomainDate(row.Date)
+	if err != nil {
+		return marketPrice{}, fmt.Errorf("date: %w", err)
+	}
+	price, err := pgconv.DomainNumeric(row.Price)
+	if err != nil {
+		return marketPrice{}, fmt.Errorf("price: %w", err)
+	}
+	return marketPrice{AssetID: assetID, Date: date, Price: price, Currency: row.Currency, ProviderID: row.ProviderID, SourceQuality: row.SourceQuality}, nil
+}
+
+func mapFXRate(row db.ListPortfolioFxRatesForValuationRow) (fxRate, error) {
+	date, err := pgconv.DomainDate(row.Date)
+	if err != nil {
+		return fxRate{}, fmt.Errorf("date: %w", err)
+	}
+	rate, err := pgconv.DomainNumeric(row.Rate)
+	if err != nil {
+		return fxRate{}, fmt.Errorf("rate: %w", err)
+	}
+	return fxRate{FromCurrency: row.FromCurrency, ToCurrency: row.ToCurrency, Date: date, Rate: rate, ProviderID: row.ProviderID, SourceQuality: row.SourceQuality}, nil
 }
 
 type accountAssetKey struct {

@@ -16,7 +16,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
 
-func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
+func TestServiceLoadsRelevantFXRatesForValuation(t *testing.T) {
 	pool := postgresTestPool(t)
 	ctx := context.Background()
 	workspaceID := insertTestWorkspace(t, ctx, pool)
@@ -29,9 +29,9 @@ func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
 	insertTestFXRate(t, ctx, pool, workspaceID, "USD", "CAD", "2026-07-01", "1.35")
 	insertTestFXRate(t, ctx, pool, workspaceID, "EUR", "CAD", "2026-07-01", "1.50")
 
-	data, err := NewPostgresRepository(pool).LoadValuationData(ctx, portfolioID, mustDate("2026-07-07"))
+	data, err := NewService(pool).loadValuationData(ctx, portfolioID, mustDate("2026-07-07"))
 	if err != nil {
-		t.Fatalf("LoadValuationData() error = %v", err)
+		t.Fatalf("loadValuationData() error = %v", err)
 	}
 	if data.BaseCurrency != "CAD" {
 		t.Fatalf("base currency = %q, want CAD", data.BaseCurrency)
@@ -42,14 +42,22 @@ func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
 	if data.FXRates[0].FromCurrency != "USD" || data.FXRates[0].ToCurrency != "CAD" {
 		t.Fatalf("fx rate = %#v, want USD to CAD", data.FXRates[0])
 	}
+
+	overview, err := NewServiceWithClock(pool, func() time.Time { return mustDate("2026-07-07") }).GetOverview(ctx, portfolioID)
+	if err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if !overview.ValuationDate.Equal(mustDate("2026-07-07")) {
+		t.Fatalf("valuation date = %s, want 2026-07-07", overview.ValuationDate)
+	}
 }
 
-func TestPostgresRepositoryReturnsNotFoundForMissingPortfolio(t *testing.T) {
+func TestServiceReturnsNotFoundForMissingPortfolio(t *testing.T) {
 	pool := postgresTestPool(t)
 
-	_, err := NewPostgresRepository(pool).LoadValuationData(context.Background(), uuid.New(), mustDate("2026-07-07"))
+	_, err := NewService(pool).loadValuationData(context.Background(), uuid.New(), mustDate("2026-07-07"))
 	if !errors.Is(err, portfolio.ErrNotFound) {
-		t.Fatalf("LoadValuationData() error = %v, want %v", err, portfolio.ErrNotFound)
+		t.Fatalf("loadValuationData() error = %v, want %v", err, portfolio.ErrNotFound)
 	}
 }
 

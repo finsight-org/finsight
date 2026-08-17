@@ -12,26 +12,19 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 )
 
-var testPortfolioID = uuid.MustParse("33333333-3333-3333-3333-333333333333")
-
-func TestGetOverviewCalculatesCashAndPricedAssetValue(t *testing.T) {
-	accountID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	assetID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries: []valuationEntry{
-				cashEntry(accountID, "CAD Cash", "500"),
-				assetEntry(accountID, assetID, "XEQT", "10"),
-			},
-			Prices: []marketPrice{{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("42"), Currency: "CAD"}},
+func TestCalculateOverviewCalculatesCashAndPricedAssetValue(t *testing.T) {
+	accountID := uuid.New()
+	assetID := uuid.New()
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries: []valuationEntry{
+			cashEntry(accountID, "CAD Cash", "500"),
+			assetEntry(accountID, assetID, "XEQT", "10"),
 		},
-	}, fixedClock("2026-07-07"))
+		Prices: []marketPrice{{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("42"), Currency: "CAD"}},
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.Equal(decimal.RequireFromString("920")) {
 		t.Fatalf("total value = %s, want 920", overview.TotalValue)
 	}
@@ -40,36 +33,14 @@ func TestGetOverviewCalculatesCashAndPricedAssetValue(t *testing.T) {
 	}
 }
 
-func TestGetOverviewPassesOnlyPortfolioIDAndValuationDateToRepository(t *testing.T) {
-	repository := &recordingRepository{data: valuationData{BaseCurrency: "CAD"}}
-	service := NewServiceWithClock(repository, fixedClock("2026-07-07"))
-	portfolioID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
-
-	if _, err := service.GetOverview(context.Background(), portfolioID); err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
-	if repository.portfolioID != portfolioID {
-		t.Fatalf("portfolio id = %s, want %s", repository.portfolioID, portfolioID)
-	}
-	if !repository.endDate.Equal(date("2026-07-07")) {
-		t.Fatalf("valuation date = %s, want 2026-07-07", repository.endDate)
-	}
-}
-
-func TestGetOverviewWarnsAndExcludesMissingPrice(t *testing.T) {
+func TestCalculateOverviewWarnsAndExcludesMissingPrice(t *testing.T) {
 	accountID := uuid.New()
-	assetID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "10")},
-		},
-	}, fixedClock("2026-07-07"))
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{assetEntry(accountID, uuid.New(), "XEQT", "10")},
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.IsZero() {
 		t.Fatalf("total value = %s, want 0", overview.TotalValue)
 	}
@@ -78,75 +49,37 @@ func TestGetOverviewWarnsAndExcludesMissingPrice(t *testing.T) {
 	}
 }
 
-func TestGetOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
+func TestCalculateOverviewUsesDeterministicSameDayPricePriority(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
-			Prices: []marketPrice{
-				{
-					AssetID:       assetID,
-					Date:          date("2026-07-01"),
-					Price:         decimal.RequireFromString("50"),
-					Currency:      "CAD",
-					ProviderID:    "provider",
-					SourceQuality: "PROVIDER",
-				},
-				{
-					AssetID:       assetID,
-					Date:          date("2026-07-01"),
-					Price:         decimal.RequireFromString("42"),
-					Currency:      "CAD",
-					ProviderID:    "demo",
-					SourceQuality: "DEMO",
-				},
-			},
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
+		Prices: []marketPrice{
+			{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("50"), Currency: "CAD", ProviderID: "provider", SourceQuality: "PROVIDER"},
+			{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("42"), Currency: "CAD", ProviderID: "demo", SourceQuality: "DEMO"},
 		},
-	}, fixedClock("2026-07-07"))
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.Equal(decimal.RequireFromString("42")) {
 		t.Fatalf("total value = %s, want demo price 42", overview.TotalValue)
 	}
 }
 
-func TestGetOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *testing.T) {
+func TestCalculateOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
-			Prices: []marketPrice{
-				{
-					AssetID:       assetID,
-					Date:          date("2026-07-01"),
-					Price:         decimal.RequireFromString("55"),
-					Currency:      "CAD",
-					ProviderID:    "provider",
-					SourceQuality: "PROVIDER",
-				},
-				{
-					AssetID:       assetID,
-					Date:          date("2026-07-01"),
-					Price:         decimal.RequireFromString("50"),
-					Currency:      "USD",
-					ProviderID:    "demo",
-					SourceQuality: "DEMO",
-				},
-			},
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{assetEntry(accountID, assetID, "XEQT", "1")},
+		Prices: []marketPrice{
+			{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("55"), Currency: "CAD", ProviderID: "provider", SourceQuality: "PROVIDER"},
+			{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("50"), Currency: "USD", ProviderID: "demo", SourceQuality: "DEMO"},
 		},
-	}, fixedClock("2026-07-07"))
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.Equal(decimal.RequireFromString("55")) {
 		t.Fatalf("total value = %s, want convertible CAD price 55", overview.TotalValue)
 	}
@@ -155,20 +88,15 @@ func TestGetOverviewFallsBackToConvertiblePriceWhenPreferredPriceMissingFX(t *te
 	}
 }
 
-func TestGetOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
+func TestCalculateOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{cashEntryWithCurrency(accountID, "USD Cash", "100", "USD")},
-			FXRates:  []fxRate{fxRateOn("USD", "CAD", "2026-07-01", "1.35")},
-		},
-	}, fixedClock("2026-07-07"))
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{cashEntryWithCurrency(accountID, "USD Cash", "100", "USD")},
+		FXRates:      []fxRate{fxRateOn("USD", "CAD", "2026-07-01", "1.35")},
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.Equal(decimal.RequireFromString("135")) {
 		t.Fatalf("total value = %s, want 135", overview.TotalValue)
 	}
@@ -177,22 +105,17 @@ func TestGetOverviewConvertsForeignCashToBaseCurrency(t *testing.T) {
 	}
 }
 
-func TestGetOverviewConvertsForeignPricedAssetToBaseCurrency(t *testing.T) {
+func TestCalculateOverviewConvertsForeignPricedAssetToBaseCurrency(t *testing.T) {
 	accountID := uuid.New()
 	assetID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{assetEntryWithCurrency(accountID, assetID, "VOO", "10", "USD")},
-			Prices:   []marketPrice{{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("20"), Currency: "USD"}},
-			FXRates:  []fxRate{fxRateOn("USD", "CAD", "2026-07-01", "1.35")},
-		},
-	}, fixedClock("2026-07-07"))
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{assetEntryWithCurrency(accountID, assetID, "VOO", "10", "USD")},
+		Prices:       []marketPrice{{AssetID: assetID, Date: date("2026-07-01"), Price: decimal.RequireFromString("20"), Currency: "USD"}},
+		FXRates:      []fxRate{fxRateOn("USD", "CAD", "2026-07-01", "1.35")},
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.Equal(decimal.RequireFromString("270")) {
 		t.Fatalf("total value = %s, want 270", overview.TotalValue)
 	}
@@ -201,19 +124,14 @@ func TestGetOverviewConvertsForeignPricedAssetToBaseCurrency(t *testing.T) {
 	}
 }
 
-func TestGetOverviewWarnsAndExcludesMissingFXRate(t *testing.T) {
+func TestCalculateOverviewWarnsAndExcludesMissingFXRate(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{cashEntryWithCurrency(accountID, "USD Cash", "100", "USD")},
-		},
-	}, fixedClock("2026-07-07"))
+	overview := calculateOverview(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{cashEntryWithCurrency(accountID, "USD Cash", "100", "USD")},
+	}, date("2026-07-07"))
 
-	overview, err := service.GetOverview(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetOverview() error = %v", err)
-	}
 	if !overview.TotalValue.IsZero() {
 		t.Fatalf("total value = %s, want 0", overview.TotalValue)
 	}
@@ -222,151 +140,82 @@ func TestGetOverviewWarnsAndExcludesMissingFXRate(t *testing.T) {
 	}
 }
 
-func TestGetValueHistoryReturnsDailyPoints(t *testing.T) {
+func TestCalculateValueHistoryReturnsDailyPoints(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{cashEntryOn(accountID, "CAD Cash", "100", "2026-07-05")},
-		},
-	}, fixedClock("2026-07-07"))
+	history := calculateValueHistory(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{cashEntryOn(accountID, "CAD Cash", "100", "2026-07-05")},
+	}, portfolio.RangeOneWeek, date("2026-07-07"))
 
-	history, err := service.GetValueHistory(context.Background(), testPortfolioID, portfolio.RangeOneWeek)
-	if err != nil {
-		t.Fatalf("GetValueHistory() error = %v", err)
-	}
 	if len(history.Points) != 7 {
 		t.Fatalf("points length = %d, want 7", len(history.Points))
 	}
-	if !history.Points[0].Value.IsZero() {
-		t.Fatalf("first point value = %s, want 0", history.Points[0].Value)
-	}
-	if !history.Points[6].Value.Equal(decimal.RequireFromString("100")) {
-		t.Fatalf("last point value = %s, want 100", history.Points[6].Value)
+	if !history.Points[0].Value.IsZero() || !history.Points[6].Value.Equal(decimal.RequireFromString("100")) {
+		t.Fatalf("history values = %#v, want 0 then 100", history.Points)
 	}
 }
 
-func TestGetValueHistoryUsesHistoricalFXRates(t *testing.T) {
+func TestCalculateValueHistoryUsesHistoricalFXRates(t *testing.T) {
 	accountID := uuid.New()
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{{ID: accountID, Name: "TFSA"}},
-			Entries:  []valuationEntry{cashEntryForAccountOnWithCurrency(accountID, "TFSA", "USD Cash", "100", "USD", "2026-07-05")},
-			FXRates: []fxRate{
-				fxRateOn("USD", "CAD", "2026-07-04", "1.30"),
-				fxRateOn("USD", "CAD", "2026-07-06", "1.40"),
-			},
+	history := calculateValueHistory(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: accountID, Name: "TFSA"}},
+		Entries:      []valuationEntry{cashEntryForAccountOnWithCurrency(accountID, "TFSA", "USD Cash", "100", "USD", "2026-07-05")},
+		FXRates: []fxRate{
+			fxRateOn("USD", "CAD", "2026-07-04", "1.30"),
+			fxRateOn("USD", "CAD", "2026-07-06", "1.40"),
 		},
-	}, fixedClock("2026-07-07"))
+	}, portfolio.RangeOneWeek, date("2026-07-07"))
 
-	history, err := service.GetValueHistory(context.Background(), testPortfolioID, portfolio.RangeOneWeek)
-	if err != nil {
-		t.Fatalf("GetValueHistory() error = %v", err)
-	}
 	if len(history.Points) != 7 {
 		t.Fatalf("points length = %d, want 7", len(history.Points))
 	}
-	if !history.Points[4].Value.Equal(decimal.RequireFromString("130")) {
-		t.Fatalf("fifth point value = %s, want 130", history.Points[4].Value)
-	}
-	if !history.Points[6].Value.Equal(decimal.RequireFromString("140")) {
-		t.Fatalf("last point value = %s, want 140", history.Points[6].Value)
+	if !history.Points[4].Value.Equal(decimal.RequireFromString("130")) || !history.Points[6].Value.Equal(decimal.RequireFromString("140")) {
+		t.Fatalf("history values = %#v, want 130 then 140", history.Points)
 	}
 }
 
-func TestGetAccountValuesCalculatesAllocationPercent(t *testing.T) {
-	firstAccountID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	secondAccountID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{
-				{ID: firstAccountID, Name: "First"},
-				{ID: secondAccountID, Name: "Second"},
-			},
-			Entries: []valuationEntry{
-				cashEntryForAccount(firstAccountID, "First", "CAD Cash", "25"),
-				cashEntryForAccount(secondAccountID, "Second", "CAD Cash", "75"),
-			},
+func TestCalculateAccountValuesCalculatesAllocationPercent(t *testing.T) {
+	firstAccountID := uuid.New()
+	secondAccountID := uuid.New()
+	values := calculateAccountValues(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: firstAccountID, Name: "First"}, {ID: secondAccountID, Name: "Second"}},
+		Entries: []valuationEntry{
+			cashEntryForAccount(firstAccountID, "First", "CAD Cash", "25"),
+			cashEntryForAccount(secondAccountID, "Second", "CAD Cash", "75"),
 		},
-	}, fixedClock("2026-07-07"))
+	}, date("2026-07-07"))
 
-	values, err := service.GetAccountValues(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetAccountValues() error = %v", err)
-	}
-	if len(values.Accounts) != 2 {
-		t.Fatalf("accounts length = %d, want 2", len(values.Accounts))
-	}
-	if !values.Accounts[0].AllocationPercent.Equal(decimal.RequireFromString("25")) {
-		t.Fatalf("first allocation = %s, want 25", values.Accounts[0].AllocationPercent)
-	}
-	if !values.Accounts[1].AllocationPercent.Equal(decimal.RequireFromString("75")) {
-		t.Fatalf("second allocation = %s, want 75", values.Accounts[1].AllocationPercent)
+	if !values.Accounts[0].AllocationPercent.Equal(decimal.RequireFromString("25")) || !values.Accounts[1].AllocationPercent.Equal(decimal.RequireFromString("75")) {
+		t.Fatalf("allocations = %#v, want 25 then 75", values.Accounts)
 	}
 }
 
-func TestGetAccountValuesCalculatesAllocationPercentAfterCurrencyConversion(t *testing.T) {
-	firstAccountID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	secondAccountID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	service := NewServiceWithClock(fakeRepository{
-		data: valuationData{
-			Accounts: []valuationAccount{
-				{ID: firstAccountID, Name: "First"},
-				{ID: secondAccountID, Name: "Second"},
-			},
-			Entries: []valuationEntry{
-				cashEntryForAccount(firstAccountID, "First", "CAD Cash", "100"),
-				cashEntryForAccountOnWithCurrency(secondAccountID, "Second", "USD Cash", "100", "USD", "2026-07-01"),
-			},
-			FXRates: []fxRate{fxRateOn("USD", "CAD", "2026-07-01", "1.50")},
+func TestCalculateAccountValuesCalculatesAllocationPercentAfterCurrencyConversion(t *testing.T) {
+	firstAccountID := uuid.New()
+	secondAccountID := uuid.New()
+	values := calculateAccountValues(valuationData{
+		BaseCurrency: "CAD",
+		Accounts:     []valuationAccount{{ID: firstAccountID, Name: "First"}, {ID: secondAccountID, Name: "Second"}},
+		Entries: []valuationEntry{
+			cashEntryForAccount(firstAccountID, "First", "CAD Cash", "100"),
+			cashEntryForAccountOnWithCurrency(secondAccountID, "Second", "USD Cash", "100", "USD", "2026-07-01"),
 		},
-	}, fixedClock("2026-07-07"))
+		FXRates: []fxRate{fxRateOn("USD", "CAD", "2026-07-01", "1.50")},
+	}, date("2026-07-07"))
 
-	values, err := service.GetAccountValues(context.Background(), testPortfolioID)
-	if err != nil {
-		t.Fatalf("GetAccountValues() error = %v", err)
-	}
-	if len(values.Accounts) != 2 {
-		t.Fatalf("accounts length = %d, want 2", len(values.Accounts))
-	}
-	if !values.Accounts[0].AllocationPercent.Equal(decimal.RequireFromString("40")) {
-		t.Fatalf("first allocation = %s, want 40", values.Accounts[0].AllocationPercent)
-	}
-	if !values.Accounts[1].AllocationPercent.Equal(decimal.RequireFromString("60")) {
-		t.Fatalf("second allocation = %s, want 60", values.Accounts[1].AllocationPercent)
+	if !values.Accounts[0].AllocationPercent.Equal(decimal.RequireFromString("40")) || !values.Accounts[1].AllocationPercent.Equal(decimal.RequireFromString("60")) {
+		t.Fatalf("allocations = %#v, want 40 then 60", values.Accounts)
 	}
 }
 
-func TestGetValueHistoryRejectsInvalidRange(t *testing.T) {
-	service := NewServiceWithClock(fakeRepository{}, fixedClock("2026-07-07"))
-	_, err := service.GetValueHistory(context.Background(), testPortfolioID, portfolio.Range("BAD"))
+func TestGetValueHistoryRejectsInvalidRangeBeforeDatabaseAccess(t *testing.T) {
+	_, err := (Service{}).GetValueHistory(context.Background(), uuid.New(), portfolio.Range("BAD"))
 	if !errors.Is(err, portfolio.ErrInvalidRange) {
 		t.Fatalf("GetValueHistory() error = %v, want %v", err, portfolio.ErrInvalidRange)
 	}
-}
-
-type fakeRepository struct {
-	data valuationData
-}
-
-type recordingRepository struct {
-	data        valuationData
-	portfolioID uuid.UUID
-	endDate     time.Time
-}
-
-func (r *recordingRepository) LoadValuationData(_ context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
-	r.portfolioID = portfolioID
-	r.endDate = endDate
-	return r.data, nil
-}
-
-func (r fakeRepository) LoadValuationData(context.Context, uuid.UUID, time.Time) (valuationData, error) {
-	data := r.data
-	if data.BaseCurrency == "" {
-		data.BaseCurrency = "CAD"
-	}
-	return data, nil
 }
 
 func cashEntry(accountID uuid.UUID, assetName string, amount string) valuationEntry {
@@ -390,17 +239,7 @@ func cashEntryWithCurrency(accountID uuid.UUID, assetName string, amount string,
 }
 
 func cashEntryForAccountOnWithCurrency(accountID uuid.UUID, accountName string, assetName string, amount string, currency string, tradeDate string) valuationEntry {
-	return valuationEntry{
-		AccountID:     accountID,
-		AccountName:   accountName,
-		AssetID:       uuid.New(),
-		AssetName:     assetName,
-		AssetCurrency: currency,
-		EntryType:     "CASH",
-		Amount:        decimal.RequireFromString(amount),
-		EntryCurrency: currency,
-		TradeDate:     date(tradeDate),
-	}
+	return valuationEntry{AccountID: accountID, AccountName: accountName, AssetID: uuid.New(), AssetName: assetName, AssetCurrency: currency, EntryType: "CASH", Amount: decimal.RequireFromString(amount), EntryCurrency: currency, TradeDate: date(tradeDate)}
 }
 
 func assetEntry(accountID uuid.UUID, assetID uuid.UUID, assetName string, quantity string) valuationEntry {
@@ -408,34 +247,11 @@ func assetEntry(accountID uuid.UUID, assetID uuid.UUID, assetName string, quanti
 }
 
 func assetEntryWithCurrency(accountID uuid.UUID, assetID uuid.UUID, assetName string, quantity string, currency string) valuationEntry {
-	return valuationEntry{
-		AccountID:     accountID,
-		AccountName:   "TFSA",
-		AssetID:       assetID,
-		AssetName:     assetName,
-		AssetCurrency: currency,
-		EntryType:     "ASSET_QUANTITY",
-		Quantity:      decimal.RequireFromString(quantity),
-		EntryCurrency: currency,
-		TradeDate:     date("2026-07-01"),
-	}
+	return valuationEntry{AccountID: accountID, AccountName: "TFSA", AssetID: assetID, AssetName: assetName, AssetCurrency: currency, EntryType: "ASSET_QUANTITY", Quantity: decimal.RequireFromString(quantity), EntryCurrency: currency, TradeDate: date("2026-07-01")}
 }
 
 func fxRateOn(fromCurrency string, toCurrency string, rateDate string, rate string) fxRate {
-	return fxRate{
-		FromCurrency:  fromCurrency,
-		ToCurrency:    toCurrency,
-		Date:          date(rateDate),
-		Rate:          decimal.RequireFromString(rate),
-		ProviderID:    "demo",
-		SourceQuality: "DEMO",
-	}
-}
-
-func fixedClock(value string) func() time.Time {
-	return func() time.Time {
-		return date(value)
-	}
+	return fxRate{FromCurrency: fromCurrency, ToCurrency: toCurrency, Date: date(rateDate), Rate: decimal.RequireFromString(rate), ProviderID: "demo", SourceQuality: "DEMO"}
 }
 
 func date(value string) time.Time {
