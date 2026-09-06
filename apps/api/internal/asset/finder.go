@@ -13,12 +13,12 @@ type Finder struct {
 	provider Provider
 }
 
-func NewFinder(provider Provider) Finder {
-	return Finder{provider: provider}
+func NewFinder(provider Provider) *Finder {
+	return &Finder{provider: provider}
 }
 
-func (f Finder) SearchAssets(ctx context.Context, input SearchInput) ([]AssetCandidate, error) {
-	if f.provider == nil {
+func (f *Finder) SearchAssets(ctx context.Context, input SearchInput) ([]AssetCandidate, error) {
+	if f == nil || f.provider == nil {
 		return nil, fmt.Errorf("asset provider is required")
 	}
 

@@ -28,7 +28,7 @@ Responsibilities:
 
 ## Feature Packages
 
-Use feature packages under `apps/api/internal` for domain/application behavior. Existing examples include `account`, `identity`, `portfolio`, and `bootstrap`.
+Use feature packages under `apps/api/internal` for domain/application behavior. Existing examples include `account`, `asset`, `bootstrap`, `localcontext`, `portfolio`, and `portfoliovalue`.
 
 Package guidance:
 

@@ -35,7 +35,7 @@ Backend code lives in `apps/api`.
 Important areas:
 
 - `cmd`: application entrypoints.
-- `internal/<feature>`: focused feature components and domain behavior such as `account`, `identity`, `portfolio`, and `bootstrap`.
+- `internal/<feature>`: focused feature components and domain behavior such as `account`, `asset`, `bootstrap`, `localcontext`, `portfolio`, and `portfoliovalue`.
 - `internal/httpapi`: handwritten HTTP adapters around generated OpenAPI interfaces.
 - `internal/openapi/generated`: generated OpenAPI server/types code. Do not edit manually.
 - `internal/postgres`: database setup, embedded migrations, and PostgreSQL support.

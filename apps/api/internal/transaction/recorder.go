@@ -4,29 +4,51 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/dateutil"
+	"github.com/finsight-org/finsight/apps/api/internal/postgres"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
 
-type PostgresRepository struct {
-	db *pgxpool.Pool
+const (
+	transactionTypeConstraint             = "transactions_type_check"
+	transactionSourceConstraint           = "transactions_source_check"
+	transactionAccountConstraint          = "transactions_account_portfolio_fk"
+	ledgerEntryTypeConstraint             = "ledger_entries_entry_type_check"
+	ledgerEntryCurrencyConstraint         = "ledger_entries_currency_check"
+	ledgerEntryOriginalCurrencyConstraint = "ledger_entries_original_currency_check"
+	ledgerEntryDirectionConstraint        = "ledger_entries_direction_check"
+	ledgerEntryAssetConstraint            = "ledger_entries_asset_id_fkey"
+	ledgerEntryAccountConstraint          = "ledger_entries_transaction_account_fk"
+)
+
+type Recorder struct {
+	pool *pgxpool.Pool
 }
 
-func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
-	return PostgresRepository{db: db}
+func New(pool *pgxpool.Pool) *Recorder {
+	return &Recorder{pool: pool}
 }
 
-func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createRepositoryInput) (Transaction, error) {
-	if r.db == nil {
+func (r *Recorder) Record(ctx context.Context, portfolioID uuid.UUID, input CreateInput) (Transaction, error) {
+	if r == nil || r.pool == nil {
 		return Transaction{}, fmt.Errorf("postgres pool is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	input = normalizeCreateInput(input)
+	if err := validateCreateInput(input); err != nil {
+		return Transaction{}, err
+	}
+	input.TradeDate = dateutil.DateOnly(input.TradeDate)
+	input.SettlementDate = optionalDate(input.SettlementDate)
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return Transaction{}, fmt.Errorf("begin transaction insert: %w", err)
 	}
@@ -34,11 +56,11 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 		_ = tx.Rollback(ctx)
 	}()
 
-	queries := db.New(tx)
-	if err := validateAccount(ctx, queries, input.PortfolioID, input.AccountID); err != nil {
+	queries := database.New(tx)
+	if err := validateAccount(ctx, queries, portfolioID, input.AccountID); err != nil {
 		return Transaction{}, err
 	}
-	workspaceID, err := transactionWorkspaceID(ctx, queries, input.PortfolioID)
+	workspaceID, err := transactionWorkspaceID(ctx, queries, portfolioID)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -46,8 +68,8 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 		return Transaction{}, err
 	}
 
-	row, err := queries.CreateTransaction(ctx, db.CreateTransactionParams{
-		PortfolioID:    pgconv.UUID(input.PortfolioID),
+	row, err := queries.CreateTransaction(ctx, database.CreateTransactionParams{
+		PortfolioID:    pgconv.UUID(portfolioID),
 		AccountID:      pgconv.UUID(input.AccountID),
 		ImportID:       pgconv.OptionalUUID(input.ImportID),
 		Type:           string(input.Type),
@@ -59,7 +81,7 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 		Status:         string(StatusConfirmed),
 	})
 	if err != nil {
-		return Transaction{}, fmt.Errorf("insert transaction: %w", err)
+		return Transaction{}, translateTransactionError(err)
 	}
 
 	created, err := mapTransaction(row)
@@ -68,7 +90,7 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 	}
 
 	for _, entry := range input.LedgerEntries {
-		entryRow, err := queries.CreateLedgerEntry(ctx, db.CreateLedgerEntryParams{
+		entryRow, err := queries.CreateLedgerEntry(ctx, database.CreateLedgerEntryParams{
 			TransactionID:    row.ID,
 			AccountID:        pgconv.UUID(input.AccountID),
 			AssetID:          pgconv.UUID(entry.AssetID),
@@ -82,7 +104,7 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 			Direction:        string(entry.Direction),
 		})
 		if err != nil {
-			return Transaction{}, fmt.Errorf("insert ledger entry: %w", err)
+			return Transaction{}, translateLedgerEntryError(err)
 		}
 		mappedEntry, err := mapLedgerEntry(entryRow)
 		if err != nil {
@@ -97,7 +119,35 @@ func (r PostgresRepository) CreateWithEntries(ctx context.Context, input createR
 	return created, nil
 }
 
-func transactionWorkspaceID(ctx context.Context, queries *db.Queries, portfolioID uuid.UUID) (uuid.UUID, error) {
+func translateTransactionError(err error) error {
+	switch {
+	case postgres.IsConstraintViolation(err, transactionTypeConstraint):
+		return ErrInvalidType
+	case postgres.IsConstraintViolation(err, transactionSourceConstraint):
+		return ErrInvalidSource
+	case postgres.IsConstraintViolation(err, transactionAccountConstraint):
+		return ErrInvalidAccount
+	default:
+		return fmt.Errorf("insert transaction: %w", err)
+	}
+}
+
+func translateLedgerEntryError(err error) error {
+	switch {
+	case postgres.IsConstraintViolation(err, ledgerEntryTypeConstraint):
+		return ErrInvalidEntryType
+	case postgres.IsConstraintViolation(err, ledgerEntryCurrencyConstraint, ledgerEntryOriginalCurrencyConstraint):
+		return ErrInvalidEntryCurrency
+	case postgres.IsConstraintViolation(err, ledgerEntryAssetConstraint):
+		return ErrInvalidEntryAsset
+	case postgres.IsConstraintViolation(err, ledgerEntryDirectionConstraint, ledgerEntryAccountConstraint):
+		return ErrInvalidLedgerEntry
+	default:
+		return fmt.Errorf("insert ledger entry: %w", err)
+	}
+}
+
+func transactionWorkspaceID(ctx context.Context, queries *database.Queries, portfolioID uuid.UUID) (uuid.UUID, error) {
 	value, err := queries.GetTransactionWorkspaceID(ctx, pgconv.UUID(portfolioID))
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("get transaction workspace: %w", err)
@@ -109,8 +159,8 @@ func transactionWorkspaceID(ctx context.Context, queries *db.Queries, portfolioI
 	return workspaceID, nil
 }
 
-func validateAccount(ctx context.Context, queries *db.Queries, portfolioID uuid.UUID, accountID uuid.UUID) error {
-	_, err := queries.GetAccountByPortfolioAndID(ctx, db.GetAccountByPortfolioAndIDParams{
+func validateAccount(ctx context.Context, queries *database.Queries, portfolioID uuid.UUID, accountID uuid.UUID) error {
+	_, err := queries.GetAccountByPortfolioAndID(ctx, database.GetAccountByPortfolioAndIDParams{
 		PortfolioID: pgconv.UUID(portfolioID),
 		ID:          pgconv.UUID(accountID),
 	})
@@ -123,7 +173,7 @@ func validateAccount(ctx context.Context, queries *db.Queries, portfolioID uuid.
 	return fmt.Errorf("validate transaction account: %w", err)
 }
 
-func validateLedgerAssets(ctx context.Context, queries *db.Queries, workspaceID uuid.UUID, entries []CreateLedgerEntryInput) error {
+func validateLedgerAssets(ctx context.Context, queries *database.Queries, workspaceID uuid.UUID, entries []CreateLedgerEntryInput) error {
 	seen := map[uuid.UUID]struct{}{}
 	for _, entry := range entries {
 		if _, ok := seen[entry.AssetID]; ok {
@@ -131,7 +181,7 @@ func validateLedgerAssets(ctx context.Context, queries *db.Queries, workspaceID 
 		}
 		seen[entry.AssetID] = struct{}{}
 
-		_, err := queries.GetAssetByWorkspaceAndID(ctx, db.GetAssetByWorkspaceAndIDParams{
+		_, err := queries.GetAssetByWorkspaceAndID(ctx, database.GetAssetByWorkspaceAndIDParams{
 			WorkspaceID: pgconv.UUID(workspaceID),
 			ID:          pgconv.UUID(entry.AssetID),
 		})
@@ -146,7 +196,15 @@ func validateLedgerAssets(ctx context.Context, queries *db.Queries, workspaceID 
 	return nil
 }
 
-func mapTransaction(row db.Transaction) (Transaction, error) {
+func optionalDate(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	truncated := dateutil.DateOnly(*value)
+	return &truncated
+}
+
+func mapTransaction(row database.Transaction) (Transaction, error) {
 	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return Transaction{}, fmt.Errorf("id: %w", err)
@@ -188,7 +246,7 @@ func mapTransaction(row db.Transaction) (Transaction, error) {
 	}, nil
 }
 
-func mapLedgerEntry(row db.LedgerEntry) (LedgerEntry, error) {
+func mapLedgerEntry(row database.LedgerEntry) (LedgerEntry, error) {
 	id, err := pgconv.DomainUUID(row.ID)
 	if err != nil {
 		return LedgerEntry{}, fmt.Errorf("id: %w", err)

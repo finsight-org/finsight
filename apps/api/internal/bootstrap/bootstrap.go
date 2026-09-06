@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/finsight-org/finsight/apps/api/internal/identity"
-	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 )
 
 const (
@@ -18,53 +20,63 @@ const (
 	localPortfolioName         = "Default Portfolio"
 )
 
-type Repository interface {
-	BootstrapLocal(context.Context, LocalDefaults) (Result, error)
+type Bootstrapper struct {
+	pool *pgxpool.Pool
 }
 
-type Service struct {
-	repository Repository
+func New(pool *pgxpool.Pool) *Bootstrapper {
+	return &Bootstrapper{pool: pool}
 }
 
-type LocalDefaults struct {
-	WorkspaceName         string
-	WorkspaceAuthMode     string
-	WorkspaceBaseCurrency string
-	UserEmail             string
-	UserDisplayName       string
-	MembershipRole        string
-	PortfolioName         string
-}
-
-type Result struct {
-	Created    bool
-	User       identity.User
-	Workspace  identity.Workspace
-	Membership identity.WorkspaceMembership
-	Portfolio  portfolio.Portfolio
-}
-
-func NewService(repository Repository) Service {
-	return Service{repository: repository}
-}
-
-func (s Service) BootstrapLocal(ctx context.Context) (Result, error) {
-	if s.repository == nil {
-		return Result{}, fmt.Errorf("bootstrap repository is required")
+func (b *Bootstrapper) BootstrapLocal(ctx context.Context) error {
+	if b == nil || b.pool == nil {
+		return fmt.Errorf("postgres pool is required")
 	}
 
-	result, err := s.repository.BootstrapLocal(ctx, LocalDefaults{
-		WorkspaceName:         localWorkspaceName,
-		WorkspaceAuthMode:     localWorkspaceAuthMode,
-		WorkspaceBaseCurrency: localWorkspaceBaseCurrency,
-		UserEmail:             localUserEmail,
-		UserDisplayName:       localUserDisplayName,
-		MembershipRole:        localMembershipRole,
-		PortfolioName:         localPortfolioName,
+	tx, err := b.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("begin local bootstrap transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	queries := database.New(tx)
+	userID, err := queries.UpsertLocalUser(ctx, database.UpsertLocalUserParams{
+		Email:       localUserEmail,
+		DisplayName: localUserDisplayName,
 	})
 	if err != nil {
-		return Result{}, fmt.Errorf("bootstrap local context: %w", err)
+		return fmt.Errorf("upsert local user: %w", err)
 	}
 
-	return result, nil
+	workspaceID, err := queries.UpsertLocalWorkspace(ctx, database.UpsertLocalWorkspaceParams{
+		Name:         localWorkspaceName,
+		BaseCurrency: localWorkspaceBaseCurrency,
+		AuthMode:     localWorkspaceAuthMode,
+	})
+	if err != nil {
+		return fmt.Errorf("upsert local workspace: %w", err)
+	}
+
+	if err := queries.UpsertLocalWorkspaceMembership(ctx, database.UpsertLocalWorkspaceMembershipParams{
+		WorkspaceID: workspaceID,
+		UserID:      userID,
+		Role:        localMembershipRole,
+	}); err != nil {
+		return fmt.Errorf("upsert local workspace membership: %w", err)
+	}
+
+	if err := queries.UpsertDefaultPortfolio(ctx, database.UpsertDefaultPortfolioParams{
+		WorkspaceID:  workspaceID,
+		Name:         localPortfolioName,
+		BaseCurrency: localWorkspaceBaseCurrency,
+	}); err != nil {
+		return fmt.Errorf("upsert default portfolio: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit local bootstrap transaction: %w", err)
+	}
+	return nil
 }

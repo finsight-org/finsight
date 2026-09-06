@@ -26,11 +26,15 @@ import (
 func TestAccountHTTPFlowWithPostgres(t *testing.T) {
 	pool := httpAccountTestPool(t)
 	ctx := context.Background()
-	bootstrapResult, err := bootstrap.NewService(bootstrap.NewPostgresRepository(pool)).BootstrapLocal(ctx)
-	if err != nil {
+	if err := bootstrap.New(pool).BootstrapLocal(ctx); err != nil {
 		t.Fatalf("BootstrapLocal() error = %v", err)
 	}
-	portfolioID := bootstrapResult.Portfolio.ID
+	queries := database.New(pool)
+	resolver := localcontext.New(queries)
+	portfolioID, err := resolver.DefaultPortfolioID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultPortfolioID() error = %v", err)
+	}
 	prefix := "HTTP Account " + uuid.NewString()
 	t.Cleanup(func() {
 		if _, err := pool.Exec(ctx, `delete from accounts where portfolio_id = $1 and name like $2`, portfolioID, prefix+"%"); err != nil {
@@ -40,8 +44,8 @@ func TestAccountHTTPFlowWithPostgres(t *testing.T) {
 
 	router := NewRouter(Options{
 		DeploymentMode: config.DeploymentModeLocal,
-		LocalContext:   localcontext.NewService(localcontext.NewPostgresRepository(pool)),
-		Accounts:       account.New(database.New(pool)),
+		LocalContext:   resolver,
+		Accounts:       account.New(queries),
 	})
 	name := prefix + " Margin"
 	body := fmt.Sprintf(`{"name":%q,"institution_name":"Questrade","type":"BROKERAGE","base_currency":"CAD","external_reference":%q}`, name, prefix+"-margin")
@@ -98,11 +102,16 @@ func TestAccountHTTPFlowWithPostgres(t *testing.T) {
 func TestAccountHTTPRejectsNonDefaultPortfolio(t *testing.T) {
 	pool := httpAccountTestPool(t)
 	ctx := context.Background()
-	bootstrapResult, err := bootstrap.NewService(bootstrap.NewPostgresRepository(pool)).BootstrapLocal(ctx)
-	if err != nil {
+	if err := bootstrap.New(pool).BootstrapLocal(ctx); err != nil {
 		t.Fatalf("BootstrapLocal() error = %v", err)
 	}
-	otherPortfolioID := insertHTTPTestPortfolio(t, ctx, pool, bootstrapResult.Workspace.ID)
+	queries := database.New(pool)
+	resolver := localcontext.New(queries)
+	scope, err := resolver.DefaultScope(ctx)
+	if err != nil {
+		t.Fatalf("DefaultScope() error = %v", err)
+	}
+	otherPortfolioID := insertHTTPTestPortfolio(t, ctx, pool, scope.WorkspaceID)
 	t.Cleanup(func() {
 		if _, err := pool.Exec(ctx, `delete from portfolios where id = $1`, otherPortfolioID); err != nil {
 			t.Fatalf("delete HTTP test portfolio: %v", err)
@@ -111,8 +120,8 @@ func TestAccountHTTPRejectsNonDefaultPortfolio(t *testing.T) {
 
 	router := NewRouter(Options{
 		DeploymentMode: config.DeploymentModeLocal,
-		LocalContext:   localcontext.NewService(localcontext.NewPostgresRepository(pool)),
-		Accounts:       account.New(database.New(pool)),
+		LocalContext:   resolver,
+		Accounts:       account.New(queries),
 	})
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+otherPortfolioID.String()+"/accounts", nil))

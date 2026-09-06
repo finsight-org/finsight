@@ -13,7 +13,7 @@ sequenceDiagram
     participant C as Client
     participant O as OpenAPI validator
     participant H as HTTP handler
-    participant L as Local context service
+    participant L as Local context resolver
     participant A as Account store
     participant Q as sqlc queries
     participant DB as PostgreSQL

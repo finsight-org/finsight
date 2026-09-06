@@ -9,6 +9,8 @@ import (
 	"github.com/shopspring/decimal"
 
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 )
 
@@ -16,94 +18,55 @@ const (
 	sourceDemo = "DEMO"
 )
 
-type AssetRegistry interface {
-	UpsertAsset(context.Context, uuid.UUID, asset.UpsertInput) (asset.Asset, error)
-}
-
-type TransactionRecorder interface {
-	RecordTransaction(context.Context, uuid.UUID, transaction.CreateInput) (transaction.Transaction, error)
-}
-
-type Repository interface {
-	DeleteDemoData(context.Context, uuid.UUID, uuid.UUID) error
-	UpsertDemoAccount(context.Context, upsertAccountInput) (uuid.UUID, error)
-	UpsertMarketPrice(context.Context, upsertMarketPriceInput) error
-	UpsertFXRate(context.Context, upsertFXRateInput) error
-}
-
 type Seeder struct {
-	assets       AssetRegistry
-	transactions TransactionRecorder
-	repository   Repository
+	assets       *asset.Store
+	transactions *transaction.Recorder
+	queries      *database.Queries
 }
 
-type upsertAccountInput struct {
-	PortfolioID       uuid.UUID
-	Name              string
-	InstitutionName   string
-	Type              string
-	BaseCurrency      string
-	ExternalReference string
+func NewSeeder(assets *asset.Store, transactions *transaction.Recorder, queries *database.Queries) *Seeder {
+	return &Seeder{assets: assets, transactions: transactions, queries: queries}
 }
 
-type upsertMarketPriceInput struct {
-	AssetID  uuid.UUID
-	Date     time.Time
-	Price    decimal.Decimal
-	Currency string
-}
-
-type upsertFXRateInput struct {
-	WorkspaceID  uuid.UUID
-	FromCurrency string
-	ToCurrency   string
-	Date         time.Time
-	Rate         decimal.Decimal
-}
-
-func NewSeeder(assets AssetRegistry, transactions TransactionRecorder, repository Repository) Seeder {
-	return Seeder{assets: assets, transactions: transactions, repository: repository}
-}
-
-func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID) error {
-	if s.assets == nil {
-		return fmt.Errorf("demo asset registry is required")
+func (s *Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID) error {
+	if s == nil || s.assets == nil {
+		return fmt.Errorf("demo asset store is required")
 	}
 	if s.transactions == nil {
 		return fmt.Errorf("demo transaction recorder is required")
 	}
-	if s.repository == nil {
-		return fmt.Errorf("demo repository is required")
+	if s.queries == nil {
+		return fmt.Errorf("database queries are required")
 	}
 
-	if err := s.repository.DeleteDemoData(ctx, workspaceID, portfolioID); err != nil {
+	if err := s.deleteDemoData(ctx, workspaceID, portfolioID); err != nil {
 		return fmt.Errorf("delete existing demo data: %w", err)
 	}
 
-	tfsaID, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
-		PortfolioID:       portfolioID,
+	tfsaID, err := s.upsertDemoAccount(ctx, database.UpsertDemoAccountParams{
+		PortfolioID:       pgconv.UUID(portfolioID),
 		Name:              "Wealthsimple TFSA",
-		InstitutionName:   "Wealthsimple",
+		InstitutionName:   pgconv.Text(strPtr("Wealthsimple")),
 		Type:              "RETIREMENT",
 		BaseCurrency:      "CAD",
-		ExternalReference: "finsight-demo:wealthsimple-tfsa",
+		ExternalReference: pgconv.Text(strPtr("finsight-demo:wealthsimple-tfsa")),
 	})
 	if err != nil {
 		return fmt.Errorf("upsert demo TFSA account: %w", err)
 	}
-	marginID, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
-		PortfolioID:       portfolioID,
+	marginID, err := s.upsertDemoAccount(ctx, database.UpsertDemoAccountParams{
+		PortfolioID:       pgconv.UUID(portfolioID),
 		Name:              "Questrade Margin",
-		InstitutionName:   "Questrade",
+		InstitutionName:   pgconv.Text(strPtr("Questrade")),
 		Type:              "BROKERAGE",
 		BaseCurrency:      "CAD",
-		ExternalReference: "finsight-demo:questrade-margin",
+		ExternalReference: pgconv.Text(strPtr("finsight-demo:questrade-margin")),
 	})
 	if err != nil {
 		return fmt.Errorf("upsert demo margin account: %w", err)
 	}
 
-	cash, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
+	cashID, err := s.upsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "CAD Cash",
 		Type:           asset.TypeCash,
 		Currency:       "CAD",
@@ -114,7 +77,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	if err != nil {
 		return fmt.Errorf("upsert demo cash asset: %w", err)
 	}
-	usdCash, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
+	usdCashID, err := s.upsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "USD Cash",
 		Type:           asset.TypeCash,
 		Currency:       "USD",
@@ -125,7 +88,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	if err != nil {
 		return fmt.Errorf("upsert demo USD cash asset: %w", err)
 	}
-	xeqt, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
+	xeqtID, err := s.upsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "iShares Core Equity ETF Portfolio",
 		Type:           asset.TypeETF,
 		Currency:       "CAD",
@@ -137,7 +100,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	if err != nil {
 		return fmt.Errorf("upsert demo XEQT asset: %w", err)
 	}
-	vfv, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
+	vfvID, err := s.upsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "Vanguard S&P 500 Index ETF",
 		Type:           asset.TypeETF,
 		Currency:       "CAD",
@@ -149,7 +112,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	if err != nil {
 		return fmt.Errorf("upsert demo VFV asset: %w", err)
 	}
-	voo, err := s.assets.UpsertAsset(ctx, workspaceID, asset.UpsertInput{
+	vooID, err := s.upsertAsset(ctx, workspaceID, asset.UpsertInput{
 		Name:           "Vanguard S&P 500 ETF",
 		Type:           asset.TypeETF,
 		Currency:       "USD",
@@ -162,7 +125,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 		return fmt.Errorf("upsert demo VOO asset: %w", err)
 	}
 
-	if err := s.upsertPrices(ctx, xeqt.ID, "CAD", []datedPrice{
+	if err := s.upsertPrices(ctx, xeqtID, "CAD", []datedPrice{
 		{date: "2026-01-01", price: "100"},
 		{date: "2026-02-01", price: "102"},
 		{date: "2026-03-01", price: "105"},
@@ -173,7 +136,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	}); err != nil {
 		return fmt.Errorf("upsert demo XEQT prices: %w", err)
 	}
-	if err := s.upsertPrices(ctx, vfv.ID, "CAD", []datedPrice{
+	if err := s.upsertPrices(ctx, vfvID, "CAD", []datedPrice{
 		{date: "2026-02-01", price: "120"},
 		{date: "2026-03-01", price: "125"},
 		{date: "2026-04-01", price: "123"},
@@ -183,7 +146,7 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	}); err != nil {
 		return fmt.Errorf("upsert demo VFV prices: %w", err)
 	}
-	if err := s.upsertPrices(ctx, voo.ID, "USD", []datedPrice{
+	if err := s.upsertPrices(ctx, vooID, "USD", []datedPrice{
 		{date: "2026-03-01", price: "380"},
 		{date: "2026-04-01", price: "392"},
 		{date: "2026-05-01", price: "401"},
@@ -205,22 +168,59 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	}
 
 	records := []transaction.CreateInput{
-		deposit(tfsaID, cash.ID, "2026-01-02", "50000", "finsight-demo:tfsa-deposit-1"),
-		buy(tfsaID, cash.ID, xeqt.ID, "2026-01-03", "100", "100", "finsight-demo:tfsa-buy-xeqt-1"),
-		buy(tfsaID, cash.ID, vfv.ID, "2026-02-01", "100", "120", "finsight-demo:tfsa-buy-vfv-1"),
-		deposit(marginID, cash.ID, "2026-03-15", "25000", "finsight-demo:margin-deposit-1"),
-		buy(marginID, cash.ID, xeqt.ID, "2026-03-16", "150", "105", "finsight-demo:margin-buy-xeqt-1"),
-		depositWithCurrency(marginID, usdCash.ID, "2026-04-01", "10000", "USD", "finsight-demo:margin-usd-deposit-1"),
-		buyWithCurrency(marginID, usdCash.ID, voo.ID, "2026-04-02", "10", "392", "USD", "finsight-demo:margin-buy-voo-1"),
-		dividend(tfsaID, cash.ID, "2026-05-01", "120", "finsight-demo:tfsa-dividend-1"),
+		deposit(tfsaID, cashID, "2026-01-02", "50000", "finsight-demo:tfsa-deposit-1"),
+		buy(tfsaID, cashID, xeqtID, "2026-01-03", "100", "100", "finsight-demo:tfsa-buy-xeqt-1"),
+		buy(tfsaID, cashID, vfvID, "2026-02-01", "100", "120", "finsight-demo:tfsa-buy-vfv-1"),
+		deposit(marginID, cashID, "2026-03-15", "25000", "finsight-demo:margin-deposit-1"),
+		buy(marginID, cashID, xeqtID, "2026-03-16", "150", "105", "finsight-demo:margin-buy-xeqt-1"),
+		depositWithCurrency(marginID, usdCashID, "2026-04-01", "10000", "USD", "finsight-demo:margin-usd-deposit-1"),
+		buyWithCurrency(marginID, usdCashID, vooID, "2026-04-02", "10", "392", "USD", "finsight-demo:margin-buy-voo-1"),
+		dividend(tfsaID, cashID, "2026-05-01", "120", "finsight-demo:tfsa-dividend-1"),
 	}
 	for _, record := range records {
-		if _, err := s.transactions.RecordTransaction(ctx, portfolioID, record); err != nil {
+		if _, err := s.transactions.Record(ctx, portfolioID, record); err != nil {
 			return fmt.Errorf("record demo transaction %s: %w", *record.ExternalID, err)
 		}
 	}
 
 	return nil
+}
+
+func (s *Seeder) deleteDemoData(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID) error {
+	if err := s.queries.DeleteDemoTransactions(ctx, pgconv.UUID(portfolioID)); err != nil {
+		return fmt.Errorf("delete demo transactions: %w", err)
+	}
+	if err := s.queries.DeleteDemoMarketPrices(ctx, pgconv.UUID(workspaceID)); err != nil {
+		return fmt.Errorf("delete demo market prices: %w", err)
+	}
+	if err := s.queries.DeleteDemoFxRates(ctx, pgconv.UUID(workspaceID)); err != nil {
+		return fmt.Errorf("delete demo fx rates: %w", err)
+	}
+	return nil
+}
+
+func (s *Seeder) upsertDemoAccount(ctx context.Context, params database.UpsertDemoAccountParams) (uuid.UUID, error) {
+	row, err := s.queries.UpsertDemoAccount(ctx, params)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("upsert demo account: %w", err)
+	}
+	id, err := pgconv.DomainUUID(row.ID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("map demo account id: %w", err)
+	}
+	return id, nil
+}
+
+func (s *Seeder) upsertAsset(ctx context.Context, workspaceID uuid.UUID, input asset.UpsertInput) (uuid.UUID, error) {
+	row, err := s.assets.Upsert(ctx, workspaceID, input)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	id, err := pgconv.DomainUUID(row.ID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("map demo asset id: %w", err)
+	}
+	return id, nil
 }
 
 type datedPrice struct {
@@ -233,30 +233,34 @@ type datedRate struct {
 	rate string
 }
 
-func (s Seeder) upsertPrices(ctx context.Context, assetID uuid.UUID, currency string, prices []datedPrice) error {
+func (s *Seeder) upsertPrices(ctx context.Context, assetID uuid.UUID, currency string, prices []datedPrice) error {
 	for _, price := range prices {
-		if err := s.repository.UpsertMarketPrice(ctx, upsertMarketPriceInput{
-			AssetID:  assetID,
-			Date:     mustDate(price.date),
-			Price:    decimal.RequireFromString(price.price),
-			Currency: currency,
+		if _, err := s.queries.UpsertMarketPrice(ctx, database.UpsertMarketPriceParams{
+			AssetID:       pgconv.UUID(assetID),
+			Date:          pgconv.Date(mustDate(price.date)),
+			Price:         pgconv.Numeric(decimal.RequireFromString(price.price)),
+			Currency:      currency,
+			ProviderID:    "demo",
+			SourceQuality: "DEMO",
 		}); err != nil {
-			return err
+			return fmt.Errorf("upsert market price: %w", err)
 		}
 	}
 	return nil
 }
 
-func (s Seeder) upsertFXRates(ctx context.Context, workspaceID uuid.UUID, fromCurrency string, toCurrency string, rates []datedRate) error {
+func (s *Seeder) upsertFXRates(ctx context.Context, workspaceID uuid.UUID, fromCurrency string, toCurrency string, rates []datedRate) error {
 	for _, rate := range rates {
-		if err := s.repository.UpsertFXRate(ctx, upsertFXRateInput{
-			WorkspaceID:  workspaceID,
-			FromCurrency: fromCurrency,
-			ToCurrency:   toCurrency,
-			Date:         mustDate(rate.date),
-			Rate:         decimal.RequireFromString(rate.rate),
+		if _, err := s.queries.UpsertDemoFxRate(ctx, database.UpsertDemoFxRateParams{
+			WorkspaceID:   pgconv.UUID(workspaceID),
+			FromCurrency:  fromCurrency,
+			ToCurrency:    toCurrency,
+			Date:          pgconv.Date(mustDate(rate.date)),
+			Rate:          pgconv.Numeric(decimal.RequireFromString(rate.rate)),
+			ProviderID:    "demo",
+			SourceQuality: "DEMO",
 		}); err != nil {
-			return err
+			return fmt.Errorf("upsert fx rate: %w", err)
 		}
 	}
 	return nil

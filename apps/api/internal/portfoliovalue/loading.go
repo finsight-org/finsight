@@ -8,28 +8,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
 
-type PostgresRepository struct {
-	db *pgxpool.Pool
-}
-
-func NewPostgresRepository(db *pgxpool.Pool) PostgresRepository {
-	return PostgresRepository{db: db}
-}
-
-func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
-	if r.db == nil {
-		return valuationData{}, fmt.Errorf("postgres pool is required")
-	}
-
-	queries := db.New(r.db)
-	portfolioContext, err := queries.GetPortfolioValuationContext(ctx, pgconv.UUID(portfolioID))
+func (c *Calculator) loadValuationData(ctx context.Context, portfolioID uuid.UUID, endDate time.Time) (valuationData, error) {
+	portfolioContext, err := c.queries.GetPortfolioValuationContext(ctx, pgconv.UUID(portfolioID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return valuationData{}, portfolio.ErrNotFound
@@ -41,12 +27,12 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID u
 		return valuationData{}, fmt.Errorf("map portfolio workspace id: %w", err)
 	}
 
-	accountRows, err := queries.ListPortfolioAccountsForValuation(ctx, pgconv.UUID(portfolioID))
+	accountRows, err := c.queries.ListPortfolioAccountsForValuation(ctx, pgconv.UUID(portfolioID))
 	if err != nil {
 		return valuationData{}, fmt.Errorf("select portfolio accounts: %w", err)
 	}
 
-	entryRows, err := queries.ListPortfolioLedgerEntriesForValuation(ctx, db.ListPortfolioLedgerEntriesForValuationParams{
+	entryRows, err := c.queries.ListPortfolioLedgerEntriesForValuation(ctx, db.ListPortfolioLedgerEntriesForValuationParams{
 		PortfolioID: pgconv.UUID(portfolioID),
 		EndDate:     pgconv.Date(endDate),
 	})
@@ -54,7 +40,7 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID u
 		return valuationData{}, fmt.Errorf("select portfolio ledger entries: %w", err)
 	}
 
-	priceRows, err := queries.ListPortfolioMarketPricesForValuation(ctx, db.ListPortfolioMarketPricesForValuationParams{
+	priceRows, err := c.queries.ListPortfolioMarketPricesForValuation(ctx, db.ListPortfolioMarketPricesForValuationParams{
 		EndDate:     pgconv.Date(endDate),
 		PortfolioID: pgconv.UUID(portfolioID),
 	})
@@ -62,7 +48,7 @@ func (r PostgresRepository) LoadValuationData(ctx context.Context, portfolioID u
 		return valuationData{}, fmt.Errorf("select portfolio market prices: %w", err)
 	}
 
-	fxRateRows, err := queries.ListPortfolioFxRatesForValuation(ctx, db.ListPortfolioFxRatesForValuationParams{
+	fxRateRows, err := c.queries.ListPortfolioFxRatesForValuation(ctx, db.ListPortfolioFxRatesForValuationParams{
 		WorkspaceID:  pgconv.UUID(workspaceID),
 		PortfolioID:  pgconv.UUID(portfolioID),
 		BaseCurrency: portfolioContext.BaseCurrency,

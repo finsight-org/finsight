@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
+	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
+	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
+	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
 )
 
 type apiServer struct {
@@ -15,10 +18,10 @@ type apiServer struct {
 	readyTimeout   time.Duration
 	deploymentMode config.DeploymentMode
 	database       DatabasePinger
-	localContext   LocalContextService
+	localContext   *localcontext.Resolver
 	accounts       *account.Store
-	assets         AssetFinder
-	portfolio      PortfolioService
+	assets         *asset.Finder
+	portfolio      *portfoliovalue.Calculator
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

@@ -10,5 +10,4 @@ var (
 	ErrInvalidCurrency     = errors.New("invalid asset currency")
 	ErrInvalidSymbol       = errors.New("invalid asset symbol")
 	ErrInvalidProvider     = errors.New("invalid asset provider")
-	ErrNotFound            = errors.New("asset not found")
 )

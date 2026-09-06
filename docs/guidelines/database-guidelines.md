@@ -93,6 +93,8 @@ apps/api/migrations
 
 The API runs pending Goose migrations during startup for local and user-operated deployments. Goose records applied migrations in its default `goose_db_version` table.
 
+Before the first production deployment, foundational migrations may be amended to keep the initial schema canonical. After such a change, verification must use a fresh database. Reset disposable local and test databases because Goose does not re-run an already recorded migration version.
+
 The initial migration creates the identity/workspace foundation tables:
 
 - `workspaces`

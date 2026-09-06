@@ -11,17 +11,25 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 )
 
 func TestGetMeReturnsLocalDefaultPortfolioID(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	router := NewRouter(Options{
-		DeploymentMode: config.DeploymentModeLocal,
-		LocalContext:   &fakeLocalContextService{portfolioID: portfolioID},
-	})
+	pool := httpAccountTestPool(t)
+	ctx := context.Background()
+	if err := bootstrap.New(pool).BootstrapLocal(ctx); err != nil {
+		t.Fatalf("BootstrapLocal() error = %v", err)
+	}
+	resolver := localcontext.New(database.New(pool))
+	want, err := resolver.DefaultPortfolioID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultPortfolioID() error = %v", err)
+	}
+	router := NewRouter(Options{DeploymentMode: config.DeploymentModeLocal, LocalContext: resolver})
 
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/me", nil))
@@ -33,93 +41,56 @@ func TestGetMeReturnsLocalDefaultPortfolioID(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if uuid.UUID(body.DefaultPortfolioId) != portfolioID {
-		t.Fatalf("default_portfolio_id = %s, want %s", uuid.UUID(body.DefaultPortfolioId), portfolioID)
+	if uuid.UUID(body.DefaultPortfolioId) != want {
+		t.Fatalf("default_portfolio_id = %s, want %s", uuid.UUID(body.DefaultPortfolioId), want)
 	}
 }
 
-func TestGetMeReturnsNotFoundWhenLocalContextIsMissing(t *testing.T) {
-	router := NewRouter(Options{
-		DeploymentMode: config.DeploymentModeLocal,
-		LocalContext:   &fakeLocalContextService{err: localcontext.ErrNotFound},
-	})
-
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/me", nil))
-
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+func TestLocalContextErrorMapping(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "not found", err: localcontext.ErrNotFound, status: http.StatusNotFound, code: "local_context_not_found"},
+		{name: "portfolio unavailable", err: localcontext.ErrPortfolioNotAllowed, status: http.StatusNotFound, code: "portfolio_not_found"},
+		{name: "unexpected", err: errors.New("database credentials"), status: http.StatusInternalServerError, code: "local_context_lookup_failed"},
 	}
-	assertErrorCode(t, response, "local_context_not_found")
-}
-
-func TestGetMeReturnsInternalServerErrorWhenLookupFails(t *testing.T) {
-	router := NewRouter(Options{
-		DeploymentMode: config.DeploymentModeLocal,
-		LocalContext:   &fakeLocalContextService{err: errors.New("database credentials")},
-	})
-
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/me", nil))
-
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
-	}
-	if strings.Contains(response.Body.String(), "database credentials") {
-		t.Fatal("response exposed repository error")
-	}
-	assertErrorCode(t, response, "local_context_lookup_failed")
-}
-
-func TestGetMeReturnsNotImplementedInManagedModeWithoutLookup(t *testing.T) {
-	localContext := &fakeLocalContextService{}
-	router := NewRouter(Options{
-		DeploymentMode: config.DeploymentModeManaged,
-		LocalContext:   localContext,
-	})
-
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/me", nil))
-
-	if response.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotImplemented)
-	}
-	assertErrorCode(t, response, "managed_identity_not_implemented")
-	if localContext.calls != 0 {
-		t.Fatalf("DefaultPortfolioID() calls = %d, want 0", localContext.calls)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			writeLocalContextError(response, test.err)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+			if strings.Contains(response.Body.String(), "database credentials") {
+				t.Fatal("response exposed database error")
+			}
+			assertErrorCode(t, response, test.code)
+		})
 	}
 }
 
-func TestGetMeReturnsDescriptiveErrorForUnsupportedDeploymentMode(t *testing.T) {
-	localContext := &fakeLocalContextService{}
-	router := NewRouter(Options{
-		DeploymentMode: config.DeploymentMode("unknown"),
-		LocalContext:   localContext,
-	})
-
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/me", nil))
-
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+func TestGetMeRejectsNonLocalDeploymentModes(t *testing.T) {
+	tests := []struct {
+		name   string
+		mode   config.DeploymentMode
+		status int
+		code   string
+	}{
+		{name: "managed", mode: config.DeploymentModeManaged, status: http.StatusNotImplemented, code: "managed_identity_not_implemented"},
+		{name: "unsupported", mode: config.DeploymentMode("unknown"), status: http.StatusInternalServerError, code: "unsupported_deployment_mode"},
 	}
-	assertErrorCode(t, response, "unsupported_deployment_mode")
-	if localContext.calls != 0 {
-		t.Fatalf("DefaultPortfolioID() calls = %d, want 0", localContext.calls)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			router := NewRouter(Options{DeploymentMode: test.mode})
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/me", nil))
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+			assertErrorCode(t, response, test.code)
+		})
 	}
-}
-
-type fakeLocalContextService struct {
-	portfolioID uuid.UUID
-	err         error
-	calls       int
-}
-
-func (s *fakeLocalContextService) DefaultPortfolioID(context.Context) (uuid.UUID, error) {
-	s.calls++
-	return s.portfolioID, s.err
-}
-
-func (s *fakeLocalContextService) EnsurePortfolio(context.Context, uuid.UUID) error {
-	return s.err
 }

@@ -7,14 +7,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-type Portfolio struct {
-	ID           uuid.UUID
-	WorkspaceID  uuid.UUID
-	Name         string
-	BaseCurrency string
-	IsDefault    bool
-}
-
 type Range string
 
 const (

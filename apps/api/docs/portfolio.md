@@ -1,6 +1,6 @@
 # Portfolio Values
 
-Portfolio values are read-only derived views. Transactions and ledger entries remain the source of truth; the portfolio service derives current value, value history, and account values from confirmed ledger entries plus market prices and FX rates.
+Portfolio values are read-only derived views. Transactions and ledger entries remain the source of truth; the portfolio calculator derives current value, value history, and account values from confirmed ledger entries plus market prices and FX rates.
 
 Values are reported in the selected portfolio base currency. Cash ledger amounts and priced asset market values are converted with direct FX rates into that base currency when needed. Missing prices or FX rates are returned as warnings and the incomplete values are excluded from totals rather than estimated.
 

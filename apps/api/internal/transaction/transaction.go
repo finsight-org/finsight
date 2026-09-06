@@ -112,19 +112,6 @@ type CreateLedgerEntryInput struct {
 	Direction        Direction
 }
 
-type createRepositoryInput struct {
-	PortfolioID    uuid.UUID
-	AccountID      uuid.UUID
-	ImportID       *uuid.UUID
-	Type           Type
-	TradeDate      time.Time
-	SettlementDate *time.Time
-	Description    string
-	Source         string
-	ExternalID     *string
-	LedgerEntries  []CreateLedgerEntryInput
-}
-
 func normalizeCreateInput(input CreateInput) CreateInput {
 	input.Description = strings.TrimSpace(input.Description)
 	input.Source = strings.ToUpper(strings.TrimSpace(input.Source))
@@ -134,6 +121,42 @@ func normalizeCreateInput(input CreateInput) CreateInput {
 		input.LedgerEntries[index].OriginalCurrency = textutil.TrimmedOptional(input.LedgerEntries[index].OriginalCurrency)
 	}
 	return input
+}
+
+func validateCreateInput(input CreateInput) error {
+	if input.AccountID == uuid.Nil {
+		return ErrInvalidAccount
+	}
+	if !validType(input.Type) {
+		return ErrInvalidType
+	}
+	if input.TradeDate.IsZero() {
+		return ErrInvalidTradeDate
+	}
+	if input.Source == "" {
+		return ErrInvalidSource
+	}
+	if len(input.LedgerEntries) == 0 {
+		return ErrInvalidLedgerEntry
+	}
+	for _, entry := range input.LedgerEntries {
+		if entry.AssetID == uuid.Nil {
+			return ErrInvalidEntryAsset
+		}
+		if !validEntryType(entry.EntryType) {
+			return ErrInvalidEntryType
+		}
+		if !currencyPattern.MatchString(entry.Currency) {
+			return ErrInvalidEntryCurrency
+		}
+		if entry.OriginalCurrency != nil && !currencyPattern.MatchString(*entry.OriginalCurrency) {
+			return ErrInvalidEntryCurrency
+		}
+		if !validDirection(entry.Direction) {
+			return ErrInvalidLedgerEntry
+		}
+	}
+	return nil
 }
 
 func validType(value Type) bool {
