@@ -42,10 +42,10 @@ func run() error {
 	defer db.Close()
 
 	queries := database.New(db)
-	runner := bootstrap.New(db)
+	bootstrapRunner := bootstrap.New(db)
 	initializer := startup.New(
 		postgres.NewMigrationRunner(cfg.DatabaseURL, migrations.Files),
-		runner,
+		bootstrapRunner,
 		cfg.DeploymentMode,
 	)
 	if err := initializer.Initialize(ctx); err != nil {

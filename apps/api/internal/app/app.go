@@ -33,7 +33,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	queries := database.New(db)
-	runner := bootstrap.New(db)
+	bootstrapRunner := bootstrap.New(db)
 	localContextResolver := localcontext.New(queries)
 	accountStore := account.New(queries)
 	portfolioCalculator := portfoliovalue.New(queries)
@@ -41,7 +41,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 
 	initializer := startup.New(
 		postgres.NewMigrationRunner(cfg.DatabaseURL, migrations.Files),
-		runner,
+		bootstrapRunner,
 		cfg.DeploymentMode,
 	)
 	if err := initializer.Initialize(ctx); err != nil {
