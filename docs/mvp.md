@@ -2,223 +2,98 @@
 
 ## Goal
 
-Validate that users can import investment data once and access it through AI agents.
+The MVP validates that users can bring investment data into Finsight once, verify it, understand their portfolio at a high level, and make useful portfolio information available to an AI agent.
 
-The MVP is not intended to match the full feature depth of Ghostfolio, Portfolio Performance, or professional portfolio management software at launch.
+The MVP is complete when the capabilities below work together as a coherent user experience. It is not intended to match mature portfolio-management or professional analysis software.
 
-The MVP proves three core assumptions:
+## Required Capabilities
 
-1. Users want AI-assisted investment imports.
-2. Users want to interact with their portfolio through AI.
-3. Users value owning and controlling their financial data.
+### Accounts
 
----
+Users can create investment accounts and view the information needed to understand where their investments are held, including the account name, institution, type, currency, and contribution to portfolio value.
 
-# Success Criteria
+Finsight prevents confusing duplicate account names within the account list presented to the user. Portfolio management itself is not user-facing in the MVP.
 
-A user can:
+### Investment Data Import
 
-1. Upload a broker statement, CSV export, XLSX export, or PDF.
-2. Review and approve extracted transactions.
-3. Store investment data in Finsight.
-4. Connect an AI agent through MCP.
-5. Ask questions about their portfolio.
+Users can import investment data from supported CSV, XLSX, and PDF files.
 
-Example:
-
-> Upload Wealthsimple statement
-
-↓
-
-> Review extracted transactions
-
-↓
-
-> Connect ChatGPT
-
-↓
-
-> "What is my exposure to US technology stocks?"
-
-Broker, provider, and AI product names in these documents are examples only unless explicitly listed as supported integrations.
-
----
-
-# Product Scope
-
-## Included
-
-### Investment Data Management
-
-- Create accounts
-- Manage assets
-- Store transactions
-- Calculate positions
-- Calculate cash balances
-- Multi-currency support
-
-The MVP uses one internal default portfolio per workspace to group accounts. Portfolio management is not user-facing in the MVP.
-
-### AI Imports
-
-Supported inputs:
-
-- CSV
-- XLSX
-- PDF
-
-Import flow:
+Every import follows a safe, reviewable flow:
 
 ```text
 Upload
-→ Extraction
+→ Extract
 → Review
-→ Confirmation
-→ Save
+→ Confirm
+→ Include in portfolio
 ```
+
+Users can correct or ignore extracted data before confirmation. Imported data must not affect the portfolio until the user confirms it.
+
+### Derived Portfolio Information
+
+Confirmed financial records are the source for portfolio calculations. Holdings, cash balances, allocations, and portfolio values are derived rather than maintained manually.
+
+Market prices and foreign-exchange rates enrich those calculations but do not replace the user's financial records. When required market or FX data is missing, Finsight communicates that the result is incomplete instead of silently estimating it.
 
 ### Portfolio Summary
 
-Minimal portfolio overview:
+Users can view a simple portfolio summary containing:
 
-- Total portfolio value
-- Asset allocation
-- Account allocation
-- Cash balances
-- Simple portfolio performance
+- Total portfolio value.
+- Portfolio value history.
+- Holdings and largest positions.
+- Allocation by account, asset class, and currency.
+- Cash balances.
+- Warnings for incomplete market or FX data.
 
-### MCP Integration
+Portfolio value history shows how the value of the portfolio changed over time. It is not an investment-return calculation and does not imply time-weighted return, money-weighted return, gain/loss attribution, or performance against a benchmark.
 
-Expose read-only portfolio, account, position, cash balance, transaction, and exposure data through MCP tools.
+### Multiple Currencies
 
-### Connected Agents
+Financial records can use multiple currencies. Finsight presents portfolio values in a selected base currency when the required conversion data is available and clearly identifies values that could not be converted.
 
-Users can connect AI agents such as:
+### Read-Only AI Access
 
-- ChatGPT
-- Claude
-- Gemini
-- Local LLMs
+Users can connect a compatible AI agent through MCP and allow it to read useful portfolio, account, holding, cash, transaction, and exposure information.
 
-MVP agent access is read-only, workspace-scoped, token-based, and audited. Fine-grained agent permissions are deferred.
+AI access is read-only in the MVP. Finsight supplies structured portfolio information; the connected agent is responsible for reasoning, explanations, and any external context such as news.
 
-### Deployment Models
+### Local Operation and Data Ownership
 
-- User-operated deployment
-- Managed deployment
+Users can run Finsight locally without creating or depending on a managed Finsight account. Their portfolio data remains under their control in the deployment they operate.
 
----
+## Example Outcomes
 
-# MVP Screens
+A user can:
 
-## Portfolio Summary
+1. Create an investment account.
+2. Upload a supported broker statement or export.
+3. Review and confirm the extracted financial data.
+4. See the resulting portfolio value, value history, accounts, holdings, and cash information.
+5. Connect a compatible AI agent and ask questions such as:
+   - What is my portfolio worth?
+   - What are my largest positions?
+   - How concentrated is my portfolio?
+   - What is my exposure to USD or a particular sector?
+   - How much cash do I hold in each currency?
 
-Displays:
+Specific brokers, providers, and AI products are examples unless explicitly listed as supported integrations.
 
-- Total portfolio value
-- Allocation by asset class
-- Allocation by account
-- Cash balances
-- Simple portfolio performance
-
-## Imports
-
-Displays:
-
-- Import history
-- Import status
-- Validation issues
-
-## Import Review
-
-Displays:
-
-- Extracted transactions
-- Confidence scores
-- Validation errors
-
-Allows:
-
-- Edit
-- Approve
-- Reject
-
-## Account Creation and Details
-
-Portfolio Summary displays the account-value list and provides account creation. Account details display institution, account type, and account currency.
-
-## Connected Agents
-
-Displays:
-
-- Connected agents
-- Connection status
-- Available MCP tools
-
----
-
-# Example Questions
-
-The following questions should be answerable through MCP.
-
-## Portfolio
-
-- What is my portfolio worth?
-- What are my largest positions?
-- What is my allocation by asset class?
-- What is my allocation by country?
-- What is my allocation by currency?
-
-## Risk
-
-- How concentrated is my portfolio?
-- What is my exposure to technology stocks?
-- What is my exposure to USD?
-
-## Performance
-
-- What are my best-performing positions?
-- What are my worst-performing positions?
-- What is my current portfolio performance?
-
-## Cash
-
-- How much CAD cash do I have?
-- How much USD cash do I have?
-
-## Imports
-
-- What transactions were imported?
-- Which transactions require review?
-- Why was this transaction rejected?
-
-## News & Context
-
-Using portfolio data exposed through MCP, AI agents should be able to answer questions such as:
-
-- What are the recent news related to my holdings?
-- How could the latest Fed decision impact my portfolio?
-- What major events should I be aware of based on my investments?
-
-Finsight is responsible for exposing portfolio data. News retrieval and analysis are handled by the AI agent.
-
----
-
-# Non Goals
+## Non-Goals
 
 The MVP is not:
 
-- A trading platform
-- A tax optimization platform
-- A portfolio optimization platform
-- A financial advisor
-- A broker synchronization platform
-- A broker API import platform
-- A screenshot import platform
-- A manual transaction entry platform
-- A portfolio management interface
-- A fine-grained agent permission system
-- An OpenAPI-first integration platform
-- A mobile application
-- A social investing platform
-- A full replacement for mature portfolio management software in the first MVP release
+- A trading platform.
+- A financial advisor.
+- A tax, portfolio-optimization, or scenario-simulation platform.
+- A broker synchronization or broker API import platform.
+- A screenshot import platform.
+- A manual transaction entry platform.
+- A user-facing portfolio management interface.
+- A fine-grained AI permission system.
+- A general externally supported OpenAPI integration platform merely because the web application uses an OpenAPI contract internally.
+- A source of news or other external analysis performed by the connected AI agent.
+- A provider of time-weighted, money-weighted, benchmark, realized-return, or other investment-performance calculations.
+- A mobile or social-investing application.
+- A full replacement for mature portfolio-management software.

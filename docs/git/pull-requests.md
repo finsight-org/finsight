@@ -19,8 +19,7 @@ Reference related issues or design notes with full URLs when available.
 Verify each applicable item before review:
 
 - Scope: the diff is limited to the requested change.
-- Architecture: backend, frontend, database, OpenAPI, and MCP boundaries match
-  the documented Finsight direction.
+- Architecture: the change matches the currently documented Finsight boundaries.
 - Tests: code changes include tests proportional to risk.
 - Documentation: docs are updated when behavior, workflows, APIs, or contributor
   expectations change.
@@ -31,8 +30,8 @@ Verify each applicable item before review:
 - Frontend text: user-facing strings are in i18n resources.
 - UI: visible UI changes include screenshots or a clear description of visual
   verification.
-- Security: changes touching workspace scoping, tokens, auth, secrets, financial
-  data exposure, or MCP access call out the risk and validation.
+- Security: changes touching current-context scoping, authentication, secrets, or
+  financial data exposure call out the risk and validation.
 - Dependencies: new dependencies are justified and avoided unless necessary.
 
 ## Review Handoff
@@ -75,7 +74,7 @@ For docs-only changes:
 
 - Confirm links resolve.
 - Confirm the docs do not contradict `docs/architecture.md`, `docs/mvp.md`, or
-  `docs/domain-model.md`.
+  `docs/use-cases.md`.
 - Do not require Go, frontend, or Playwright tests unless code examples or
   runnable snippets changed.
 

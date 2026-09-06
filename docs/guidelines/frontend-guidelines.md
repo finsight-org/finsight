@@ -1,6 +1,6 @@
 # Frontend Guidelines
 
-This document explains how to implement frontend changes in the React/Vite app. Read it with [Architecture](../architecture.md) and [OpenAPI Guidelines](openapi-guidelines.md).
+This document explains how to modify the current React/Vite application. Read it with [Architecture](../architecture.md) and [OpenAPI Guidelines](openapi-guidelines.md).
 
 ## Frontend Boundary
 
@@ -31,7 +31,6 @@ Frontend code must not:
 
 - Query PostgreSQL.
 - Call market data providers directly.
-- Call the MCP server.
 - Reimplement authoritative financial calculations.
 - Depend on provider-specific backend internals.
 
@@ -48,6 +47,8 @@ Use:
 - `src/routes` for route files.
 
 Keep feature components close to their tests. Extract shared components only when multiple features need the same behavior.
+
+Do not reserve frontend feature folders or state models for unimplemented capabilities. Decide their ownership when implementing the user journey.
 
 ## Server State
 
@@ -79,7 +80,7 @@ Prefer deriving request, response, and enum types from generated OpenAPI types i
 - Put user-facing strings in i18n resources.
 - Keep API payload values aligned with backend-defined OpenAPI values.
 - Show clear loading, empty, and error states for server-backed screens.
-- Keep temporary mock data isolated and replace it when real endpoints exist.
+- Keep temporary placeholder behavior explicit and isolated from implemented features.
 
 Client validation improves usability, but backend validation remains authoritative.
 

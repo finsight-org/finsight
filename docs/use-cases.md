@@ -1,585 +1,205 @@
-# Finsight Use Cases
+# Finsight MVP Use Cases
 
 ## Purpose
 
-This document defines the main user flows for the Finsight MVP.
+This document describes the important user journeys and product-visible rules the MVP must support. It intentionally does not prescribe the internal data model, APIs, packages, or authorization mechanisms used to implement them.
 
-The goal is to align product, UX, domain model, MCP contracts, and implementation before architecture definition starts.
+## Product Rules
 
-Finsight MVP is centered around one core idea:
+- Imported data does not affect the portfolio before the user confirms it.
+- Confirmed financial records are the source for derived holdings, cash, allocations, and values.
+- Market and FX data enrich portfolio calculations but do not replace user financial records.
+- Missing market or FX data is communicated instead of producing a silently misleading result.
+- AI access is read-only in the MVP.
+- A user must never receive another user's financial data.
+- Local use does not require a managed Finsight account.
+- Finsight presents financial information for understanding and does not present itself as a financial advisor.
 
-> Import investment data once, then make it available to humans and AI agents.
+## 1. First-Time Local Setup
 
-The product is not a traditional portfolio dashboard. The UI exists mainly to help users import data, review it, understand their portfolio at a high level, and connect AI agents through MCP.
+### Goal
 
----
+Start using Finsight in a user-operated local environment.
 
-# Product Navigation Model
+### Main Flow
 
-Finsight uses a simple navigation model.
+1. The user starts Finsight locally.
+2. Finsight prepares the local context needed to use the application.
+3. The user lands on an empty portfolio summary.
+4. The interface explains that an account and imported data are needed for useful portfolio information.
 
-```text
-Portfolio Summary
-├── Imports
-├── Connected Agents
-```
+### Expected Result
 
-## Main Areas
+The user can begin without registering for a managed service and understands the next action.
 
-### Portfolio Summary
+### Important Edge Cases
 
-Shows the user’s overall portfolio situation:
+- Local storage is unavailable or cannot be initialized.
+- Setup is interrupted and must be retried safely.
+- The application restarts with existing local data.
 
-- total portfolio value
-- allocation by asset class
-- allocation by account
-- allocation by currency
-- cash balances
-- simple performance
+## 2. Create an Account
 
-### Account Creation and Details
+### Goal
 
-Portfolio Summary shows the account-value list and provides the entry point for creating accounts. Account details show where assets and cash are held, including institution, account type, and account currency.
+Create an account representing where investments or cash are held.
 
-Examples of institutions include Wealthsimple, Interactive Brokers, Binance, and a manual account. Broker and provider names are examples only unless explicitly listed as supported integrations.
+### Main Flow
 
-### Imports
+1. The user starts account creation from the portfolio summary.
+2. The user provides a name, institution when applicable, account type, and currency.
+3. The user confirms the account.
+4. The account appears in the portfolio's account list and is available as an import destination.
 
-Allows the user to upload, review, and confirm imported investment data.
+### Expected Result
 
-### Connected Agents
+The user has a clearly identified account ready to receive imported investment data.
 
-Allows the user to connect AI agents through MCP.
+### Important Edge Cases
 
-Examples:
+- Required information is missing or invalid.
+- The name would create a confusing duplicate in the user's account list.
+- Creation fails; no partial account is shown.
 
-- ChatGPT
-- Claude
-- Gemini
-- local LLMs
+## 3. Import Investment Data
 
-AI product names are examples only unless explicitly listed as supported integrations.
+### Goal
 
----
+Upload investment data from a supported broker statement or export.
 
-# Global UX Principles
+### Main Flow
 
-## Keep the UI as a control panel
+1. The user starts an import and chooses the target account.
+2. The user uploads a CSV, XLSX, or PDF file.
+3. Finsight extracts candidate financial records and identifies information that needs attention.
+4. The user proceeds to review without the uploaded data affecting the portfolio.
 
-Finsight UI is not the main analysis interface.
+### Expected Result
 
-The UI should focus on:
+The file's recognizable investment data is ready for review, and the existing portfolio remains unchanged.
 
-- importing data
-- reviewing extracted data
-- managing accounts
-- showing a simple portfolio summary
-- connecting AI agents
+### Important Edge Cases
 
-Deep analysis should happen through AI agents.
+- The file type or size is unsupported.
+- The file is unreadable or contains no recognizable investment data.
+- Some data has low confidence, an unknown asset, a missing currency, or a possible duplicate.
+- Processing fails and the user receives a clear retry or recovery path.
 
----
+## 4. Review and Confirm an Import
 
-## Make imports safe and reviewable
+### Goal
 
-No imported transaction should be saved immediately.
+Verify extracted data before it becomes part of the portfolio.
 
-The import flow must always include:
+### Main Flow
 
-```text
-Upload
-→ Extraction
-→ Review
-→ Confirmation
-→ Save
-```
+1. The user opens an import awaiting review.
+2. Finsight distinguishes data that is ready from data requiring attention.
+3. The user reviews, corrects, approves, or ignores extracted data.
+4. Finsight prevents confirmation while required issues remain unresolved.
+5. The user confirms the reviewed import.
+6. Confirmed data becomes part of the portfolio and updates the derived portfolio information.
 
-Nothing modifies the portfolio until the user confirms.
+### Expected Result
 
----
+Only the data the user reviewed and accepted affects the portfolio.
 
-## Use transactions as the source of truth
+### Important Edge Cases
 
-Finsight is transaction-first.
+- The user leaves before confirmation; the portfolio remains unchanged.
+- All extracted data is ignored, so there is nothing to confirm.
+- A possible duplicate or uncertain asset match requires a user decision.
+- Confirmation fails; the review state remains available for retry.
 
-Positions, cash balances, allocations, and portfolio summaries are derived from transactions and ledger entries.
+## 5. View the Portfolio Summary
 
-The UI can stay simple, but the internal model must remain financially rigorous.
+### Goal
 
----
+Understand the portfolio at a glance.
 
-## Keep AI access transparent
+### Main Flow
 
-Users should understand when an AI agent is connected and when it accesses their data.
+1. The user opens the portfolio summary.
+2. Finsight derives current holdings, cash, account values, allocations, and total value from confirmed financial data.
+3. Available market prices and FX rates are applied.
+4. The user sees the total value, value history, important allocations, holdings, and cash balances.
 
-The MVP does not include fine-grained agent permissions, but it should still show:
+### Expected Result
 
-- connected agents
-- available MCP tools
-- access history
+The user can understand what the portfolio contains, where it is held, and whether any value is incomplete.
 
-MVP agent access is read-only, workspace-scoped, token-based, and audited.
+### Important Edge Cases
 
----
+- There are no accounts or no confirmed financial records.
+- A market price or FX rate is missing.
+- Historical information is incomplete; the UI avoids presenting value history as investment returns.
 
-## Avoid financial advice
+## 6. View Account Information
 
-Finsight and connected AI agents should help users understand their data.
+### Goal
 
-The product should not present itself as a financial advisor.
+Understand an account and its contribution to the portfolio.
 
----
+### Main Flow
 
-# Use Case 1 — First-Time Setup
+1. The user selects an account from the portfolio summary.
+2. Finsight shows the account's identifying information and available portfolio information, such as its value, holdings, and cash.
+3. The user can start an import for that account.
 
-## Goal
+### Expected Result
 
-Allow a new user to start using Finsight and create their first investment account.
+The user understands where the account is held and how it contributes to the portfolio.
 
-## Main Path
+### Important Edge Cases
 
-1. User opens Finsight.
-2. User creates an account or starts in local mode.
-3. Finsight creates or uses a default internal portfolio for the workspace.
-4. User lands on the Portfolio Summary.
-5. Finsight shows an empty state.
-6. User creates their first account.
-7. User is invited to import investment data.
+- The account contains no confirmed data.
+- Some values are incomplete because market or FX data is unavailable.
+- The account no longer exists or is not accessible to the current user.
 
-## Success State
+## 7. Connect and Use an AI Agent
 
-- User has access to Finsight.
-- User has created at least one account.
-- User understands that they need to import data before seeing useful portfolio insights.
+### Goal
 
-## Edge Cases
+Use a compatible AI agent to explore portfolio information.
 
-- If the user starts in local mode, Finsight creates a default local user, workspace, and internal portfolio.
-- If the user has no accounts, the Portfolio Summary shows a clear empty state.
-- If setup fails, Finsight shows a clear retry action.
+### Main Flow
 
----
+1. The user opens the AI connection area and follows the MCP connection instructions.
+2. The user connects a compatible agent.
+3. The agent requests available read-only portfolio information from Finsight.
+4. The agent uses that information to answer the user's question.
 
-# Use Case 2 — Create Account
+### Expected Result
 
-## Goal
+The user can ask portfolio questions without manually exporting the data, and the agent cannot change the portfolio through the MVP integration.
 
-Allow the user to create an account where assets, transactions, and cash will be stored.
+### Important Edge Cases
 
-## Main Path
+- The connection fails or the requested capability is unavailable.
+- The portfolio has no data or lacks information required for the question.
+- A question requires external news or context; the agent obtains that separately.
+- The user requests trading, mutation, or another unsupported action.
 
-1. User opens Portfolio Summary.
-2. User clicks **Create account**.
-3. User enters:
-   - account name
-   - institution name
-   - account type
-   - account currency
-4. User confirms.
-5. Finsight creates the account.
+## 8. Error and Empty States
 
-## Success State
+### Goal
 
-- The account exists.
-- The account appears in the Portfolio Summary account-value list.
-- The account can receive imported transactions.
+Make missing data and failures understandable and recoverable.
 
-## Edge Cases
+### Main Flow
 
-- Account name is required.
-- Account currency is required.
-- Duplicate account names should be avoided within the same workspace.
-- If account creation fails, no partial account is created.
+1. Finsight describes the missing information or failed action in user-facing language.
+2. The interface explains the impact on the current result.
+3. When possible, it offers a safe next action such as creating an account, importing data, correcting a file, or retrying.
 
----
+### Expected Result
 
-# Use Case 3 — Import Investment Data
+The user knows what happened, whether portfolio information is incomplete, and what to do next.
 
-## Goal
+### Important Edge Cases
 
-Allow the user to upload investment data from a broker statement or export.
-
-## Supported Inputs
-
-- CSV
-- XLSX
-- PDF
-
-## Main Path
-
-1. User opens the Imports area or starts an import from an account.
-2. User selects the target account.
-3. User uploads a supported file.
-4. Finsight creates an import.
-5. Finsight extracts candidate transactions from the file.
-6. Finsight detects assets, quantities, amounts, currencies, dates, fees, and cash movements when possible.
-7. Finsight marks extracted rows as ready for review or requiring attention.
-8. User moves to Import Review.
-
-## Success State
-
-- The file is uploaded.
-- Extracted import items are created.
-- No transactions are saved yet.
-- User can review the extracted data before confirmation.
-
-## Edge Cases
-
-- Unsupported file type.
-- File too large.
-- File cannot be read.
-- No recognizable investment data found.
-- Some rows have low confidence.
-- Asset cannot be matched.
-- Currency cannot be detected.
-- Duplicate rows are detected.
-
----
-
-# Use Case 4 — Review Import
-
-## Goal
-
-Allow the user to review extracted data before it becomes real transactions.
-
-## Main Path
-
-1. User opens an import ready for review.
-2. User sees extracted rows grouped by status:
-   - ready
-   - needs review
-   - ignored
-3. User reviews extracted rows.
-4. User can:
-   - edit a row
-   - approve a row
-   - ignore a row
-5. Finsight validates all required fields.
-6. When all required rows are resolved, user confirms the import.
-7. Finsight creates transactions and ledger entries.
-8. Portfolio summary is recalculated.
-
-## Success State
-
-- User understands what will be imported.
-- Transactions are created only after confirmation.
-- Positions and cash balances are updated from ledger entries.
-- Import status becomes confirmed.
-
-## Edge Cases
-
-- User leaves before confirming: no transactions are created.
-- Import contains unresolved rows: confirmation is disabled.
-- All rows are ignored: confirmation is disabled.
-- Confirmation fails: review state is preserved.
-- Duplicate transactions are detected: user must review them.
-- Asset matching is uncertain: user must select or create the correct asset.
-- Currency is missing: user must provide or confirm it.
-
----
-
-# Use Case 5 — Portfolio Summary
-
-## Goal
-
-Allow the user to understand their portfolio at a high level.
-
-## Main Path
-
-1. User opens Portfolio Summary.
-2. Finsight loads confirmed transactions.
-3. Finsight derives positions and cash balances.
-4. Finsight uses market prices and FX rates when available.
-5. User sees:
-   - total portfolio value
-   - allocation by asset class
-   - allocation by account
-   - allocation by currency
-   - cash balances
-   - simple performance
-
-## Success State
-
-- User can understand their portfolio value and allocation.
-- User can identify largest positions and cash balances.
-- User can see whether some data is incomplete.
-
-## Edge Cases
-
-- No accounts: show empty state.
-- Accounts exist but no transactions: encourage import.
-- Missing market price: show incomplete value warning.
-- Missing FX rate: show currency conversion warning.
-- Historical data incomplete: avoid implying precise performance.
-
----
-
-# Use Case 6 — View Account Details
-
-## Goal
-
-Allow the user to see where their investments are held.
-
-## Main Path
-
-1. User opens Portfolio Summary.
-2. User sees the account-value list.
-3. User opens account details for an account.
-4. Account details show:
-   - name
-   - institution
-   - type
-   - currency
-   - current value
-   - cash balances
-   - positions
-   - related imports
-
-## Success State
-
-- User can understand which accounts contribute to the portfolio.
-- User can start an import for a specific account.
-- User can see account-level positions and cash.
-
-## Edge Cases
-
-- Account has no transactions.
-- Account has missing prices or FX rates.
-- Account no longer exists.
-- User attempts to access an account they do not own.
-
----
-
-# Use Case 7 — Connect AI Agent
-
-## Goal
-
-Allow the user to connect an AI agent through MCP.
-
-## Main Path
-
-1. User opens Connected Agents.
-2. Finsight shows MCP connection instructions.
-3. User connects an AI agent.
-4. Finsight displays the connected agent.
-5. The agent can call available read-only MCP tools.
-
-## MVP MCP Tools
-
-- get_portfolio_summary
-- get_accounts
-- get_positions
-- get_cash_balances
-- get_transactions
-- get_asset_exposure
-
-## Success State
-
-- AI agent can access structured portfolio data.
-- User can ask portfolio questions in the AI agent.
-
-## Edge Cases
-
-- MCP connection fails.
-- Agent requests an unavailable tool.
-- Agent requests data before imports exist.
-- Local mode requires localhost connection instructions.
-- Managed deployments require authenticated connection instructions.
-
----
-
-# Use Case 8 — Ask Portfolio Questions Through AI
-
-## Goal
-
-Allow the user to use an AI agent as the primary analysis interface.
-
-## Main Path
-
-1. User opens ChatGPT, Claude, or another connected agent.
-2. User asks a question about their portfolio.
-3. The agent calls Finsight MCP tools.
-4. Finsight returns structured portfolio data.
-5. The agent answers using the returned data.
-
-## Example Questions
-
-- What is my portfolio worth?
-- What are my largest positions?
-- What is my exposure to USD?
-- What is my exposure to technology stocks?
-- How much CAD cash do I have?
-- What are my recent imported transactions?
-- What recent news could matter based on my holdings?
-- How could the latest Fed decision impact my portfolio?
-
-## Success State
-
-- User receives a useful answer without manually exporting data.
-- The answer is based on Finsight portfolio data.
-- Finsight logs the agent request.
-
-## Edge Cases
-
-- Portfolio has no data.
-- Requested analysis requires unavailable market data.
-- Agent asks for news: Finsight provides holdings/assets; the agent retrieves news externally.
-- Agent asks for financial advice: the response should stay educational and informational.
-- Agent asks for unsupported actions such as trading or modifying data.
-
----
-
-# Use Case 9 — Local Mode
-
-## Goal
-
-Allow users to run Finsight locally and keep their data on their own machine.
-
-## Main Path
-
-1. User starts Finsight locally.
-2. Finsight runs in local auth mode.
-3. Finsight creates or uses a default local workspace and internal portfolio.
-4. User imports data.
-5. User connects a local or desktop AI agent.
-6. All portfolio data stays in the local deployment.
-
-## Success State
-
-- User can use Finsight without a managed-service account.
-- User owns their data locally.
-- Local AI agents can access Finsight through MCP.
-
-## Edge Cases
-
-- Local database is missing.
-- Local MCP server is unavailable.
-- User restarts the local deployment.
-- User wants to export or back up local data.
-
----
-
-# Use Case 10 — Error and Empty States
-
-## Goal
-
-Handle missing data and failures clearly.
-
-## Empty States
-
-### No Accounts
-
-Explain that the user needs to create an account before importing investment data.
-
-### No Imports
-
-Explain that imports will appear after the first uploaded file.
-
-### No Transactions
-
-Explain that portfolio insights require imported or manually entered transactions.
-
-### No Connected Agents
-
-Explain how to connect an AI agent through MCP.
-
-## Error States
-
-### Import Error
-
-Explain whether the problem is file type, file size, unreadable content, or missing recognizable data.
-
-### Market Data Error
-
-Explain that some prices are missing or delayed.
-
-### FX Error
-
-Explain that some currency conversions cannot be calculated.
-
-### Agent Connection Error
-
-Explain that MCP connection failed and provide retry/setup guidance.
-
-### Unknown Error
-
-Show a clear non-technical error and offer a safe retry action.
-
----
-
-# Business Rules
-
-## User and Workspace
-
-- A user belongs to a workspace.
-- A workspace owns a default internal portfolio in the MVP.
-- The default portfolio owns accounts.
-- Imports are traceable to the workspace and target account. The portfolio is inferred through the account.
-- Transactions are traceable to the workspace, portfolio, and account.
-- A user can only access data from their own workspace.
-- Local mode can use a default local workspace and internal portfolio.
-
-## Portfolio
-
-- A portfolio groups accounts.
-- The MVP creates or uses one default internal portfolio per workspace.
-- Portfolio management is not user-facing in the MVP.
-- Portfolio values are derived from accounts, transactions, prices, and FX rates.
-- Portfolio summary is derived, not manually edited.
-
-## Account
-
-- An account belongs to a portfolio.
-- An account has one base currency.
-- An account can exist without transactions.
-- Deleting an account should require confirmation.
-
-## Asset
-
-- Assets represent financial instruments or cash.
-- Cash is modeled as an asset.
-- Asset symbols alone may not be unique.
-- Assets may require additional identifiers such as currency, exchange, or provider symbol.
-
-## Transaction
-
-- Transactions are the source of truth.
-- Transactions create ledger entries.
-- Transactions should not be created from imports until the user confirms review.
-
-## Ledger Entry
-
-- Ledger entries represent the financial impact of transactions.
-- Positions and cash balances are derived from ledger entries.
-- Cash is not manually maintained separately from ledger entries.
-
-## Import
-
-- Imports are reviewable.
-- No imported data modifies the portfolio before confirmation.
-- Low-confidence rows must be reviewed.
-- Ignored rows are not imported.
-- Confirmed imports are read-only.
-
-## AI and MCP
-
-- MCP tools are read-only in the MVP.
-- Connected agents use read-only workspace-scoped access tokens in the MVP.
-- Finsight exposes portfolio data; the agent performs reasoning.
-- News retrieval is handled by the agent, not by Finsight.
-- Agent access is logged.
-- Finsight must not expose secrets through MCP responses.
-- Fine-grained agent permissions are deferred.
-
-## Market Data
-
-- Market data should come through a provider abstraction.
-- Missing prices must be visible to the user.
-- Missing FX rates must be visible to the user.
-- Market data is not the source of truth for user transactions.
-
-## Security
-
-- Sensitive data must not be exposed to other users.
-- Local mode should not require a managed-service account.
-- Managed deployments must require authentication.
+- No accounts, confirmed data, or connected AI agent exists.
+- An import cannot be read or reviewed.
+- Market or FX information is missing or delayed.
+- An AI connection fails.
+- An unexpected error occurs without a specialized recovery path.

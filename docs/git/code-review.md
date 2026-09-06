@@ -6,8 +6,8 @@ Work through these layers in order:
 
 1. Scope and intent: understand the requested change and whether the diff stays
    inside that scope.
-2. Architecture: verify the change fits Finsight's documented modular monolith,
-   OpenAPI, PostgreSQL, React/Vite, and read-only MCP boundaries.
+2. Architecture: verify the change fits the architecture currently documented in
+   `docs/architecture.md`.
 3. Blockers: identify correctness bugs, security issues, data integrity risks,
    missing error handling, generated-file mistakes, and material test gaps.
 4. Improvements: suggest meaningful non-blocking improvements.
@@ -34,10 +34,9 @@ Verify that the change preserves these boundaries:
 - Production interfaces exist for meaningful boundaries or multiple
   implementations, not solely for mocks.
 - The React app calls only the OpenAPI HTTP API.
-- Frontend code does not query PostgreSQL, call market data providers, call MCP,
-  or reimplement authoritative financial calculations.
-- MCP remains read-only for the MVP and calls backend feature types/functions.
-- Provider-specific market data shapes do not leak into domain, HTTP, MCP, or
+- Frontend code does not query PostgreSQL, call market data providers, or
+  reimplement authoritative financial calculations.
+- Provider-specific market data shapes do not leak into feature, HTTP, or
   frontend contracts.
 
 ## Blocker Categories
@@ -46,8 +45,7 @@ Treat these as blockers unless the author has a clear documented reason:
 
 - Source-of-truth financial records can be corrupted or derived data can no
   longer be reproduced from transactions, ledger entries, prices, and FX rates.
-- Workspace scoping, authorization, token handling, or financial data exposure is
-  weakened.
+- Current-context checks, authorization, or financial data exposure are weakened.
 - Generated files are edited by hand instead of regenerated from OpenAPI, sqlc,
   or route sources.
 - OpenAPI contract changes are not reflected in generated Go and TypeScript
@@ -58,8 +56,7 @@ Treat these as blockers unless the author has a clear documented reason:
   resources.
 - Behavior changes lack tests proportional to risk.
 - The implementation introduces speculative infrastructure, service boundaries,
-  queues, frameworks, datastores, or provider coupling outside the documented
-  direction.
+  queues, frameworks, datastores, or provider coupling without a current need.
 
 ## Tests During Review
 

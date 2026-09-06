@@ -1,35 +1,40 @@
 # Agent Contribution Guide
 
-This file is for AI coding agents working in this repository, including Codex, ChatGPT, Claude Code, Gemini, and similar tools.
+This file routes AI coding agents to the repository's sources of truth. Read the documents relevant to the task instead of duplicating their guidance here.
 
-AI agents automatically read `AGENTS.md`. Keep this file as a routing guide and avoid duplicating project documentation.
+## Product Direction
 
-## Source Of Truth
+- [Vision](docs/vision.md): what Finsight aims to become and why.
+- [MVP](docs/mvp.md): the capabilities required for the MVP and its non-goals.
+- [Use Cases](docs/use-cases.md): important user journeys and product-visible rules.
 
-Before changing code or documentation, read the relevant source documents:
+## Current Technical Architecture
 
-- Product and domain context: [Vision](docs/vision.md), [MVP](docs/mvp.md), [Use Cases](docs/use-cases.md), [Domain Model](docs/domain-model.md).
-- Architecture and technical foundation: [Architecture](docs/architecture.md), [Technical Direction](docs/foundation/technical-direction.md), [Codebase Structure](docs/foundation/codebase-structure.md), [Engineering Principles](docs/foundation/engineering-principles.md).
-- Implementation guidelines: [Backend Guidelines](docs/guidelines/backend-guidelines.md), [Frontend Guidelines](docs/guidelines/frontend-guidelines.md), [OpenAPI Guidelines](docs/guidelines/openapi-guidelines.md), [Database Guidelines](docs/guidelines/database-guidelines.md).
-- Git and review workflows: [Code Review Guidelines](docs/git/code-review.md), [Git Workflow Guidelines](docs/git/git.md), [Pull Request Guidelines](docs/git/pull-requests.md).
+- [Architecture](docs/architecture.md): implemented components, data flow, and current constraints.
+- [Codebase Structure](docs/foundation/codebase-structure.md): the current repository layout and code ownership.
 
-Do not rewrite or duplicate existing architecture, MVP, product, domain, or implementation documentation. Link to the relevant source document instead.
+## Engineering Rules
 
-## Task Routing
+- [Engineering Principles](docs/foundation/engineering-principles.md): stable implementation philosophy.
+- [Backend Guidelines](docs/guidelines/backend-guidelines.md)
+- [Database Guidelines](docs/guidelines/database-guidelines.md)
+- [Frontend Guidelines](docs/guidelines/frontend-guidelines.md)
+- [OpenAPI Guidelines](docs/guidelines/openapi-guidelines.md)
 
-- For implementation work, read the relevant files in `docs/foundation` and `docs/guidelines`.
-- For code review, read [Code Review Guidelines](docs/git/code-review.md).
-- For branch, staging, commit, or push work, read [Git Workflow Guidelines](docs/git/git.md).
-- For pull request preparation, read [Pull Request Guidelines](docs/git/pull-requests.md).
+## Current Application and Feature Behavior
 
-## Review guidelines
+- [API README](apps/api/README.md) and [implemented API feature docs](apps/api/docs/)
+- [Web README](apps/web/README.md)
+- Executable contracts, migrations, tests, and code
 
-When acting as a code reviewer, including as the Codex GitHub review agent, follow [Code Review Guidelines](docs/git/code-review.md).
+## Contribution Workflow
 
-Focus on correctness, security, data integrity, behavioral regressions, architecture boundary violations, and missing tests. Keep comments high-signal and grounded in changed lines.
+- [Code Review Guidelines](docs/git/code-review.md)
+- [Git Workflow Guidelines](docs/git/git.md)
+- [Pull Request Guidelines](docs/git/pull-requests.md)
 
 ## Operating Rules
 
-- Respect user changes in the working tree. Do not revert unrelated changes.
-- Follow the linked source documents instead of restating or overriding them.
-- If instructions conflict, follow this order: current user request, this `AGENTS.md`, source documents in `docs/`, then local judgment.
+- Respect user changes and do not revert unrelated work.
+- Follow this priority when instructions conflict: current user request, this file, linked documentation, then local judgment.
+- Do not infer or invent future internal models from MVP requirements. When implementing a new feature, design only the structures needed for the current change and update technical documentation after the implementation decision is made.

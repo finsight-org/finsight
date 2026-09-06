@@ -1,173 +1,106 @@
-# Database Access
+# Database Guidelines
 
-Finsight uses PostgreSQL as the durable source of truth.
-
-Application code accesses PostgreSQL through generated sqlc queries owned by backend feature packages and concrete types. OpenAPI generated code, MCP code, and frontend code must not query the database directly.
+Finsight uses PostgreSQL for durable storage, pgx for runtime access, sqlc for typed queries, and Goose for migrations.
 
 ## Runtime Access
 
-The Go API uses `pgx` for runtime PostgreSQL access.
+- Application construction opens one `pgxpool` connection pool.
+- Concrete feature types and functions call generated sqlc queries directly.
+- A focused persistence type such as a `Store` may own validation or transactional behavior; do not add wrappers that only forward calls.
+- Feature code owns database error translation and explicit transactions.
+- HTTP and frontend code do not query PostgreSQL directly.
+- SQL belongs in migration or sqlc query files rather than large strings in application code.
 
-- Connection pooling is handled with `pgxpool`.
-- Application startup constructs sqlc `Queries` values over the shared connection pool.
-- Feature types receive concrete sqlc queries and call generated methods directly.
-- Feature types own database error translation and transactions.
+A persistence boundary keeps database concerns out of transport and presentation code. It does not require a repository layer.
 
 ## Migrations
 
-Schema changes are managed with Goose.
+Goose migrations live in `apps/api/migrations` and are embedded into the API executable. The API applies pending migrations during startup before serving requests in both supported configuration modes. Local mode then bootstraps its default local data; managed mode skips that bootstrap.
 
-Migration files live in:
-
-```text
-apps/api/migrations
-```
-
-See the [Database Migrations](#database-migrations) section below for Goose commands and local setup notes.
-
-## Query Generation
-
-Finsight uses `sqlc` for typed query generation where SQL is non-trivial.
-
-Query files live in:
-
-```text
-apps/api/internal/postgres/queries
-```
-
-Generated database code lives in:
-
-```text
-apps/api/internal/postgres/generated
-```
-
-Do not edit generated database files manually.
-
-The `sqlc` configuration lives in:
-
-```text
-apps/api/sqlc.yaml
-```
-
-It reads schema from Goose migrations and generates pgx/v5-compatible Go code.
-
-## Regenerate Code
-
-From the API module:
+Create a migration from `apps/api`:
 
 ```bash
-cd apps/api
+go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations create add_feature sql
+```
+
+SQL migrations use Goose directives:
+
+```sql
+-- +goose Up
+-- migration SQL
+
+-- +goose Down
+-- rollback SQL
+```
+
+Use `StatementBegin` and `StatementEnd` around PostgreSQL functions or other bodies Goose cannot split safely.
+
+Check or apply migrations manually with a configured database URL:
+
+```bash
+go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations postgres "$FINSIGHT_DATABASE_URL" status
+go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations postgres "$FINSIGHT_DATABASE_URL" up
+```
+
+Prefer database constraints for durable invariants and translate expected constraint failures at the owning feature boundary.
+
+## sqlc Queries
+
+Query sources live in `apps/api/internal/postgres/queries`. Generated Go code lives in `apps/api/internal/postgres/generated` and must not be edited manually.
+
+The configuration in `apps/api/sqlc.yaml` reads the Goose migrations as its schema and generates pgx/v5-compatible code.
+
+After changing a migration or query, regenerate from `apps/api`:
+
+```bash
 go generate ./...
 ```
 
-This regenerates both:
-
-- OpenAPI server/types code
-- sqlc database query code
-
-Generator CLIs are invoked by `go generate` with pinned `go run ...@version` commands. They are intentionally not tracked as application runtime dependencies in `apps/api/go.mod`.
-
-The underlying sqlc command is:
+This also regenerates the Go OpenAPI boundary. The pinned underlying sqlc command is:
 
 ```bash
 go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate
 ```
 
-## Boundary Rules
+Generated rows and parameters may represent table-shaped feature data directly. Add handwritten types only when they express behavior, calculations, aggregates, or another meaning distinct from storage.
 
-- SQL belongs in migration files or query files, not as large raw strings in Go.
-- Generated sqlc rows and params may represent table-shaped feature data directly.
-- HTTP adapters map generated OpenAPI DTOs into meaningful feature inputs or pass simple values directly. Feature types construct generated sqlc parameters internally.
-- Handwritten domain models should represent meaningful behavior, aggregates, or derived data rather than duplicate table rows.
-- Define small interfaces at the consuming package when they represent a meaningful capability that needs substitution; do not create interfaces solely to mirror implementations or manufacture database mocks.
+## Transactions
 
-# Database Migrations
+Use an explicit pgx transaction when multiple writes must succeed or fail together.
 
-Finsight uses Goose for PostgreSQL database migrations.
+- Begin and commit the transaction in the feature-owned persistence operation.
+- Defer rollback so error paths remain safe.
+- Construct sqlc queries over the transaction handle.
+- Validate relationships required for data integrity within the same transaction when concurrent changes could matter.
+- Return enough context to identify whether begin, query, mapping, or commit failed.
 
-Migration files live in:
+## PostgreSQL Integration Tests
 
-```text
-apps/api/migrations
-```
+Database integration tests run only when `FINSIGHT_TEST_DATABASE_URL` is set. Without it, `go test ./...` runs the remaining tests and reports the PostgreSQL tests as skipped.
 
-The API runs pending Goose migrations during startup for local and user-operated deployments. Goose records applied migrations in its default `goose_db_version` table.
-
-Before the first production deployment, foundational migrations may be amended to keep the initial schema canonical. After such a change, verification must use a fresh database. Reset disposable local and test databases because Goose does not re-run an already recorded migration version.
-
-The initial migration creates the identity/workspace foundation tables:
-
-- `workspaces`
-- `users`
-- `workspace_memberships`
-- `portfolios`
-
-## Create a Migration
-
-From the API module:
+Point the variable at a dedicated disposable test database, not a database containing valuable local data. With the local Compose PostgreSQL service running, create the test database once and run the complete suite from the repository root:
 
 ```bash
+docker compose exec postgres createdb -U finsight finsight_test
 cd apps/api
-go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations create add_accounts sql
+FINSIGHT_TEST_DATABASE_URL='postgres://finsight:finsight@localhost:5432/finsight_test?sslmode=disable' go test ./...
 ```
 
-## Check Migration Status
+The tests apply current migrations and isolate their records with unique identifiers and cleanup. Tests that change migration or global database behavior must remain safe to run repeatedly against the designated test database.
 
-```bash
-cd apps/api
-go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations postgres "$FINSIGHT_DATABASE_URL" status
-```
+## Local Development
 
-## Run Migrations Manually
-
-```bash
-cd apps/api
-go run github.com/pressly/goose/v3/cmd/goose@v3.26.0 -dir migrations postgres "$FINSIGHT_DATABASE_URL" up
-```
-
-The Goose CLI is invoked with pinned `go run ...@version` commands and is not tracked as an application runtime dependency. The API still uses the Goose library at runtime to apply embedded migrations during startup.
-
-## SQL Migration Format
-
-Future SQL migrations should use Goose directives:
-
-```sql
--- +goose Up
--- migration SQL here
-
--- +goose Down
--- rollback SQL here
-```
-
-Use statement blocks when PostgreSQL functions or other multi-statement bodies are needed:
-
-```sql
--- +goose StatementBegin
-create or replace function set_updated_at()
-returns trigger as $$
-begin
-    new.updated_at = now();
-    return new;
-end;
-$$ language plpgsql;
--- +goose StatementEnd
-```
-
-## Local Development Notes
-
-For normal local setup, use Docker Compose from the repository root:
+From the repository root:
 
 ```bash
 docker compose up --build
 ```
 
-The API applies pending migrations automatically before serving requests.
-
-If a local development Postgres volume was created with an incompatible old schema or role setup, reset it with:
+The API applies pending migrations automatically. If an incompatible old local volume contains only disposable data, reset it with:
 
 ```bash
 docker compose down -v
 docker compose up --build
 ```
 
-This deletes the local Postgres volume, so only use it when existing local data is disposable.
+The first command deletes the local PostgreSQL volume and its data.

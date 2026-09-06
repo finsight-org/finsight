@@ -1,265 +1,114 @@
 # Finsight Architecture
 
-## 1. Purpose
+## Purpose
 
-Finsight is an open-source investment data platform for humans and AI agents.
+This document describes how Finsight is implemented today and the architectural constraints that govern the current codebase. Product requirements that are not yet implemented are defined in [MVP](mvp.md) and [Use Cases](use-cases.md); their internal architecture is intentionally left undefined until implementation work begins.
 
-This document describes the technical architecture for the MVP: the runtime components, their responsibilities, their communication paths, and the boundaries that keep the system simple enough to build as a modular monolith.
+## System Overview
 
-It should be read together with:
+Finsight is a modular monolith with:
 
-- [Vision](vision.md)
-- [MVP](mvp.md)
-- [Use Cases](use-cases.md)
-- [Domain Model](domain-model.md)
+- A Go HTTP API.
+- A React, TypeScript, and Vite web application.
+- PostgreSQL for durable storage.
+- An OpenAPI-first HTTP contract between the web application and API.
+- sqlc-generated Go code for typed database access.
+- Feature-oriented Go packages for application and financial behavior.
+- Adapters for external market-data providers.
 
-This document does not define exact database tables, Go package names, token formats, file storage strategy, deployment infrastructure, or detailed frontend implementation patterns.
-
-## 2. Architecture Principles
-
-- Finsight is a modular monolith, not a microservices system.
-- The backend is written in Go.
-- The frontend is written in React, TypeScript, and Vite.
-- PostgreSQL is the durable source of truth.
-- The HTTP API is OpenAPI-first.
-- MCP is the agent-facing interface.
-- Transactions and ledger entries are the durable financial record.
-- Portfolio summaries, positions, cash balances, and exposures are derived from source records.
-- MCP tools are read-only in the MVP.
-- External market data is isolated behind provider adapters.
-- The same core application should support user-operated and managed deployment models.
-
-## 3. High-Level Architecture
+The currently running application has an HTTP entry point. Imports, MCP access, managed identity, and managed hosting infrastructure are not implemented runtime components.
 
 ```mermaid
 flowchart LR
     User[User]
-    Agent[AI Agent]
-
-    UI[Finsight UI<br/>React + TypeScript + Vite]
-    API[OpenAPI HTTP API]
-    MCP[MCP Server<br/>Read-only tools]
-    App[Go Modular Monolith<br/>Feature Packages/Types]
-    DB[(PostgreSQL<br/>Source of Truth)]
-    Provider[Market Data Providers<br/>Adapter Boundary]
-
-    User --> UI
-    UI --> API
-    API --> App
-
-    Agent --> MCP
-    MCP --> App
-
-    App --> DB
-    App --> Provider
-```
-
-The React web app and MCP server are separate entry points into the same Go backend. They do not own business rules directly. Both call feature packages and concrete types/functions that enforce workspace scoping, financial rules, and persistence.
-
-PostgreSQL stores source-of-truth records. Market data providers are external dependencies accessed through adapters that normalize provider-specific responses before they reach the core domain.
-
-## 4. Runtime Components
-
-### React Web App
-
-The web app is built with React, TypeScript, and Vite.
-
-It is responsible for presentation, UI state, forms, upload flows, review screens, and displaying backend responses. It talks only to the OpenAPI HTTP API and should use generated or typed API clients where useful.
-
-The web app must not contain financial business rules. It may perform client-side validation for usability, but backend validation is authoritative.
-
-Allowed dependencies:
-
-- React app -> OpenAPI HTTP API.
-- React app -> browser APIs needed for user interaction.
-
-Disallowed dependencies:
-
-- React app -> PostgreSQL.
-- React app -> market data providers directly.
-- React app -> MCP server.
-- React app -> financial calculation logic that should live in the backend.
-
-### Go Backend
-
-The backend is a single Go modular monolith.
-
-It exposes both the OpenAPI HTTP API and the MCP server. It owns business rules, validation, imports, transaction and ledger creation, portfolio calculations, market data normalization, authorization, and persistence.
-
-The backend uses PostgreSQL as the source of truth. Runtime boundaries call focused feature packages and concrete types/functions rather than implementing their own access paths to the database or market data providers.
-
-The backend should remain one deployable application for the MVP. Internal boundaries are logical boundaries inside the monolith, not separately deployed services.
-
-### OpenAPI HTTP API
-
-The HTTP API is the contract between the React web app and the Go backend.
-
-It is mutation-capable for user workflows such as account management, imports, import review, and import confirmation. It is also used for read workflows such as portfolio summaries, positions, cash balances, and transaction history.
-
-The OpenAPI contract should describe request and response shapes clearly enough for frontend development and future programmatic clients.
-
-The HTTP API must call backend feature types/functions. It must not duplicate domain rules in handlers.
-
-### MCP Server
-
-The MCP server is the agent-facing interface.
-
-In the MVP, MCP tools are read-only. They expose structured portfolio data to AI agents and call the same backend feature types/functions as the HTTP API.
-
-The MCP server must not bypass authorization, workspace scoping, domain validation, or portfolio calculation rules. It must not support portfolio mutations, import confirmation, trading, broker synchronization, or financial advice actions.
-
-### PostgreSQL
-
-PostgreSQL is the durable source of truth.
-
-It stores workspace, account, asset, import, transaction, ledger entry, market price, FX rate, and connected-agent records. Derived data is computed from those source records.
-
-Application code should access PostgreSQL through backend persistence boundaries. Frontend and MCP code should not query the database directly.
-
-### Market Data Providers
-
-Market data providers are external dependencies behind provider adapters.
-
-Provider adapters translate provider-specific formats into Finsight concepts such as assets, market prices, and FX rates. Provider-specific response shapes must not leak into the core domain model, HTTP API, MCP tools, or portfolio calculation logic.
-
-Missing market prices or FX rates should produce incomplete-data warnings. They should not corrupt transactions, ledger entries, or portfolio state.
-
-## 5. Internal Backend Boundaries
-
-The backend should be organized around logical boundaries. These boundaries may become Go packages, but this document does not prescribe exact package names.
-
-### Identity & Workspace
-
-Owns user identity, workspace scoping, local-mode defaults, and the internal default portfolio used by the MVP.
-
-Other backend areas may depend on this boundary to resolve the current workspace and authorization context.
-
-### Accounts & Assets
-
-Owns accounts, assets, and provider-backed asset matching.
-
-This boundary is responsible for keeping assets readable and normalized while preserving the provider identifier needed to refresh prices. Separate listing/provider-reference models are deferred until the product needs multiple tradable identities for the same asset.
-
-### Imports
-
-Owns upload intake, extraction orchestration, import item review state, validation status, and confirmation.
-
-Imports target an account. The portfolio relationship is inferred through that account.
-
-The import boundary may depend on accounts, assets, transactions, and market data. Other boundaries should not mutate import review state directly.
-
-### Transactions & Ledger
-
-Owns confirmed transactions and ledger entries.
-
-This boundary converts confirmed user-reviewed data into durable financial records. It is the source for downstream portfolio calculations.
-
-Other boundaries may read transactions and ledger entries, but only this boundary should create or modify them.
-
-### Portfolio Calculation
-
-Owns derived financial views such as positions, cash balances, allocations, exposure, and portfolio summary.
-
-This boundary reads transactions, ledger entries, prices, and FX rates. It should not mutate source-of-truth transaction records as part of calculation.
-
-### Market Data
-
-Owns provider adapter integration, asset lookup support, market prices, and FX rates.
-
-This boundary hides provider-specific APIs and normalizes external data before persistence or calculation.
-
-### MCP Tools
-
-Owns MCP tool definitions and agent-facing response shaping.
-
-This boundary calls backend feature types/functions for reads. It should not contain separate financial logic or direct database queries.
-
-## 6. Data Flow
-
-### Import Flow
-
-```mermaid
-flowchart LR
-    Upload[Upload]
-    Extraction[Extraction]
-    Review[Review]
-    Confirmation[Confirmation]
-    Ledger[Transactions + Ledger]
-    Summary[Portfolio Summary]
-
-    Upload --> Extraction
-    Extraction --> Review
-    Review --> Confirmation
-    Confirmation --> Ledger
-    Ledger --> Summary
-```
-
-Imports are account-scoped. Extraction creates reviewable import items. Confirmation creates transactions and ledger entries through backend feature types/functions. Portfolio data is derived after confirmation.
-
-### MCP Flow
-
-```mermaid
-flowchart LR
-    Agent[AI Agent]
-    Tool[MCP Tool]
-    Features[Backend Feature Packages/Types]
+    Web[React / TypeScript / Vite]
+    HTTP[OpenAPI HTTP adapter]
+    Feature[Feature package<br/>concrete type or function]
+    SQLC[Generated sqlc queries]
+    Provider[External provider adapter]
     DB[(PostgreSQL)]
-    Provider[Market Data Providers]
-    Response[Structured Response]
 
-    Agent --> Tool
-    Tool --> Features
-    Features --> DB
-    Features --> Provider
-    Features --> Response
-    Response --> Agent
+    User --> Web
+    Web --> HTTP
+    HTTP --> Feature
+    Feature --> SQLC
+    Feature --> Provider
+    SQLC --> DB
 ```
 
-MCP tools are read-only in the MVP. They call the same backend feature types/functions as the HTTP API and return structured data suitable for agent reasoning.
+## Runtime and Wiring
 
-### Portfolio Calculation Flow
+`cmd/finsight-api` loads configuration, constructs the application, starts the HTTP server, and closes resources during shutdown.
 
-```mermaid
-flowchart LR
-    Source[Transactions + Ledger]
-    Derived[Positions + Cash]
-    Market[Prices + FX]
-    Output[Summary + Exposure]
+Application construction currently:
 
-    Source --> Derived
-    Derived --> Market
-    Market --> Output
-```
+1. Opens a PostgreSQL connection pool.
+2. Runs embedded Goose migrations before serving requests.
+3. In local deployment mode, creates or reuses the local user, workspace, membership, and default portfolio.
+4. Constructs local-context, account, asset-search, and portfolio-valuation dependencies.
+5. Registers handwritten HTTP handlers behind generated OpenAPI interfaces and request validation middleware.
 
-Portfolio calculation starts from transactions and ledger entries. Positions and cash balances are derived first. Prices and FX rates are then applied when available to produce summaries and exposure views.
+The configured `managed` deployment mode skips local bootstrap, but managed identity is not implemented; endpoints that require the current portfolio return a not-implemented error in that mode.
 
-## 7. Deployment Models
+## HTTP and Frontend Boundaries
 
-### User-Operated Deployment
+The OpenAPI specification in `openapi/finsight.yaml` is the contract used by the web application and Go HTTP API. It currently defines:
 
-In a user-operated deployment, the user runs Finsight themselves.
+- Liveness and readiness checks.
+- Local default-portfolio context.
+- Account creation, listing, and lookup.
+- Provider-backed asset search.
+- Portfolio overview, daily value history, and account values.
 
-This includes running Finsight on a local machine, home server, VPS, or on-premise infrastructure.
+Generated Go types and server interfaces remain at the HTTP boundary. Handwritten handlers parse transport data, verify the current local portfolio where required, call feature behavior, and translate results and errors into the OpenAPI response shapes.
 
-User-operated deployments use the open-source application, PostgreSQL as the source of truth, and the MCP interface for AI agents. They should not require a managed-service account.
+The web application uses generated TypeScript OpenAPI types, `openapi-fetch`, and TanStack Query. Its portfolio page loads current value, value history, and account values from the API and supports account creation. Asset search also uses the API. The Imports, Agents, and Settings routes are placeholders.
 
-### Managed Deployment
+## Backend Feature Packages
 
-Finsight can also be operated as a managed service.
+Backend behavior lives in focused packages under `apps/api/internal`:
 
-A managed deployment uses the same product architecture, domain model, OpenAPI contract, MCP contract, and transaction-first calculation model as user-operated deployments.
+- `app` and `startup` construct dependencies and run startup initialization.
+- `bootstrap` and `localcontext` create and resolve the local default context.
+- `account` implements account creation and reads using generated sqlc queries directly.
+- `asset` implements provider-backed search and the current internal asset persistence behavior. The running HTTP application wires Yahoo search; search results are not persisted by that request.
+- `transaction` validates and atomically persists transactions with their ledger entries. The package is implemented and tested but is not wired into the running application or current HTTP contract.
+- `portfoliovalue` loads financial records and calculates portfolio overview, value history, account values, allocations, and incomplete-data warnings.
+- `portfolio` contains the derived response concepts used by portfolio valuation.
+- `httpapi` adapts the OpenAPI HTTP boundary to those features.
+- `postgres` owns database setup, migrations, generated queries, and database conversions.
 
-Operational choices such as hosting provider, authentication provider, monitoring, billing, and managed data providers are deployment-specific and intentionally not part of the open-source core architecture.
+Dependencies flow from runtime adapters into the concrete feature type or function that owns the behavior, then to generated sqlc queries or an external-provider adapter.
 
-## 8. Technical Boundaries
+## Persistence and Financial Calculations
 
-- The React app may call only the OpenAPI HTTP API.
-- The MCP server may call only backend feature types/functions.
-- HTTP handlers and MCP tools must not duplicate financial rules.
-- Only backend persistence boundaries may access PostgreSQL.
-- Provider adapters must isolate external provider formats from the core domain.
-- Market data can enrich portfolio views but must not become the source of truth for user transactions.
-- Transactions and ledger entries are the source for portfolio calculations.
-- Derived portfolio data must remain reproducible from source records.
-- Workspace scoping and authorization must be enforced before returning user financial data.
-- The MVP should stay within one backend application process.
+PostgreSQL currently stores local identity and workspace context, portfolios, accounts, assets, transactions, ledger entries, market prices, and FX rates. Migrations and generated sqlc code are the authoritative description of that implemented data model; Markdown documentation does not duplicate every field.
+
+Transactions and ledger entries are the durable financial records used by current valuation. Portfolio values are derived by:
+
+1. Loading ledger entries for the requested portfolio through the valuation date.
+2. Summing cash and asset quantities by account.
+3. Applying the latest eligible market prices.
+4. Converting values with available direct FX rates into the portfolio base currency.
+5. Excluding values that cannot be priced or converted and returning warnings.
+
+The value-history endpoint repeats that valuation for daily points in the requested range. It reports portfolio value over time, not investment returns.
+
+The demo seed command supplies deterministic accounts, assets, transactions, ledger entries, prices, and FX rates for local development. It is not an import workflow.
+
+## Provider Adapters
+
+External market-data behavior is isolated in the `asset` package. The running application uses a Yahoo adapter for asset search and maps provider responses into provider-neutral candidates before they reach the HTTP response.
+
+Provider-specific request and response details stay inside the adapter. Missing provider fields remain absent rather than being invented.
+
+## Architectural Constraints
+
+- Keep the backend as one deployable Go application unless an implemented change establishes a different architecture.
+- Keep HTTP and frontend adapters thin; financial calculations and application rules belong to the concrete feature type or function that owns them.
+- The frontend communicates with the backend through the current OpenAPI HTTP contract and does not access PostgreSQL or market-data providers directly.
+- Generated OpenAPI and sqlc files are regenerated from their sources and are not edited manually.
+- Feature code may call generated sqlc queries directly. A “persistence boundary” means persistence concerns stay out of HTTP and frontend code; it does not require repository or service layers.
+- Prefer concrete feature types and functions. Do not introduce repository wrappers that only forward calls or map equivalent structures. Name types after their actual responsibility, such as `Store`, `Recorder`, `Calculator`, `Resolver`, or `Runner`.
+- Market data enriches financial records but does not replace them. Missing data remains visible in the result.
+- Technical documentation records implemented decisions. It does not reserve tables, packages, services, authorization mechanisms, or integration internals for future product requirements.
