@@ -9,7 +9,7 @@ Backend request paths should use the fewest layers needed to express the behavio
 ```mermaid
 flowchart LR
     Handler["HTTP Handler<br/>internal/httpapi"]
-    Feature["Feature Component<br/>internal/<feature>"]
+    Feature["Feature package/type<br/>internal/<feature>"]
     SQLC["sqlc Generated Code"]
     DB[("PostgreSQL")]
 
@@ -22,20 +22,21 @@ Responsibilities:
 
 - OpenAPI middleware validates the HTTP contract before handlers run.
 - Handlers decode requests, enforce the transport authorization entry point, map DTOs, and translate errors.
-- Feature components construct generated sqlc parameters, call sqlc directly, enforce business workflows, own transactions, and translate database errors.
+- Concrete feature types and functions construct generated sqlc parameters, call sqlc directly, enforce business workflows, own transactions, and translate database errors.
 - Use a feature-owned input struct when an operation has several related fields, such as account creation. For one or two simple identifiers, pass arguments directly instead of introducing a wrapper params type.
 - Migrations own schema changes.
 
 ## Feature Packages
 
-Use feature packages under `apps/api/internal` for domain/application behavior. Existing examples include `account`, `identity`, `portfolio`, and `bootstrap`.
+Use feature packages under `apps/api/internal` for domain/application behavior. Existing examples include `account`, `asset`, `bootstrap`, `localcontext`, `portfolio`, and `portfoliovalue`.
 
 Package guidance:
 
-- Prefer a concrete component with explicit dependencies.
+- Prefer a concrete type or function with explicit dependencies.
 - Do not create feature or domain structs that merely copy generated sqlc rows. Feature-owned input structs are appropriate when they express a meaningful multi-field operation using transport- and database-independent Go types.
 - Define domain structs when representing aggregates, calculations, derived values, or rules that differ from the database shape.
-- Introduce an interface only when there is a meaningful external boundary or multiple production implementations.
+- Define small interfaces at the consuming package when they represent a meaningful capability that needs substitution.
+- Do not create interfaces that merely mirror concrete implementations or manufacture mock seams for tests.
 - Let OpenAPI own transport-shape validation and PostgreSQL constraints own persisted-data integrity.
 - Use sentinel errors for expected domain failures that adapters need to translate.
 - Wrap unexpected errors with useful context.
@@ -61,12 +62,12 @@ HTTP code lives in `apps/api/internal/httpapi`.
 Handlers should:
 
 - Use generated OpenAPI request and response types only at the HTTP boundary.
-- Convert request values into feature-owned input types when the operation has a meaningful multi-field input. Pass small values such as IDs directly. Keep generated sqlc parameter construction inside the feature component.
+- Convert request values into feature-owned input types when the operation has a meaningful multi-field input. Pass small values such as IDs directly. Keep generated sqlc parameter construction inside the feature type or function.
 - Convert feature results into generated response types.
 - Convert known feature errors into documented HTTP status codes and `ErrorResponse` bodies.
 - Never place raw SQL or migration logic in handlers.
 
-Handlers should not enforce financial business rules. Feature components and PostgreSQL constraints are authoritative.
+Handlers should not enforce financial business rules. Feature types/functions and PostgreSQL constraints are authoritative.
 
 ## Persistence
 
@@ -76,7 +77,7 @@ Use:
 
 - Goose migrations in `apps/api/migrations` for schema changes.
 - sqlc query files in `apps/api/internal/postgres/queries` for non-trivial SQL.
-- Concrete feature components that call generated sqlc methods directly.
+- Concrete feature types and functions that call generated sqlc methods directly.
 - Handwritten domain structs only when their meaning differs from a table row.
 
 Keep SQL in dedicated migration and query files. Do not introduce repository wrappers that only forward calls or map equivalent structures.

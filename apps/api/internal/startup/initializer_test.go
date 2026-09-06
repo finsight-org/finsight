@@ -5,19 +5,18 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 )
 
 func TestInitializeLocalRunsMigrationsBeforeBootstrap(t *testing.T) {
 	calls := []string{}
-	service := New(
+	initializer := New(
 		fakeMigrator{calls: &calls},
-		fakeBootstrapper{calls: &calls},
+		fakeLocalBootstrap{calls: &calls},
 		config.DeploymentModeLocal,
 	)
 
-	if err := service.Initialize(context.Background()); err != nil {
+	if err := initializer.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 	if len(calls) != 2 || calls[0] != "migrate" || calls[1] != "bootstrap" {
@@ -27,13 +26,13 @@ func TestInitializeLocalRunsMigrationsBeforeBootstrap(t *testing.T) {
 
 func TestInitializeManagedSkipsBootstrap(t *testing.T) {
 	calls := []string{}
-	service := New(
+	initializer := New(
 		fakeMigrator{calls: &calls},
-		fakeBootstrapper{calls: &calls},
+		fakeLocalBootstrap{calls: &calls},
 		config.DeploymentModeManaged,
 	)
 
-	if err := service.Initialize(context.Background()); err != nil {
+	if err := initializer.Initialize(context.Background()); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 	if len(calls) != 1 || calls[0] != "migrate" {
@@ -43,13 +42,13 @@ func TestInitializeManagedSkipsBootstrap(t *testing.T) {
 
 func TestInitializeStopsWhenMigrationsFail(t *testing.T) {
 	calls := []string{}
-	service := New(
+	initializer := New(
 		fakeMigrator{calls: &calls, err: errors.New("migration failed")},
-		fakeBootstrapper{calls: &calls},
+		fakeLocalBootstrap{calls: &calls},
 		config.DeploymentModeLocal,
 	)
 
-	if err := service.Initialize(context.Background()); err == nil {
+	if err := initializer.Initialize(context.Background()); err == nil {
 		t.Fatal("Initialize() error = nil, want error")
 	}
 	if len(calls) != 1 || calls[0] != "migrate" {
@@ -58,13 +57,13 @@ func TestInitializeStopsWhenMigrationsFail(t *testing.T) {
 }
 
 func TestInitializeReturnsBootstrapFailure(t *testing.T) {
-	service := New(
+	initializer := New(
 		fakeMigrator{},
-		fakeBootstrapper{err: errors.New("bootstrap failed")},
+		fakeLocalBootstrap{err: errors.New("bootstrap failed")},
 		config.DeploymentModeLocal,
 	)
 
-	if err := service.Initialize(context.Background()); err == nil {
+	if err := initializer.Initialize(context.Background()); err == nil {
 		t.Fatal("Initialize() error = nil, want error")
 	}
 }
@@ -81,14 +80,14 @@ func (m fakeMigrator) Migrate(context.Context) error {
 	return m.err
 }
 
-type fakeBootstrapper struct {
+type fakeLocalBootstrap struct {
 	calls *[]string
 	err   error
 }
 
-func (b fakeBootstrapper) BootstrapLocal(context.Context) (bootstrap.Result, error) {
+func (b fakeLocalBootstrap) BootstrapLocal(context.Context) error {
 	if b.calls != nil {
 		*b.calls = append(*b.calls, "bootstrap")
 	}
-	return bootstrap.Result{}, b.err
+	return b.err
 }

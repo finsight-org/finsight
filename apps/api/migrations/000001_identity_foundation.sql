@@ -6,7 +6,18 @@ create table users (
     email text not null,
     display_name text not null,
     created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
+    updated_at timestamptz not null default now(),
+    constraint users_email_check check (
+        length(email) > 0
+        and email = lower(email)
+        and email !~ '^[[:space:]]'
+        and email !~ '[[:space:]]$'
+    ),
+    constraint users_display_name_check check (
+        length(display_name) > 0
+        and display_name !~ '^[[:space:]]'
+        and display_name !~ '[[:space:]]$'
+    )
 );
 
 create table workspaces (
@@ -16,7 +27,18 @@ create table workspaces (
     auth_mode text not null,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    constraint workspaces_base_currency_check check (base_currency ~ '^[A-Z]{3}$')
+    constraint workspaces_name_check check (
+        length(name) > 0
+        and name !~ '^[[:space:]]'
+        and name !~ '[[:space:]]$'
+    ),
+    constraint workspaces_base_currency_check check (base_currency ~ '^[A-Z]{3}$'),
+    constraint workspaces_auth_mode_check check (
+        length(auth_mode) > 0
+        and auth_mode = lower(auth_mode)
+        and auth_mode !~ '^[[:space:]]'
+        and auth_mode !~ '[[:space:]]$'
+    )
 );
 
 create table workspace_memberships (
@@ -38,6 +60,18 @@ create table portfolios (
     is_default boolean not null default false,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
+    constraint portfolios_name_check check (
+        length(name) > 0
+        and name !~ '^[[:space:]]'
+        and name !~ '[[:space:]]$'
+    ),
+    constraint portfolios_description_check check (
+        description = ''
+        or (
+            description !~ '^[[:space:]]'
+            and description !~ '[[:space:]]$'
+        )
+    ),
     constraint portfolios_base_currency_check check (base_currency ~ '^[A-Z]{3}$')
 );
 

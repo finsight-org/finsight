@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/finsight-org/finsight/apps/api/internal/postgres"
 	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
@@ -50,9 +50,9 @@ func (s *Store) Create(ctx context.Context, params CreateParams) (database.Accou
 	})
 	if err != nil {
 		switch {
-		case isConstraintViolation(err, accountUniqueNameConstraint):
+		case postgres.IsConstraintViolation(err, accountUniqueNameConstraint):
 			return database.Account{}, ErrDuplicateName
-		case isConstraintViolation(err,
+		case postgres.IsConstraintViolation(err,
 			accountNameConstraint,
 			accountInstitutionNameConstraint,
 			accountExternalReferenceConstraint,
@@ -87,17 +87,4 @@ func (s *Store) Get(ctx context.Context, portfolioID uuid.UUID, id uuid.UUID) (d
 		return database.Account{}, fmt.Errorf("get account: %w", err)
 	}
 	return found, nil
-}
-
-func isConstraintViolation(err error, constraints ...string) bool {
-	var postgresError *pgconn.PgError
-	if !errors.As(err, &postgresError) {
-		return false
-	}
-	for _, constraint := range constraints {
-		if postgresError.ConstraintName == constraint {
-			return true
-		}
-	}
-	return false
 }

@@ -14,7 +14,12 @@ create table fx_rates (
     constraint fx_rates_to_currency_check check (to_currency ~ '^[A-Z]{3}$'),
     constraint fx_rates_distinct_currency_check check (from_currency <> to_currency),
     constraint fx_rates_rate_positive_check check (rate > 0),
-    constraint fx_rates_provider_id_not_blank_check check (length(btrim(provider_id)) > 0),
+    constraint fx_rates_provider_id_check check (
+        length(provider_id) > 0
+        and provider_id = lower(provider_id)
+        and provider_id !~ '^[[:space:]]'
+        and provider_id !~ '[[:space:]]$'
+    ),
     constraint fx_rates_source_quality_check check (source_quality in ('DEMO', 'PROVIDER', 'MANUAL'))
 );
 

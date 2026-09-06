@@ -13,10 +13,11 @@ import (
 
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
 
-func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
+func TestCalculatorLoadsOnlyRelevantFXRates(t *testing.T) {
 	pool := postgresTestPool(t)
 	ctx := context.Background()
 	workspaceID := insertTestWorkspace(t, ctx, pool)
@@ -29,7 +30,7 @@ func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
 	insertTestFXRate(t, ctx, pool, workspaceID, "USD", "CAD", "2026-07-01", "1.35")
 	insertTestFXRate(t, ctx, pool, workspaceID, "EUR", "CAD", "2026-07-01", "1.50")
 
-	data, err := NewPostgresRepository(pool).LoadValuationData(ctx, portfolioID, mustDate("2026-07-07"))
+	data, err := New(database.New(pool)).loadValuationData(ctx, portfolioID, mustDate("2026-07-07"))
 	if err != nil {
 		t.Fatalf("LoadValuationData() error = %v", err)
 	}
@@ -44,12 +45,31 @@ func TestPostgresRepositoryLoadsRelevantFXRatesForValuation(t *testing.T) {
 	}
 }
 
-func TestPostgresRepositoryReturnsNotFoundForMissingPortfolio(t *testing.T) {
+func TestCalculatorReturnsNotFoundForMissingPortfolio(t *testing.T) {
 	pool := postgresTestPool(t)
 
-	_, err := NewPostgresRepository(pool).LoadValuationData(context.Background(), uuid.New(), mustDate("2026-07-07"))
+	_, err := New(database.New(pool)).loadValuationData(context.Background(), uuid.New(), mustDate("2026-07-07"))
 	if !errors.Is(err, portfolio.ErrNotFound) {
 		t.Fatalf("LoadValuationData() error = %v, want %v", err, portfolio.ErrNotFound)
+	}
+}
+
+func TestCalculatorUsesInjectedClockForValuationDate(t *testing.T) {
+	pool := postgresTestPool(t)
+	ctx := context.Background()
+	workspaceID := insertTestWorkspace(t, ctx, pool)
+	cleanupWorkspace(t, ctx, pool, workspaceID)
+	portfolioID := insertTestPortfolio(t, ctx, pool, workspaceID)
+
+	calculator := newWithClock(database.New(pool), func() time.Time {
+		return mustDate("2026-07-07")
+	})
+	overview, err := calculator.GetOverview(ctx, portfolioID)
+	if err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if !overview.ValuationDate.Equal(mustDate("2026-07-07")) {
+		t.Fatalf("valuation date = %s, want 2026-07-07", overview.ValuationDate)
 	}
 }
 
@@ -80,7 +100,7 @@ func postgresTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL, ok := os.LookupEnv("FINSIGHT_TEST_DATABASE_URL")
 	if !ok || databaseURL == "" {
-		t.Skip("FINSIGHT_TEST_DATABASE_URL is required for Postgres repository tests")
+		t.Skip("FINSIGHT_TEST_DATABASE_URL is required for portfolio integration tests")
 	}
 	ctx := context.Background()
 	if err := postgres.RunMigrations(ctx, databaseURL, migrations.Files); err != nil {
@@ -97,6 +117,9 @@ func postgresTestPool(t *testing.T) *pgxpool.Pool {
 func cleanupWorkspace(t *testing.T, ctx context.Context, pool *pgxpool.Pool, workspaceID uuid.UUID) {
 	t.Helper()
 	t.Cleanup(func() {
+		if _, err := pool.Exec(ctx, `delete from transactions where portfolio_id in (select id from portfolios where workspace_id = $1)`, workspaceID); err != nil {
+			t.Fatalf("delete test transactions for workspace %s: %v", workspaceID, err)
+		}
 		if _, err := pool.Exec(ctx, `delete from workspaces where id = $1`, workspaceID); err != nil {
 			t.Fatalf("delete test workspace %s: %v", workspaceID, err)
 		}

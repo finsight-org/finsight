@@ -2,7 +2,7 @@
 
 Finsight uses PostgreSQL as the durable source of truth.
 
-Application code accesses PostgreSQL through generated sqlc queries owned by backend feature components. OpenAPI generated code, MCP code, and frontend code must not query the database directly.
+Application code accesses PostgreSQL through generated sqlc queries owned by backend feature packages and concrete types. OpenAPI generated code, MCP code, and frontend code must not query the database directly.
 
 ## Runtime Access
 
@@ -10,8 +10,8 @@ The Go API uses `pgx` for runtime PostgreSQL access.
 
 - Connection pooling is handled with `pgxpool`.
 - Application startup constructs sqlc `Queries` values over the shared connection pool.
-- Feature components receive concrete sqlc queries and call generated methods directly.
-- Feature components own database error translation and transactions.
+- Feature types receive concrete sqlc queries and call generated methods directly.
+- Feature types own database error translation and transactions.
 
 ## Migrations
 
@@ -77,9 +77,9 @@ go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate
 
 - SQL belongs in migration files or query files, not as large raw strings in Go.
 - Generated sqlc rows and params may represent table-shaped feature data directly.
-- HTTP adapters map generated OpenAPI DTOs into meaningful feature inputs or pass simple values directly. Feature components construct generated sqlc parameters internally.
+- HTTP adapters map generated OpenAPI DTOs into meaningful feature inputs or pass simple values directly. Feature types construct generated sqlc parameters internally.
 - Handwritten domain models should represent meaningful behavior, aggregates, or derived data rather than duplicate table rows.
-- Interfaces are reserved for meaningful boundaries or multiple production implementations, not database mocking.
+- Define small interfaces at the consuming package when they represent a meaningful capability that needs substitution; do not create interfaces solely to mirror implementations or manufacture database mocks.
 
 # Database Migrations
 
@@ -92,6 +92,8 @@ apps/api/migrations
 ```
 
 The API runs pending Goose migrations during startup for local and user-operated deployments. Goose records applied migrations in its default `goose_db_version` table.
+
+Before the first production deployment, foundational migrations may be amended to keep the initial schema canonical. After such a change, verification must use a fresh database. Reset disposable local and test databases because Goose does not re-run an already recorded migration version.
 
 The initial migration creates the identity/workspace foundation tables:
 

@@ -5,33 +5,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
+	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
-	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
+	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
 )
 
 type DatabasePinger interface {
 	Ping(context.Context) error
-}
-
-type LocalContextService interface {
-	DefaultPortfolioID(context.Context) (uuid.UUID, error)
-	EnsurePortfolio(context.Context, uuid.UUID) error
-}
-
-type AssetFinder interface {
-	SearchAssets(context.Context, asset.SearchInput) ([]asset.AssetCandidate, error)
-}
-
-type PortfolioService interface {
-	GetOverview(context.Context, uuid.UUID) (portfolio.Overview, error)
-	GetValueHistory(context.Context, uuid.UUID, portfolio.Range) (portfolio.ValueHistory, error)
-	GetAccountValues(context.Context, uuid.UUID) (portfolio.AccountValues, error)
 }
 
 type Options struct {
@@ -40,10 +25,10 @@ type Options struct {
 	ReadyTimeout   time.Duration
 	DeploymentMode config.DeploymentMode
 	Database       DatabasePinger
-	LocalContext   LocalContextService
+	LocalContext   *localcontext.Resolver
 	Accounts       *account.Store
-	Assets         AssetFinder
-	Portfolio      PortfolioService
+	Assets         *asset.Finder
+	Portfolio      *portfoliovalue.Calculator
 }
 
 func NewRouter(options Options) http.Handler {

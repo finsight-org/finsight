@@ -14,7 +14,7 @@ Finsight should remain a modular monolith for the MVP. The backend is one Go app
 Stable decisions:
 
 - Keep one deployable backend application unless the architecture docs change.
-- Keep business logic in focused backend feature components.
+- Keep business logic in focused backend feature packages and concrete types/functions.
 - Keep HTTP handlers, MCP tools, provider adapters, and frontend components thin around feature behavior.
 - Keep portfolio views derived from transactions, ledger entries, prices, and FX rates.
 - Keep market data provider details behind provider adapters.
@@ -26,7 +26,7 @@ flowchart LR
     UI["React Web App"]
     MCP["MCP Tools"]
     HTTP["HTTP Adapters"]
-    Features["Feature Components"]
+    Features["Feature Packages/Types"]
     SQLC["sqlc Queries"]
     DB[("PostgreSQL")]
     Providers["Provider Adapters"]
@@ -41,12 +41,12 @@ flowchart LR
 
 ## Dependency Direction
 
-Dependencies should flow from transport boundaries into focused feature behavior. Feature components may use generated sqlc types for table-shaped data, but they should not depend on generated OpenAPI types or transport concerns.
+Dependencies should flow from transport boundaries into focused feature behavior. Feature packages and concrete types may use generated sqlc types for table-shaped data, but they should not depend on generated OpenAPI types or transport concerns.
 
 ```mermaid
 flowchart TD
     Boundary["HTTP, MCP, and React Boundaries"]
-    Feature["Feature Components"]
+    Feature["Feature Packages/Types"]
     Data["SQLC and Provider Adapters"]
 
     Boundary --> Feature
@@ -55,7 +55,7 @@ flowchart TD
 
 Implementation consequences:
 
-- HTTP handlers convert OpenAPI request types into feature-owned inputs when a meaningful multi-field input exists; they pass simple identifiers directly. Feature components construct generated sqlc parameters internally.
+- HTTP handlers convert OpenAPI request types into feature-owned inputs when a meaningful multi-field input exists; they pass simple identifiers directly. Feature types construct generated sqlc parameters internally.
 - Table-shaped features may return generated sqlc rows without duplicating them as domain structs.
 - Provider adapters convert external market data into Finsight concepts.
 - Frontend API wrappers convert generated client responses into feature-friendly hooks.
@@ -69,7 +69,7 @@ The normal mutation path should stay thin, explicit, and close to the feature th
 sequenceDiagram
     participant Web as React Feature
     participant API as OpenAPI HTTP API
-    participant Feature as Feature Component
+    participant Feature as Feature Type/Function
     participant SQLC as sqlc Queries
     participant DB as PostgreSQL
 

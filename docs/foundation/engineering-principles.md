@@ -21,12 +21,12 @@ Finsight is a modular monolith. Keep module boundaries clear inside the monolith
 
 Implementation rules:
 
-- Put business rules in the feature component that owns them.
+- Put business rules in the feature package and concrete type or function that owns them.
 - Keep HTTP/API layers thin.
 - Keep frontend components focused on presentation and interaction.
-- Access PostgreSQL through generated sqlc queries from feature components.
+- Access PostgreSQL through generated sqlc queries from feature types and functions.
 - Keep generated OpenAPI code at the HTTP boundary.
-- Keep generated sqlc parameter construction inside feature components; handlers should pass feature-owned inputs across the HTTP-to-feature boundary.
+- Keep generated sqlc parameter construction inside feature types and functions; handlers should pass feature-owned inputs across the HTTP-to-feature boundary.
 - Use structs for cohesive, multi-field inputs; do not create parameter-wrapper structs for operations that only take a few simple values.
 - Keep provider-specific details behind adapters.
 - Add domain types when behavior requires them, not as copies of database rows.

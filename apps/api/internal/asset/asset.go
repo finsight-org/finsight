@@ -3,9 +3,6 @@ package asset
 import (
 	"regexp"
 	"strings"
-	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/finsight-org/finsight/apps/api/internal/textutil"
 )
@@ -42,39 +39,7 @@ type AssetCandidate struct {
 	Exchange       *string
 }
 
-type Asset struct {
-	ID             uuid.UUID
-	WorkspaceID    uuid.UUID
-	Name           string
-	Type           Type
-	Currency       string
-	Symbol         string
-	ProviderID     string
-	ProviderSymbol string
-	Exchange       *string
-	ISIN           *string
-	Country        *string
-	Sector         *string
-	IsActive       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-}
-
 type UpsertInput struct {
-	Name           string
-	Type           Type
-	Currency       string
-	Symbol         string
-	ProviderID     string
-	ProviderSymbol string
-	Exchange       *string
-	ISIN           *string
-	Country        *string
-	Sector         *string
-}
-
-type upsertRepositoryInput struct {
-	WorkspaceID    uuid.UUID
 	Name           string
 	Type           Type
 	Currency       string

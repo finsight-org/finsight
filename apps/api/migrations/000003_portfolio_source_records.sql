@@ -15,12 +15,62 @@ create table assets (
     is_active boolean not null default true,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    constraint assets_name_not_blank_check check (length(btrim(name)) > 0),
+    constraint assets_name_check check (
+        length(name) > 0
+        and name !~ '^[[:space:]]'
+        and name !~ '[[:space:]]$'
+    ),
     constraint assets_asset_type_check check (asset_type in ('EQUITY', 'ETF', 'MUTUAL_FUND', 'CRYPTO', 'CASH', 'OTHER')),
     constraint assets_currency_check check (currency ~ '^[A-Z]{3}$'),
-    constraint assets_symbol_not_blank_check check (length(btrim(symbol)) > 0),
-    constraint assets_provider_id_not_blank_check check (length(btrim(provider_id)) > 0),
-    constraint assets_provider_symbol_not_blank_check check (length(btrim(provider_symbol)) > 0)
+    constraint assets_symbol_check check (
+        length(symbol) > 0
+        and symbol !~ '^[[:space:]]'
+        and symbol !~ '[[:space:]]$'
+    ),
+    constraint assets_provider_id_check check (
+        length(provider_id) > 0
+        and provider_id = lower(provider_id)
+        and provider_id !~ '^[[:space:]]'
+        and provider_id !~ '[[:space:]]$'
+    ),
+    constraint assets_provider_symbol_check check (
+        length(provider_symbol) > 0
+        and provider_symbol = lower(provider_symbol)
+        and provider_symbol !~ '^[[:space:]]'
+        and provider_symbol !~ '[[:space:]]$'
+    ),
+    constraint assets_exchange_check check (
+        exchange is null
+        or (
+            length(exchange) > 0
+            and exchange !~ '^[[:space:]]'
+            and exchange !~ '[[:space:]]$'
+        )
+    ),
+    constraint assets_isin_check check (
+        isin is null
+        or (
+            length(isin) > 0
+            and isin !~ '^[[:space:]]'
+            and isin !~ '[[:space:]]$'
+        )
+    ),
+    constraint assets_country_check check (
+        country is null
+        or (
+            length(country) > 0
+            and country !~ '^[[:space:]]'
+            and country !~ '[[:space:]]$'
+        )
+    ),
+    constraint assets_sector_check check (
+        sector is null
+        or (
+            length(sector) > 0
+            and sector !~ '^[[:space:]]'
+            and sector !~ '[[:space:]]$'
+        )
+    )
 );
 
 create trigger assets_set_updated_at
@@ -71,7 +121,27 @@ create table transactions (
         'OPENING_BALANCE',
         'ADJUSTMENT'
     )),
-    constraint transactions_source_not_blank_check check (length(btrim(source)) > 0),
+    constraint transactions_description_check check (
+        description = ''
+        or (
+            description !~ '^[[:space:]]'
+            and description !~ '[[:space:]]$'
+        )
+    ),
+    constraint transactions_source_check check (
+        length(source) > 0
+        and source = upper(source)
+        and source !~ '^[[:space:]]'
+        and source !~ '[[:space:]]$'
+    ),
+    constraint transactions_external_id_check check (
+        external_id is null
+        or (
+            length(external_id) > 0
+            and external_id !~ '^[[:space:]]'
+            and external_id !~ '[[:space:]]$'
+        )
+    ),
     constraint transactions_status_check check (status in ('CONFIRMED')),
     constraint transactions_account_portfolio_fk foreign key (account_id, portfolio_id)
         references accounts(id, portfolio_id) on delete cascade
@@ -135,7 +205,12 @@ create table market_prices (
     updated_at timestamptz not null default now(),
     constraint market_prices_price_positive_check check (price > 0),
     constraint market_prices_currency_check check (currency ~ '^[A-Z]{3}$'),
-    constraint market_prices_provider_id_not_blank_check check (length(btrim(provider_id)) > 0),
+    constraint market_prices_provider_id_check check (
+        length(provider_id) > 0
+        and provider_id = lower(provider_id)
+        and provider_id !~ '^[[:space:]]'
+        and provider_id !~ '[[:space:]]$'
+    ),
     constraint market_prices_source_quality_check check (source_quality in ('DEMO', 'PROVIDER', 'MANUAL'))
 );
 

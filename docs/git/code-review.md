@@ -25,7 +25,7 @@ Do not approve a change with unresolved blockers.
 
 Verify that the change preserves these boundaries:
 
-- Business rules live in focused backend feature components.
+- Business rules live in focused backend feature packages and concrete types/functions.
 - HTTP handlers adapt OpenAPI requests and responses; they do not own financial
   rules or raw SQL.
 - Table-shaped features may use generated sqlc params and rows directly.
@@ -36,7 +36,7 @@ Verify that the change preserves these boundaries:
 - The React app calls only the OpenAPI HTTP API.
 - Frontend code does not query PostgreSQL, call market data providers, call MCP,
   or reimplement authoritative financial calculations.
-- MCP remains read-only for the MVP and calls backend feature components.
+- MCP remains read-only for the MVP and calls backend feature types/functions.
 - Provider-specific market data shapes do not leak into domain, HTTP, MCP, or
   frontend contracts.
 

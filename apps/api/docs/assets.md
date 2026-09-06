@@ -2,17 +2,18 @@
 
 Assets are Finsight's normalized representation of financial instruments. The backend keeps provider-specific data behind adapters and exposes provider-neutral asset candidates to the rest of the application.
 
-The current implementation is search-only. It lets the UI find readable asset candidates through a market data provider, but it does not persist asset rows yet. Persisted assets should be created later when a user confirms an import item or another source-of-truth workflow.
+The public HTTP implementation is search-only. It lets the UI find readable asset candidates through a market data provider. Internal source-of-truth workflows, including demo seeding, persist canonical asset rows through `asset.Store`; interactive search results are not persisted automatically.
 
 ## Core Idea
 
 Finsight owns the internal asset shape. Providers only supply data that can be mapped into that shape.
 
-The asset package separates three concerns:
+The asset package separates four concerns:
 
 - `asset.Finder`: validates application input and coordinates asset lookup.
 - `asset.Provider`: provider-neutral interface for market data adapters.
 - Provider adapters: translate external provider responses into Finsight candidates.
+- `asset.Store`: normalizes durable asset input, calls generated sqlc queries directly, and returns generated asset rows.
 
 The finder depends only on this interface:
 
@@ -142,11 +143,11 @@ For future multi-provider lookup, keep `asset.Finder` as the orchestration bound
 
 ## Persistence Boundary
 
-Asset lookup does not make financial data durable.
+Asset lookup does not make financial data durable. Explicit source-of-truth workflows persist selected assets through `asset.Store`.
 
 Provider candidates should become persisted assets only when a user confirms a source-of-truth workflow, such as import review. This keeps failed searches, abandoned imports, and incorrect provider matches out of the database.
 
-When assets are persisted later, the provider reference stored on the asset should come from the selected candidate:
+When assets are persisted, the provider reference stored on the asset should come from the selected candidate:
 
 - `provider_id`
 - `provider_symbol`

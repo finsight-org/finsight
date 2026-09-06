@@ -28,7 +28,7 @@ func (s apiServer) getPortfolioOverview(w http.ResponseWriter, r *http.Request, 
 
 	overview, err := s.portfolio.GetOverview(r.Context(), portfolioID)
 	if err != nil {
-		writePortfolioServiceError(w, err)
+		writePortfolioCalculatorError(w, err)
 		return
 	}
 
@@ -52,7 +52,7 @@ func (s apiServer) getPortfolioValueHistory(w http.ResponseWriter, r *http.Reque
 
 	history, err := s.portfolio.GetValueHistory(r.Context(), portfolioID, valueRange)
 	if err != nil {
-		writePortfolioServiceError(w, err)
+		writePortfolioCalculatorError(w, err)
 		return
 	}
 
@@ -76,7 +76,7 @@ func (s apiServer) getPortfolioAccountValues(w http.ResponseWriter, r *http.Requ
 
 	values, err := s.portfolio.GetAccountValues(r.Context(), portfolioID)
 	if err != nil {
-		writePortfolioServiceError(w, err)
+		writePortfolioCalculatorError(w, err)
 		return
 	}
 
@@ -134,7 +134,7 @@ func portfolioWarningsResponse(values []portfolio.Warning) []generated.Portfolio
 	return warnings
 }
 
-func writePortfolioServiceError(w http.ResponseWriter, err error) {
+func writePortfolioCalculatorError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, portfolio.ErrInvalidRange):
 		writeInvalidRequest(w)

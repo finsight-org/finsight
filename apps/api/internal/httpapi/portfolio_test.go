@@ -11,249 +11,158 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/finsight-org/finsight/apps/api/internal/bootstrap"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
+	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 )
 
-func TestScopedPortfolioValueRoutesPassPortfolioID(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	accountID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	tests := []struct {
-		name    string
-		path    string
-		service fakePortfolioService
-	}{
-		{
-			name:    "overview",
-			path:    "/api/portfolios/" + portfolioID.String() + "/overview",
-			service: fakePortfolioService{overview: portfolio.Overview{BaseCurrency: "CAD", TotalValue: decimal.RequireFromString("100.25"), ValuationDate: date("2026-07-07")}},
-		},
-		{
-			name:    "value history",
-			path:    "/api/portfolios/" + portfolioID.String() + "/value-history?range=1W",
-			service: fakePortfolioService{history: portfolio.ValueHistory{BaseCurrency: "CAD", Range: portfolio.RangeOneWeek, Points: []portfolio.ValuePoint{{Date: date("2026-07-07"), Value: decimal.RequireFromString("100")}}}},
-		},
-		{
-			name:    "account values",
-			path:    "/api/portfolios/" + portfolioID.String() + "/account-values",
-			service: fakePortfolioService{accountValues: portfolio.AccountValues{BaseCurrency: "CAD", ValuationDate: date("2026-07-07"), Accounts: []portfolio.AccountValue{{AccountID: accountID, AccountName: "TFSA", Value: decimal.RequireFromString("100"), AllocationPercent: decimal.RequireFromString("100")}}}},
-		},
+func TestPortfolioHTTPFlowWithPostgres(t *testing.T) {
+	pool := httpAccountTestPool(t)
+	ctx := context.Background()
+	if err := bootstrap.New(pool).BootstrapLocal(ctx); err != nil {
+		t.Fatalf("BootstrapLocal() error = %v", err)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			service := tt.service
-			router := newLocalPortfolioRouter(&service, &fakePortfolioLocalContext{})
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tt.path, nil))
-
-			if response.Code != http.StatusOK {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-			}
-			if service.portfolioID != portfolioID {
-				t.Fatalf("portfolio id = %s, want %s", service.portfolioID, portfolioID)
-			}
-		})
+	queries := database.New(pool)
+	resolver := localcontext.New(queries)
+	portfolioID, err := resolver.DefaultPortfolioID(ctx)
+	if err != nil {
+		t.Fatalf("DefaultPortfolioID() error = %v", err)
 	}
-}
+	router := NewRouter(Options{
+		DeploymentMode: config.DeploymentModeLocal,
+		LocalContext:   resolver,
+		Portfolio:      portfoliovalue.New(queries),
+	})
 
-func TestScopedPortfolioValueRoutesRejectUnavailablePortfolio(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	paths := []string{
 		"/api/portfolios/" + portfolioID.String() + "/overview",
 		"/api/portfolios/" + portfolioID.String() + "/value-history?range=1W",
 		"/api/portfolios/" + portfolioID.String() + "/account-values",
 	}
-
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			service := &fakePortfolioService{err: portfolio.ErrInvalidRange}
-			router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{ensureErr: localcontext.ErrPortfolioNotAllowed})
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-
-			if response.Code != http.StatusNotFound {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
-			}
-			assertErrorCode(t, response, "portfolio_not_found")
-			if service.calls != 0 {
-				t.Fatalf("portfolio service calls = %d, want 0", service.calls)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
 			}
 		})
 	}
 }
 
-func TestPortfolioValueHistoryMissingRangeUsesGenericValidationError(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	service := &fakePortfolioService{}
-	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/value-history", nil))
-
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+func TestPortfolioHTTPRejectsNonDefaultPortfolio(t *testing.T) {
+	pool := httpAccountTestPool(t)
+	ctx := context.Background()
+	if err := bootstrap.New(pool).BootstrapLocal(ctx); err != nil {
+		t.Fatalf("BootstrapLocal() error = %v", err)
 	}
-	assertErrorCode(t, response, "invalid_request")
-	if service.calls != 0 {
-		t.Fatalf("portfolio service calls = %d, want 0", service.calls)
+	queries := database.New(pool)
+	resolver := localcontext.New(queries)
+	scope, err := resolver.DefaultScope(ctx)
+	if err != nil {
+		t.Fatalf("DefaultScope() error = %v", err)
 	}
-}
-
-func TestScopedPortfolioValueHistoryRejectsInvalidPortfolioIDAsInvalidRequest(t *testing.T) {
-	service := &fakePortfolioService{}
-	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/not-a-uuid/value-history?range=1W", nil))
-
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-	assertErrorCode(t, response, "invalid_request")
-	if service.calls != 0 {
-		t.Fatalf("portfolio service calls = %d, want 0", service.calls)
-	}
-}
-
-func TestScopedPortfolioValueRoutesRejectManagedModeBeforeLookup(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	service := &fakePortfolioService{}
-	localContext := &fakePortfolioLocalContext{}
-	router := NewRouter(Options{DeploymentMode: config.DeploymentModeManaged, LocalContext: localContext, Portfolio: service})
+	otherPortfolioID := insertHTTPTestPortfolio(t, ctx, pool, scope.WorkspaceID)
+	t.Cleanup(func() {
+		if _, err := pool.Exec(ctx, `delete from portfolios where id = $1`, otherPortfolioID); err != nil {
+			t.Fatalf("delete HTTP test portfolio: %v", err)
+		}
+	})
+	router := NewRouter(Options{
+		DeploymentMode: config.DeploymentModeLocal,
+		LocalContext:   resolver,
+		Portfolio:      portfoliovalue.New(queries),
+	})
 
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/overview", nil))
-
-	if response.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotImplemented)
-	}
-	assertErrorCode(t, response, "managed_identity_not_implemented")
-	if localContext.ensureCalls != 0 {
-		t.Fatalf("EnsurePortfolio() calls = %d, want 0", localContext.ensureCalls)
-	}
-}
-
-func TestPortfolioValueHistoryServiceValidationUsesGenericError(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	service := &fakePortfolioService{err: portfolio.ErrInvalidRange}
-	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/value-history?range=1W", nil))
-
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
-	}
-	assertErrorCode(t, response, "invalid_request")
-}
-
-func TestLegacyPortfolioValueRoutesAreNotRegistered(t *testing.T) {
-	service := &fakePortfolioService{}
-	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
-
-	for _, path := range []string{
-		"/api/portfolio/overview",
-		"/api/portfolio/value-history?range=1W",
-		"/api/portfolio/account-values",
-	} {
-		t.Run(path, func(t *testing.T) {
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
-			if response.Code != http.StatusNotFound {
-				t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
-			}
-		})
-	}
-}
-
-func TestPortfolioValueRouteReturnsNotFoundWhenPortfolioDisappears(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	service := &fakePortfolioService{err: portfolio.ErrNotFound}
-	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/overview", nil))
-
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+otherPortfolioID.String()+"/overview", nil))
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 	assertErrorCode(t, response, "portfolio_not_found")
 }
 
-func TestPortfolioValueRouteUnexpectedError(t *testing.T) {
-	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	service := &fakePortfolioService{err: errors.New("boom")}
-	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/overview", nil))
-
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+func TestPortfolioOpenAPIValidationRunsFirst(t *testing.T) {
+	paths := []string{
+		"/api/portfolios/not-a-uuid/value-history?range=1W",
+		"/api/portfolios/" + uuid.NewString() + "/value-history",
 	}
-	assertErrorCode(t, response, "portfolio_operation_failed")
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			NewRouter(Options{DeploymentMode: config.DeploymentModeLocal}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+			assertErrorCode(t, response, "invalid_request")
+		})
+	}
 }
 
-func newLocalPortfolioRouter(service PortfolioService, localContext LocalContextService) http.Handler {
-	return NewRouter(Options{
-		DeploymentMode: config.DeploymentModeLocal,
-		LocalContext:   localContext,
-		Portfolio:      service,
+func TestPortfolioErrorMapping(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "invalid range", err: portfolio.ErrInvalidRange, status: http.StatusBadRequest, code: "invalid_request"},
+		{name: "not found", err: portfolio.ErrNotFound, status: http.StatusNotFound, code: "portfolio_not_found"},
+		{name: "unexpected", err: errors.New("boom"), status: http.StatusInternalServerError, code: "portfolio_operation_failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			writePortfolioCalculatorError(response, test.err)
+			if response.Code != test.status {
+				t.Fatalf("status = %d, want %d", response.Code, test.status)
+			}
+			assertErrorCode(t, response, test.code)
+		})
+	}
+}
+
+func TestPortfolioResponseMapping(t *testing.T) {
+	accountID := uuid.New()
+	date := portfolioTestDate("2026-07-07")
+	overview := portfolioOverviewResponse(portfolio.Overview{BaseCurrency: "CAD", TotalValue: decimal.RequireFromString("100.25"), ValuationDate: date})
+	if overview.BaseCurrency != "CAD" || overview.TotalValue != "100.250000000000" || overview.ValuationDate.Time != date {
+		t.Fatalf("overview response = %#v", overview)
+	}
+	values := portfolioAccountValuesResponse(portfolio.AccountValues{
+		BaseCurrency:  "CAD",
+		ValuationDate: date,
+		Accounts:      []portfolio.AccountValue{{AccountID: accountID, AccountName: "TFSA", Value: decimal.NewFromInt(100), AllocationPercent: decimal.NewFromInt(100)}},
 	})
-}
-
-type fakePortfolioService struct {
-	overview      portfolio.Overview
-	history       portfolio.ValueHistory
-	accountValues portfolio.AccountValues
-	err           error
-	portfolioID   uuid.UUID
-	calls         int
-}
-
-func (s *fakePortfolioService) GetOverview(_ context.Context, portfolioID uuid.UUID) (portfolio.Overview, error) {
-	s.calls++
-	s.portfolioID = portfolioID
-	if s.err != nil {
-		return portfolio.Overview{}, s.err
+	if len(values.Accounts) != 1 || uuid.UUID(values.Accounts[0].AccountId) != accountID || values.Accounts[0].Value != "100.000000000000" {
+		t.Fatalf("account values response = %#v", values)
 	}
-	return s.overview, nil
 }
 
-func (s *fakePortfolioService) GetValueHistory(_ context.Context, portfolioID uuid.UUID, _ portfolio.Range) (portfolio.ValueHistory, error) {
-	s.calls++
-	s.portfolioID = portfolioID
-	if s.err != nil {
-		return portfolio.ValueHistory{}, s.err
+func TestLegacyPortfolioRoutesAreNotRegistered(t *testing.T) {
+	for _, path := range []string{"/api/portfolio/overview", "/api/portfolio/value-history?range=1W", "/api/portfolio/account-values"} {
+		response := httptest.NewRecorder()
+		NewRouter(Options{}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want %d", path, response.Code, http.StatusNotFound)
+		}
 	}
-	return s.history, nil
 }
 
-func (s *fakePortfolioService) GetAccountValues(_ context.Context, portfolioID uuid.UUID) (portfolio.AccountValues, error) {
-	s.calls++
-	s.portfolioID = portfolioID
-	if s.err != nil {
-		return portfolio.AccountValues{}, s.err
+func TestPortfolioRoutesRejectManagedMode(t *testing.T) {
+	response := httptest.NewRecorder()
+	path := "/api/portfolios/" + uuid.NewString() + "/overview"
+	NewRouter(Options{DeploymentMode: config.DeploymentModeManaged}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	if response.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotImplemented)
 	}
-	return s.accountValues, nil
+	assertErrorCode(t, response, "managed_identity_not_implemented")
 }
 
-type fakePortfolioLocalContext struct {
-	defaultPortfolioID uuid.UUID
-	defaultErr         error
-	ensureErr          error
-	defaultCalls       int
-	ensureCalls        int
-}
-
-func (s *fakePortfolioLocalContext) DefaultPortfolioID(context.Context) (uuid.UUID, error) {
-	s.defaultCalls++
-	return s.defaultPortfolioID, s.defaultErr
-}
-
-func (s *fakePortfolioLocalContext) EnsurePortfolio(context.Context, uuid.UUID) error {
-	s.ensureCalls++
-	return s.ensureErr
-}
-
-func date(value string) time.Time {
+func portfolioTestDate(value string) time.Time {
 	parsed, err := time.Parse("2006-01-02", value)
 	if err != nil {
 		panic(err)

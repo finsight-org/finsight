@@ -11,11 +11,8 @@ import (
 
 	"github.com/finsight-org/finsight/apps/api/internal/dateutil"
 	"github.com/finsight-org/finsight/apps/api/internal/portfolio"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 )
-
-type Repository interface {
-	LoadValuationData(context.Context, uuid.UUID, time.Time) (valuationData, error)
-}
 
 type valuationAccount struct {
 	ID   uuid.UUID
@@ -62,69 +59,80 @@ type valuationData struct {
 	FXRates      []fxRate
 }
 
-type Service struct {
-	repository Repository
-	now        func() time.Time
+type Calculator struct {
+	queries *database.Queries
+	now     func() time.Time
 }
 
-func NewService(repository Repository) Service {
-	return Service{repository: repository, now: time.Now}
+func New(queries *database.Queries) *Calculator {
+	return &Calculator{queries: queries, now: time.Now}
 }
 
-func NewServiceWithClock(repository Repository, now func() time.Time) Service {
-	return Service{repository: repository, now: now}
+func newWithClock(queries *database.Queries, now func() time.Time) *Calculator {
+	return &Calculator{queries: queries, now: now}
 }
 
-func (s Service) GetOverview(ctx context.Context, portfolioID uuid.UUID) (portfolio.Overview, error) {
-	loaded, err := s.loadData(ctx, portfolioID)
+func (c *Calculator) GetOverview(ctx context.Context, portfolioID uuid.UUID) (portfolio.Overview, error) {
+	loaded, err := c.loadData(ctx, portfolioID)
 	if err != nil {
 		return portfolio.Overview{}, err
 	}
-	baseCurrency := loaded.data.BaseCurrency
-	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
+	return calculateOverview(loaded.data, loaded.valuationDate), nil
+}
+
+func calculateOverview(data valuationData, valuationDate time.Time) portfolio.Overview {
+	baseCurrency := data.BaseCurrency
+	snapshot := calculateSnapshot(data, baseCurrency, valuationDate)
 	return portfolio.Overview{
 		BaseCurrency:  baseCurrency,
 		TotalValue:    snapshot.total,
-		ValuationDate: loaded.valuationDate,
+		ValuationDate: valuationDate,
 		Warnings:      snapshot.warnings.list(),
-	}, nil
+	}
 }
 
-func (s Service) GetAccountValues(ctx context.Context, portfolioID uuid.UUID) (portfolio.AccountValues, error) {
-	loaded, err := s.loadData(ctx, portfolioID)
+func (c *Calculator) GetAccountValues(ctx context.Context, portfolioID uuid.UUID) (portfolio.AccountValues, error) {
+	loaded, err := c.loadData(ctx, portfolioID)
 	if err != nil {
 		return portfolio.AccountValues{}, err
 	}
-	baseCurrency := loaded.data.BaseCurrency
-	snapshot := calculateSnapshot(loaded.data, baseCurrency, loaded.valuationDate)
-	return portfolio.AccountValues{
-		BaseCurrency:  baseCurrency,
-		ValuationDate: loaded.valuationDate,
-		Accounts:      snapshot.accounts,
-		Warnings:      snapshot.warnings.list(),
-	}, nil
+	return calculateAccountValues(loaded.data, loaded.valuationDate), nil
 }
 
-func (s Service) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, valueRange portfolio.Range) (portfolio.ValueHistory, error) {
+func calculateAccountValues(data valuationData, valuationDate time.Time) portfolio.AccountValues {
+	baseCurrency := data.BaseCurrency
+	snapshot := calculateSnapshot(data, baseCurrency, valuationDate)
+	return portfolio.AccountValues{
+		BaseCurrency:  baseCurrency,
+		ValuationDate: valuationDate,
+		Accounts:      snapshot.accounts,
+		Warnings:      snapshot.warnings.list(),
+	}
+}
+
+func (c *Calculator) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, valueRange portfolio.Range) (portfolio.ValueHistory, error) {
 	if !portfolio.ValidRange(valueRange) {
 		return portfolio.ValueHistory{}, portfolio.ErrInvalidRange
 	}
 
-	loaded, err := s.loadData(ctx, portfolioID)
+	loaded, err := c.loadData(ctx, portfolioID)
 	if err != nil {
 		return portfolio.ValueHistory{}, err
 	}
-	baseCurrency := loaded.data.BaseCurrency
+	return calculateValueHistory(loaded.data, loaded.valuationDate, valueRange), nil
+}
 
-	startDate := historyStartDate(valueRange, loaded.valuationDate, loaded.data.Entries)
+func calculateValueHistory(data valuationData, valuationDate time.Time, valueRange portfolio.Range) portfolio.ValueHistory {
+	baseCurrency := data.BaseCurrency
+	startDate := historyStartDate(valueRange, valuationDate, data.Entries)
 	if startDate.IsZero() {
-		return portfolio.ValueHistory{BaseCurrency: baseCurrency, Range: valueRange, Points: []portfolio.ValuePoint{}}, nil
+		return portfolio.ValueHistory{BaseCurrency: baseCurrency, Range: valueRange, Points: []portfolio.ValuePoint{}}
 	}
 
 	warnings := newWarningSet()
-	points := make([]portfolio.ValuePoint, 0, int(loaded.valuationDate.Sub(startDate).Hours()/24)+1)
-	for current := startDate; !current.After(loaded.valuationDate); current = current.AddDate(0, 0, 1) {
-		snapshot := calculateSnapshot(loaded.data, baseCurrency, current)
+	points := make([]portfolio.ValuePoint, 0, int(valuationDate.Sub(startDate).Hours()/24)+1)
+	for current := startDate; !current.After(valuationDate); current = current.AddDate(0, 0, 1) {
+		snapshot := calculateSnapshot(data, baseCurrency, current)
 		warnings.merge(snapshot.warnings)
 		points = append(points, portfolio.ValuePoint{Date: current, Value: snapshot.total})
 	}
@@ -134,7 +142,7 @@ func (s Service) GetValueHistory(ctx context.Context, portfolioID uuid.UUID, val
 		Range:        valueRange,
 		Points:       points,
 		Warnings:     warnings.list(),
-	}, nil
+	}
 }
 
 type loadedData struct {
@@ -142,17 +150,10 @@ type loadedData struct {
 	valuationDate time.Time
 }
 
-func (s Service) loadData(ctx context.Context, portfolioID uuid.UUID) (loadedData, error) {
-	if s.repository == nil {
-		return loadedData{}, fmt.Errorf("portfolio repository is required")
-	}
-	now := time.Now
-	if s.now != nil {
-		now = s.now
-	}
-	valuationDate := dateutil.DateOnly(now().UTC())
+func (c *Calculator) loadData(ctx context.Context, portfolioID uuid.UUID) (loadedData, error) {
+	valuationDate := dateutil.DateOnly(c.now().UTC())
 
-	data, err := s.repository.LoadValuationData(ctx, portfolioID, valuationDate)
+	data, err := c.loadValuationData(ctx, portfolioID, valuationDate)
 	if err != nil {
 		return loadedData{}, fmt.Errorf("load portfolio valuation data: %w", err)
 	}

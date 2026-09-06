@@ -9,7 +9,7 @@ import (
 )
 
 func TestSearchAssetsValidation(t *testing.T) {
-	service := NewFinder(&fakeProvider{})
+	finder := NewFinder(&fakeProvider{})
 
 	tests := []struct {
 		name  string
@@ -24,7 +24,7 @@ func TestSearchAssetsValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := service.SearchAssets(context.Background(), tt.input)
+			_, err := finder.SearchAssets(context.Background(), tt.input)
 			if !errors.Is(err, ErrInvalidSearchQuery) {
 				t.Fatalf("SearchAssets() error = %v, want %v", err, ErrInvalidSearchQuery)
 			}
@@ -34,9 +34,9 @@ func TestSearchAssetsValidation(t *testing.T) {
 
 func TestSearchAssetsNormalizesInputAndAppliesDefaultLimit(t *testing.T) {
 	provider := &fakeProvider{}
-	service := NewFinder(provider)
+	finder := NewFinder(provider)
 
-	_, err := service.SearchAssets(context.Background(), SearchInput{Query: "  AAPL  "})
+	_, err := finder.SearchAssets(context.Background(), SearchInput{Query: "  AAPL  "})
 	if err != nil {
 		t.Fatalf("SearchAssets() error = %v", err)
 	}
@@ -64,9 +64,9 @@ func TestSearchAssetsReturnsProviderResults(t *testing.T) {
 			},
 		},
 	}
-	service := NewFinder(provider)
+	finder := NewFinder(provider)
 
-	results, err := service.SearchAssets(context.Background(), SearchInput{Query: "AAPL", Limit: intPtr(5)})
+	results, err := finder.SearchAssets(context.Background(), SearchInput{Query: "AAPL", Limit: intPtr(5)})
 	if err != nil {
 		t.Fatalf("SearchAssets() error = %v", err)
 	}
@@ -86,9 +86,9 @@ func TestSearchAssetsReturnsProviderResults(t *testing.T) {
 }
 
 func TestSearchAssetsProviderError(t *testing.T) {
-	service := NewFinder(&fakeProvider{searchErr: errors.New("boom")})
+	finder := NewFinder(&fakeProvider{searchErr: errors.New("boom")})
 
-	_, err := service.SearchAssets(context.Background(), SearchInput{Query: "AAPL", Limit: intPtr(5)})
+	_, err := finder.SearchAssets(context.Background(), SearchInput{Query: "AAPL", Limit: intPtr(5)})
 	if !errors.Is(err, ErrProviderUnavailable) {
 		t.Fatalf("SearchAssets() error = %v, want %v", err, ErrProviderUnavailable)
 	}

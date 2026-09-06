@@ -25,7 +25,7 @@ var (
 )
 
 func (s apiServer) localDefaultPortfolioID(ctx context.Context) (uuid.UUID, error) {
-	localContext, err := s.localContextService()
+	localContext, err := s.localContextResolver()
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -33,14 +33,14 @@ func (s apiServer) localDefaultPortfolioID(ctx context.Context) (uuid.UUID, erro
 }
 
 func (s apiServer) ensureLocalPortfolio(ctx context.Context, portfolioID uuid.UUID) error {
-	localContext, err := s.localContextService()
+	localContext, err := s.localContextResolver()
 	if err != nil {
 		return err
 	}
 	return localContext.EnsurePortfolio(ctx, portfolioID)
 }
 
-func (s apiServer) localContextService() (LocalContextService, error) {
+func (s apiServer) localContextResolver() (*localcontext.Resolver, error) {
 	if s.deploymentMode == config.DeploymentModeManaged {
 		return nil, errManagedIdentityNotImplemented
 	}

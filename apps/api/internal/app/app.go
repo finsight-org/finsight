@@ -32,18 +32,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, fmt.Errorf("create postgres pool: %w", err)
 	}
 
-	bootstrapRepository := bootstrap.NewPostgresRepository(db)
-	bootstrapService := bootstrap.NewService(bootstrapRepository)
-	localContextRepository := localcontext.NewPostgresRepository(db)
-	localContextService := localcontext.NewService(localContextRepository)
-	accountStore := account.New(database.New(db))
-	portfolioRepository := portfoliovalue.NewPostgresRepository(db)
-	portfolioService := portfoliovalue.NewService(portfolioRepository)
+	queries := database.New(db)
+	bootstrapRunner := bootstrap.New(db)
+	localContextResolver := localcontext.New(queries)
+	accountStore := account.New(queries)
+	portfolioCalculator := portfoliovalue.New(queries)
 	assetFinder := asset.NewFinder(asset.NewYahooProvider())
 
 	initializer := startup.New(
 		postgres.NewMigrationRunner(cfg.DatabaseURL, migrations.Files),
-		bootstrapService,
+		bootstrapRunner,
 		cfg.DeploymentMode,
 	)
 	if err := initializer.Initialize(ctx); err != nil {
@@ -57,10 +55,10 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		ReadyTimeout:   cfg.ReadyTimeout,
 		Database:       db,
 		DeploymentMode: cfg.DeploymentMode,
-		LocalContext:   localContextService,
+		LocalContext:   localContextResolver,
 		Accounts:       accountStore,
 		Assets:         assetFinder,
-		Portfolio:      portfolioService,
+		Portfolio:      portfolioCalculator,
 	})
 
 	return &App{

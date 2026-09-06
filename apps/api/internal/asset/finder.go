@@ -13,15 +13,11 @@ type Finder struct {
 	provider Provider
 }
 
-func NewFinder(provider Provider) Finder {
-	return Finder{provider: provider}
+func NewFinder(provider Provider) *Finder {
+	return &Finder{provider: provider}
 }
 
-func (f Finder) SearchAssets(ctx context.Context, input SearchInput) ([]AssetCandidate, error) {
-	if f.provider == nil {
-		return nil, fmt.Errorf("asset provider is required")
-	}
-
+func (f *Finder) SearchAssets(ctx context.Context, input SearchInput) ([]AssetCandidate, error) {
 	input = normalizeSearchInput(input)
 	if len(input.Query) < MinSearchQueryLen || input.Limit == nil || *input.Limit < 1 || *input.Limit > MaxSearchLimit {
 		return nil, ErrInvalidSearchQuery

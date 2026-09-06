@@ -12,7 +12,7 @@ Open-source investment data platform for humans and AI agents. Import portfolio 
 - [Technical Direction](docs/foundation/technical-direction.md): stable implementation direction, dependency flow, and feature evolution guidance.
 - [Codebase Structure](docs/foundation/codebase-structure.md): repository layout, package boundaries, generated code locations, and test placement.
 - [Engineering Principles](docs/foundation/engineering-principles.md): coding philosophy, dependency discipline, testability, and pull request expectations.
-- [Backend Guidelines](docs/guidelines/backend-guidelines.md): Go service, repository, HTTP adapter, migration, sqlc, and backend testing guidance.
+- [Backend Guidelines](docs/guidelines/backend-guidelines.md): Go feature packages and concrete types, HTTP adapters, migrations, sqlc, and backend testing guidance.
 - [Frontend Guidelines](docs/guidelines/frontend-guidelines.md): React feature organization, API types, server state, i18n, UI, and frontend testing guidance.
 - [OpenAPI Guidelines](docs/guidelines/openapi-guidelines.md): OpenAPI-first contract workflow, generated code, and HTTP boundary rules.
 - [Database Guidelines](docs/guidelines/database-guidelines.md): pgx, sqlc, Goose migrations, query generation, and persistence boundary rules.

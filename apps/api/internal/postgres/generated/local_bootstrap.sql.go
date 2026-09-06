@@ -32,26 +32,15 @@ func (q *Queries) GetLocalDefaultScope(ctx context.Context) (GetLocalDefaultScop
 	return i, err
 }
 
-const upsertDefaultPortfolio = `-- name: UpsertDefaultPortfolio :one
-with inserted as (
-    insert into portfolios (
-        workspace_id,
-        name,
-        base_currency,
-        is_default
-    )
-    values ($1, $2, $3, true)
-    on conflict do nothing
-    returning id, workspace_id, name, base_currency, is_default, true as created
+const upsertDefaultPortfolio = `-- name: UpsertDefaultPortfolio :exec
+insert into portfolios (
+    workspace_id,
+    name,
+    base_currency,
+    is_default
 )
-select id, workspace_id, name, base_currency, is_default, created from inserted
-union all
-select id, workspace_id, name, base_currency, is_default, false as created
-from portfolios
-where workspace_id = $1
-    and is_default
-    and not exists (select 1 from inserted)
-limit 1
+values ($1, $2, $3, true)
+on conflict do nothing
 `
 
 type UpsertDefaultPortfolioParams struct {
@@ -60,27 +49,9 @@ type UpsertDefaultPortfolioParams struct {
 	BaseCurrency string
 }
 
-type UpsertDefaultPortfolioRow struct {
-	ID           pgtype.UUID
-	WorkspaceID  pgtype.UUID
-	Name         string
-	BaseCurrency string
-	IsDefault    bool
-	Created      bool
-}
-
-func (q *Queries) UpsertDefaultPortfolio(ctx context.Context, arg UpsertDefaultPortfolioParams) (UpsertDefaultPortfolioRow, error) {
-	row := q.db.QueryRow(ctx, upsertDefaultPortfolio, arg.WorkspaceID, arg.Name, arg.BaseCurrency)
-	var i UpsertDefaultPortfolioRow
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Name,
-		&i.BaseCurrency,
-		&i.IsDefault,
-		&i.Created,
-	)
-	return i, err
+func (q *Queries) UpsertDefaultPortfolio(ctx context.Context, arg UpsertDefaultPortfolioParams) error {
+	_, err := q.db.Exec(ctx, upsertDefaultPortfolio, arg.WorkspaceID, arg.Name, arg.BaseCurrency)
+	return err
 }
 
 const upsertLocalUser = `-- name: UpsertLocalUser :one
@@ -88,11 +59,11 @@ with inserted as (
     insert into users (email, display_name)
     values ($1, $2)
     on conflict do nothing
-    returning id, email, display_name, true as created
+    returning id
 )
-select id, email, display_name, created from inserted
+select id from inserted
 union all
-select id, email, display_name, false as created
+select id
 from users
 where lower(email) = lower($1)
     and not exists (select 1 from inserted)
@@ -104,23 +75,11 @@ type UpsertLocalUserParams struct {
 	DisplayName string
 }
 
-type UpsertLocalUserRow struct {
-	ID          pgtype.UUID
-	Email       string
-	DisplayName string
-	Created     bool
-}
-
-func (q *Queries) UpsertLocalUser(ctx context.Context, arg UpsertLocalUserParams) (UpsertLocalUserRow, error) {
+func (q *Queries) UpsertLocalUser(ctx context.Context, arg UpsertLocalUserParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertLocalUser, arg.Email, arg.DisplayName)
-	var i UpsertLocalUserRow
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.DisplayName,
-		&i.Created,
-	)
-	return i, err
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const upsertLocalWorkspace = `-- name: UpsertLocalWorkspace :one
@@ -132,11 +91,11 @@ with inserted as (
     )
     values ($1, $2, $3)
     on conflict do nothing
-    returning id, name, base_currency, auth_mode, true as created
+    returning id
 )
-select id, name, base_currency, auth_mode, created from inserted
+select id from inserted
 union all
-select id, name, base_currency, auth_mode, false as created
+select id
 from workspaces
 where auth_mode = $3
     and not exists (select 1 from inserted)
@@ -149,46 +108,21 @@ type UpsertLocalWorkspaceParams struct {
 	AuthMode     string
 }
 
-type UpsertLocalWorkspaceRow struct {
-	ID           pgtype.UUID
-	Name         string
-	BaseCurrency string
-	AuthMode     string
-	Created      bool
-}
-
-func (q *Queries) UpsertLocalWorkspace(ctx context.Context, arg UpsertLocalWorkspaceParams) (UpsertLocalWorkspaceRow, error) {
+func (q *Queries) UpsertLocalWorkspace(ctx context.Context, arg UpsertLocalWorkspaceParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, upsertLocalWorkspace, arg.Name, arg.BaseCurrency, arg.AuthMode)
-	var i UpsertLocalWorkspaceRow
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.BaseCurrency,
-		&i.AuthMode,
-		&i.Created,
-	)
-	return i, err
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
-const upsertLocalWorkspaceMembership = `-- name: UpsertLocalWorkspaceMembership :one
-with inserted as (
-    insert into workspace_memberships (
-        workspace_id,
-        user_id,
-        role
-    )
-    values ($1, $2, $3)
-    on conflict do nothing
-    returning id, workspace_id, user_id, role, true as created
+const upsertLocalWorkspaceMembership = `-- name: UpsertLocalWorkspaceMembership :exec
+insert into workspace_memberships (
+    workspace_id,
+    user_id,
+    role
 )
-select id, workspace_id, user_id, role, created from inserted
-union all
-select id, workspace_id, user_id, role, false as created
-from workspace_memberships
-where workspace_id = $1
-    and user_id = $2
-    and not exists (select 1 from inserted)
-limit 1
+values ($1, $2, $3)
+on conflict do nothing
 `
 
 type UpsertLocalWorkspaceMembershipParams struct {
@@ -197,23 +131,7 @@ type UpsertLocalWorkspaceMembershipParams struct {
 	Role        string
 }
 
-type UpsertLocalWorkspaceMembershipRow struct {
-	ID          pgtype.UUID
-	WorkspaceID pgtype.UUID
-	UserID      pgtype.UUID
-	Role        string
-	Created     bool
-}
-
-func (q *Queries) UpsertLocalWorkspaceMembership(ctx context.Context, arg UpsertLocalWorkspaceMembershipParams) (UpsertLocalWorkspaceMembershipRow, error) {
-	row := q.db.QueryRow(ctx, upsertLocalWorkspaceMembership, arg.WorkspaceID, arg.UserID, arg.Role)
-	var i UpsertLocalWorkspaceMembershipRow
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.UserID,
-		&i.Role,
-		&i.Created,
-	)
-	return i, err
+func (q *Queries) UpsertLocalWorkspaceMembership(ctx context.Context, arg UpsertLocalWorkspaceMembershipParams) error {
+	_, err := q.db.Exec(ctx, upsertLocalWorkspaceMembership, arg.WorkspaceID, arg.UserID, arg.Role)
+	return err
 }
