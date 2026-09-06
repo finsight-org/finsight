@@ -30,9 +30,6 @@ func New(migrator Migrator, localBootstrap LocalBootstrapper, deploymentMode con
 }
 
 func (i *Initializer) Initialize(ctx context.Context) error {
-	if i == nil || i.migrator == nil {
-		return fmt.Errorf("startup migrator is required")
-	}
 	if err := i.migrator.Migrate(ctx); err != nil {
 		return fmt.Errorf("run startup migrations: %w", err)
 	}

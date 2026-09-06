@@ -61,10 +61,15 @@ type valuationData struct {
 
 type Calculator struct {
 	queries *database.Queries
+	now     func() time.Time
 }
 
 func New(queries *database.Queries) *Calculator {
-	return &Calculator{queries: queries}
+	return &Calculator{queries: queries, now: time.Now}
+}
+
+func newWithClock(queries *database.Queries, now func() time.Time) *Calculator {
+	return &Calculator{queries: queries, now: now}
 }
 
 func (c *Calculator) GetOverview(ctx context.Context, portfolioID uuid.UUID) (portfolio.Overview, error) {
@@ -146,10 +151,7 @@ type loadedData struct {
 }
 
 func (c *Calculator) loadData(ctx context.Context, portfolioID uuid.UUID) (loadedData, error) {
-	if c == nil || c.queries == nil {
-		return loadedData{}, fmt.Errorf("database queries are required")
-	}
-	valuationDate := dateutil.DateOnly(time.Now().UTC())
+	valuationDate := dateutil.DateOnly(c.now().UTC())
 
 	data, err := c.loadValuationData(ctx, portfolioID, valuationDate)
 	if err != nil {

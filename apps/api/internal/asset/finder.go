@@ -18,10 +18,6 @@ func NewFinder(provider Provider) *Finder {
 }
 
 func (f *Finder) SearchAssets(ctx context.Context, input SearchInput) ([]AssetCandidate, error) {
-	if f == nil || f.provider == nil {
-		return nil, fmt.Errorf("asset provider is required")
-	}
-
 	input = normalizeSearchInput(input)
 	if len(input.Query) < MinSearchQueryLen || input.Limit == nil || *input.Limit < 1 || *input.Limit > MaxSearchLimit {
 		return nil, ErrInvalidSearchQuery

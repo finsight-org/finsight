@@ -123,7 +123,7 @@ func TestCalculateValueHistoryUsesHistoricalRates(t *testing.T) {
 }
 
 func TestCalculatorRejectsInvalidRangeBeforeLoading(t *testing.T) {
-	_, err := (*Calculator)(nil).GetValueHistory(context.Background(), uuid.New(), portfolio.Range("BAD"))
+	_, err := New(nil).GetValueHistory(context.Background(), uuid.New(), portfolio.Range("BAD"))
 	if !errors.Is(err, portfolio.ErrInvalidRange) {
 		t.Fatalf("GetValueHistory() error = %v, want %v", err, portfolio.ErrInvalidRange)
 	}

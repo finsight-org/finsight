@@ -12,7 +12,7 @@ func TestInitializeLocalRunsMigrationsBeforeBootstrap(t *testing.T) {
 	calls := []string{}
 	initializer := New(
 		fakeMigrator{calls: &calls},
-		fakeBootstrapper{calls: &calls},
+		fakeLocalBootstrap{calls: &calls},
 		config.DeploymentModeLocal,
 	)
 
@@ -28,7 +28,7 @@ func TestInitializeManagedSkipsBootstrap(t *testing.T) {
 	calls := []string{}
 	initializer := New(
 		fakeMigrator{calls: &calls},
-		fakeBootstrapper{calls: &calls},
+		fakeLocalBootstrap{calls: &calls},
 		config.DeploymentModeManaged,
 	)
 
@@ -44,7 +44,7 @@ func TestInitializeStopsWhenMigrationsFail(t *testing.T) {
 	calls := []string{}
 	initializer := New(
 		fakeMigrator{calls: &calls, err: errors.New("migration failed")},
-		fakeBootstrapper{calls: &calls},
+		fakeLocalBootstrap{calls: &calls},
 		config.DeploymentModeLocal,
 	)
 
@@ -59,7 +59,7 @@ func TestInitializeStopsWhenMigrationsFail(t *testing.T) {
 func TestInitializeReturnsBootstrapFailure(t *testing.T) {
 	initializer := New(
 		fakeMigrator{},
-		fakeBootstrapper{err: errors.New("bootstrap failed")},
+		fakeLocalBootstrap{err: errors.New("bootstrap failed")},
 		config.DeploymentModeLocal,
 	)
 
@@ -80,12 +80,12 @@ func (m fakeMigrator) Migrate(context.Context) error {
 	return m.err
 }
 
-type fakeBootstrapper struct {
+type fakeLocalBootstrap struct {
 	calls *[]string
 	err   error
 }
 
-func (b fakeBootstrapper) BootstrapLocal(context.Context) error {
+func (b fakeLocalBootstrap) BootstrapLocal(context.Context) error {
 	if b.calls != nil {
 		*b.calls = append(*b.calls, "bootstrap")
 	}

@@ -29,10 +29,6 @@ func NewStore(queries *database.Queries) *Store {
 }
 
 func (s *Store) Upsert(ctx context.Context, workspaceID uuid.UUID, input UpsertInput) (database.Asset, error) {
-	if s == nil || s.queries == nil {
-		return database.Asset{}, fmt.Errorf("database queries are required")
-	}
-
 	input = normalizeUpsertInput(input)
 	if input.Name == "" {
 		return database.Asset{}, ErrInvalidName

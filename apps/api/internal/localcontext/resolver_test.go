@@ -45,13 +45,6 @@ func TestResolverReturnsAndEnforcesDefaultScope(t *testing.T) {
 	}
 }
 
-func TestResolverRequiresQueries(t *testing.T) {
-	_, err := (*Resolver)(nil).DefaultScope(context.Background())
-	if err == nil {
-		t.Fatal("DefaultScope() error = nil, want error")
-	}
-}
-
 func localContextTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv("FINSIGHT_TEST_DATABASE_URL")

@@ -54,6 +54,25 @@ func TestCalculatorReturnsNotFoundForMissingPortfolio(t *testing.T) {
 	}
 }
 
+func TestCalculatorUsesInjectedClockForValuationDate(t *testing.T) {
+	pool := postgresTestPool(t)
+	ctx := context.Background()
+	workspaceID := insertTestWorkspace(t, ctx, pool)
+	cleanupWorkspace(t, ctx, pool, workspaceID)
+	portfolioID := insertTestPortfolio(t, ctx, pool, workspaceID)
+
+	calculator := newWithClock(database.New(pool), func() time.Time {
+		return mustDate("2026-07-07")
+	})
+	overview, err := calculator.GetOverview(ctx, portfolioID)
+	if err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if !overview.ValuationDate.Equal(mustDate("2026-07-07")) {
+		t.Fatalf("valuation date = %s, want 2026-07-07", overview.ValuationDate)
+	}
+}
+
 func TestFXRateConstraintsRejectInvalidCurrencyAndRate(t *testing.T) {
 	pool := postgresTestPool(t)
 	ctx := context.Background()

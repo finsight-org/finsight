@@ -37,10 +37,6 @@ func New(pool *pgxpool.Pool) *Recorder {
 }
 
 func (r *Recorder) Record(ctx context.Context, portfolioID uuid.UUID, input CreateInput) (Transaction, error) {
-	if r == nil || r.pool == nil {
-		return Transaction{}, fmt.Errorf("postgres pool is required")
-	}
-
 	input = normalizeCreateInput(input)
 	if err := validateCreateInput(input); err != nil {
 		return Transaction{}, err

@@ -39,7 +39,7 @@ flowchart LR
     UI[Finsight UI<br/>React + TypeScript + Vite]
     API[OpenAPI HTTP API]
     MCP[MCP Server<br/>Read-only tools]
-    App[Go Modular Monolith<br/>Feature Components]
+    App[Go Modular Monolith<br/>Feature Packages/Types]
     DB[(PostgreSQL<br/>Source of Truth)]
     Provider[Market Data Providers<br/>Adapter Boundary]
 
@@ -54,7 +54,7 @@ flowchart LR
     App --> Provider
 ```
 
-The React web app and MCP server are separate entry points into the same Go backend. They do not own business rules directly. Both call feature components that enforce workspace scoping, financial rules, and persistence.
+The React web app and MCP server are separate entry points into the same Go backend. They do not own business rules directly. Both call feature packages and concrete types/functions that enforce workspace scoping, financial rules, and persistence.
 
 PostgreSQL stores source-of-truth records. Market data providers are external dependencies accessed through adapters that normalize provider-specific responses before they reach the core domain.
 
@@ -86,7 +86,7 @@ The backend is a single Go modular monolith.
 
 It exposes both the OpenAPI HTTP API and the MCP server. It owns business rules, validation, imports, transaction and ledger creation, portfolio calculations, market data normalization, authorization, and persistence.
 
-The backend uses PostgreSQL as the source of truth. Runtime boundaries call focused feature components rather than implementing their own access paths to the database or market data providers.
+The backend uses PostgreSQL as the source of truth. Runtime boundaries call focused feature packages and concrete types/functions rather than implementing their own access paths to the database or market data providers.
 
 The backend should remain one deployable application for the MVP. Internal boundaries are logical boundaries inside the monolith, not separately deployed services.
 
@@ -98,13 +98,13 @@ It is mutation-capable for user workflows such as account management, imports, i
 
 The OpenAPI contract should describe request and response shapes clearly enough for frontend development and future programmatic clients.
 
-The HTTP API must call backend feature components. It must not duplicate domain rules in handlers.
+The HTTP API must call backend feature types/functions. It must not duplicate domain rules in handlers.
 
 ### MCP Server
 
 The MCP server is the agent-facing interface.
 
-In the MVP, MCP tools are read-only. They expose structured portfolio data to AI agents and call the same backend feature components as the HTTP API.
+In the MVP, MCP tools are read-only. They expose structured portfolio data to AI agents and call the same backend feature types/functions as the HTTP API.
 
 The MCP server must not bypass authorization, workspace scoping, domain validation, or portfolio calculation rules. It must not support portfolio mutations, import confirmation, trading, broker synchronization, or financial advice actions.
 
@@ -172,7 +172,7 @@ This boundary hides provider-specific APIs and normalizes external data before p
 
 Owns MCP tool definitions and agent-facing response shaping.
 
-This boundary calls backend feature components for reads. It should not contain separate financial logic or direct database queries.
+This boundary calls backend feature types/functions for reads. It should not contain separate financial logic or direct database queries.
 
 ## 6. Data Flow
 
@@ -194,7 +194,7 @@ flowchart LR
     Ledger --> Summary
 ```
 
-Imports are account-scoped. Extraction creates reviewable import items. Confirmation creates transactions and ledger entries through backend feature components. Portfolio data is derived after confirmation.
+Imports are account-scoped. Extraction creates reviewable import items. Confirmation creates transactions and ledger entries through backend feature types/functions. Portfolio data is derived after confirmation.
 
 ### MCP Flow
 
@@ -202,7 +202,7 @@ Imports are account-scoped. Extraction creates reviewable import items. Confirma
 flowchart LR
     Agent[AI Agent]
     Tool[MCP Tool]
-    Features[Backend Feature Components]
+    Features[Backend Feature Packages/Types]
     DB[(PostgreSQL)]
     Provider[Market Data Providers]
     Response[Structured Response]
@@ -215,7 +215,7 @@ flowchart LR
     Response --> Agent
 ```
 
-MCP tools are read-only in the MVP. They call the same backend feature components as the HTTP API and return structured data suitable for agent reasoning.
+MCP tools are read-only in the MVP. They call the same backend feature types/functions as the HTTP API and return structured data suitable for agent reasoning.
 
 ### Portfolio Calculation Flow
 
@@ -254,7 +254,7 @@ Operational choices such as hosting provider, authentication provider, monitorin
 ## 8. Technical Boundaries
 
 - The React app may call only the OpenAPI HTTP API.
-- The MCP server may call only backend feature components.
+- The MCP server may call only backend feature types/functions.
 - HTTP handlers and MCP tools must not duplicate financial rules.
 - Only backend persistence boundaries may access PostgreSQL.
 - Provider adapters must isolate external provider formats from the core domain.

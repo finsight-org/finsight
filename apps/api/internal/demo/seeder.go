@@ -29,16 +29,6 @@ func NewSeeder(assets *asset.Store, transactions *transaction.Recorder, queries 
 }
 
 func (s *Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uuid.UUID) error {
-	if s == nil || s.assets == nil {
-		return fmt.Errorf("demo asset store is required")
-	}
-	if s.transactions == nil {
-		return fmt.Errorf("demo transaction recorder is required")
-	}
-	if s.queries == nil {
-		return fmt.Errorf("database queries are required")
-	}
-
 	if err := s.deleteDemoData(ctx, workspaceID, portfolioID); err != nil {
 		return fmt.Errorf("delete existing demo data: %w", err)
 	}

@@ -26,10 +26,6 @@ func New(queries *database.Queries) *Resolver {
 }
 
 func (r *Resolver) DefaultScope(ctx context.Context) (Scope, error) {
-	if r == nil || r.queries == nil {
-		return Scope{}, fmt.Errorf("database queries are required")
-	}
-
 	row, err := r.queries.GetLocalDefaultScope(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

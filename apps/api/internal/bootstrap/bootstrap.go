@@ -20,19 +20,15 @@ const (
 	localPortfolioName         = "Default Portfolio"
 )
 
-type Bootstrapper struct {
+type Runner struct {
 	pool *pgxpool.Pool
 }
 
-func New(pool *pgxpool.Pool) *Bootstrapper {
-	return &Bootstrapper{pool: pool}
+func New(pool *pgxpool.Pool) *Runner {
+	return &Runner{pool: pool}
 }
 
-func (b *Bootstrapper) BootstrapLocal(ctx context.Context) error {
-	if b == nil || b.pool == nil {
-		return fmt.Errorf("postgres pool is required")
-	}
-
+func (b *Runner) BootstrapLocal(ctx context.Context) error {
 	tx, err := b.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin local bootstrap transaction: %w", err)

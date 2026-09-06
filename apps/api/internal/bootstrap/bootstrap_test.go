@@ -14,12 +14,12 @@ import (
 func TestBootstrapLocalIsIdempotent(t *testing.T) {
 	pool := bootstrapTestPool(t)
 	ctx := context.Background()
-	bootstrapper := New(pool)
+	runner := New(pool)
 
-	if err := bootstrapper.BootstrapLocal(ctx); err != nil {
+	if err := runner.BootstrapLocal(ctx); err != nil {
 		t.Fatalf("first BootstrapLocal() error = %v", err)
 	}
-	if err := bootstrapper.BootstrapLocal(ctx); err != nil {
+	if err := runner.BootstrapLocal(ctx); err != nil {
 		t.Fatalf("second BootstrapLocal() error = %v", err)
 	}
 
@@ -43,12 +43,6 @@ func TestBootstrapLocalIsIdempotent(t *testing.T) {
 				t.Fatalf("%s count = %d, want 1", test.name, count)
 			}
 		})
-	}
-}
-
-func TestBootstrapLocalRequiresPool(t *testing.T) {
-	if err := (*Bootstrapper)(nil).BootstrapLocal(context.Background()); err == nil {
-		t.Fatal("BootstrapLocal() error = nil, want error")
 	}
 }
 
