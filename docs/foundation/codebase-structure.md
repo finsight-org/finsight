@@ -35,7 +35,7 @@ Backend code lives in `apps/api`.
 Important areas:
 
 - `cmd`: application entrypoints.
-- `internal/<feature>`: domain/application packages such as `account`, `identity`, `portfolio`, and `bootstrap`.
+- `internal/<feature>`: focused feature components and domain behavior such as `account`, `identity`, `portfolio`, and `bootstrap`.
 - `internal/httpapi`: handwritten HTTP adapters around generated OpenAPI interfaces.
 - `internal/openapi/generated`: generated OpenAPI server/types code. Do not edit manually.
 - `internal/postgres`: database setup, embedded migrations, and PostgreSQL support.
@@ -71,32 +71,32 @@ flowchart LR
     APIWrapper["Frontend API Wrapper"]
     OpenAPIClient["Generated OpenAPI Client Types"]
     Handler["HTTP Handler"]
-    Service["Backend Service"]
-    Repo["Repository"]
+    Feature["Feature Component"]
     SQLC["sqlc Generated Queries"]
     DB[("PostgreSQL")]
 
     FeatureUI --> APIWrapper
     APIWrapper --> OpenAPIClient
     OpenAPIClient --> Handler
-    Handler --> Service
-    Service --> Repo
-    Repo --> SQLC
+    Handler --> Feature
+    Feature --> SQLC
     SQLC --> DB
 ```
 
 Boundary rules:
 
 - Feature UI should not know database details.
-- HTTP handlers should not contain business logic.
-- Services should not depend on generated OpenAPI or sqlc types.
-- Repositories should be the only place that maps generated database types into domain structs.
+- HTTP handlers own transport parsing, authorization entry checks, DTO conversion, and HTTP error responses.
+- Feature components own business workflows, database error translation, and transactions.
+- Feature components may use generated sqlc params and rows directly for table-shaped behavior.
+- Create handwritten domain types only when the feature represents aggregates, calculations, or rules that differ from storage.
+- Introduce interfaces only for meaningful boundaries or multiple production implementations, not solely to create mocks.
 - Generated files should be regenerated from their source inputs, not edited directly.
 
 ## Where To Add Tests
 
-- Backend service behavior: package-level Go tests beside the service.
+- Pure backend rules: package-level Go unit tests beside the feature.
 - Backend HTTP behavior: tests in `apps/api/internal/httpapi`.
-- Repository behavior: focused tests when SQL mapping or error translation is meaningful.
+- SQL, constraints, transactions, and database error translation: PostgreSQL integration tests beside the feature.
 - Frontend feature behavior: Vitest and Testing Library tests beside the feature component.
 - Browser flows: Playwright tests when user workflows cross routing, API, or rendering boundaries.

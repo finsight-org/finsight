@@ -21,13 +21,15 @@ Finsight is a modular monolith. Keep module boundaries clear inside the monolith
 
 Implementation rules:
 
-- Put business rules in application/domain services.
+- Put business rules in the feature component that owns them.
 - Keep HTTP/API layers thin.
 - Keep frontend components focused on presentation and interaction.
-- Keep persistence behind repositories.
-- Keep generated code at the boundary.
+- Access PostgreSQL through generated sqlc queries from feature components.
+- Keep generated OpenAPI code at the HTTP boundary.
+- Keep generated sqlc parameter construction inside feature components; handlers should pass feature-owned inputs across the HTTP-to-feature boundary.
+- Use structs for cohesive, multi-field inputs; do not create parameter-wrapper structs for operations that only take a few simple values.
 - Keep provider-specific details behind adapters.
-- Keep dependencies flowing inward toward domain behavior.
+- Add domain types when behavior requires them, not as copies of database rows.
 
 ## Incremental Change
 
@@ -45,11 +47,13 @@ Avoid speculative cleanup during feature work. Refactor only when it directly su
 
 ## Testability
 
-Testability is a design constraint, not an afterthought.
+Tests should validate behavior without distorting production design.
 
-- Services should be testable with interfaces or small fakes.
+- Do not introduce production interfaces solely to support mocks.
+- Unit test pure validation, normalization, and calculations directly.
 - Handlers should be testable without a real browser.
-- Repository logic should isolate database mapping and persistence concerns.
+- Test sqlc queries, constraints, mappings, error translation, and transactions against PostgreSQL.
+- Use small fakes only at meaningful external boundaries such as market-data providers.
 - Frontend features should be testable through visible behavior.
 - End-to-end tests should cover important workflows, not every component state.
 

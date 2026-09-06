@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/finsight-org/finsight/apps/api/internal/account"
 	db "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
@@ -37,22 +36,26 @@ func (r PostgresRepository) DeleteDemoData(ctx context.Context, workspaceID uuid
 	return nil
 }
 
-func (r PostgresRepository) UpsertDemoAccount(ctx context.Context, input upsertAccountInput) (account.Account, error) {
+func (r PostgresRepository) UpsertDemoAccount(ctx context.Context, input upsertAccountInput) (uuid.UUID, error) {
 	if r.db == nil {
-		return account.Account{}, fmt.Errorf("postgres pool is required")
+		return uuid.Nil, fmt.Errorf("postgres pool is required")
 	}
 	row, err := db.New(r.db).UpsertDemoAccount(ctx, db.UpsertDemoAccountParams{
 		PortfolioID:       pgconv.UUID(input.PortfolioID),
 		Name:              input.Name,
 		InstitutionName:   pgconv.Text(&input.InstitutionName),
-		Type:              string(input.Type),
+		Type:              input.Type,
 		BaseCurrency:      input.BaseCurrency,
 		ExternalReference: pgconv.Text(&input.ExternalReference),
 	})
 	if err != nil {
-		return account.Account{}, fmt.Errorf("upsert demo account: %w", err)
+		return uuid.Nil, fmt.Errorf("upsert demo account: %w", err)
 	}
-	return mapAccount(row)
+	id, err := pgconv.DomainUUID(row.ID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("map demo account id: %w", err)
+	}
+	return id, nil
 }
 
 func (r PostgresRepository) UpsertMarketPrice(ctx context.Context, input upsertMarketPriceInput) error {
@@ -90,34 +93,4 @@ func (r PostgresRepository) UpsertFXRate(ctx context.Context, input upsertFXRate
 		return fmt.Errorf("upsert fx rate: %w", err)
 	}
 	return nil
-}
-
-func mapAccount(row db.Account) (account.Account, error) {
-	id, err := pgconv.DomainUUID(row.ID)
-	if err != nil {
-		return account.Account{}, fmt.Errorf("id: %w", err)
-	}
-	portfolioID, err := pgconv.DomainUUID(row.PortfolioID)
-	if err != nil {
-		return account.Account{}, fmt.Errorf("portfolio id: %w", err)
-	}
-	createdAt, err := pgconv.Time(row.CreatedAt)
-	if err != nil {
-		return account.Account{}, fmt.Errorf("created at: %w", err)
-	}
-	updatedAt, err := pgconv.Time(row.UpdatedAt)
-	if err != nil {
-		return account.Account{}, fmt.Errorf("updated at: %w", err)
-	}
-	return account.Account{
-		ID:                id,
-		PortfolioID:       portfolioID,
-		Name:              row.Name,
-		InstitutionName:   pgconv.StringPointer(row.InstitutionName),
-		Type:              account.Type(row.Type),
-		BaseCurrency:      row.BaseCurrency,
-		ExternalReference: pgconv.StringPointer(row.ExternalReference),
-		CreatedAt:         createdAt,
-		UpdatedAt:         updatedAt,
-	}, nil
 }

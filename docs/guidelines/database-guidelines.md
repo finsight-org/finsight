@@ -2,15 +2,16 @@
 
 Finsight uses PostgreSQL as the durable source of truth.
 
-Application code should access PostgreSQL only through backend persistence boundaries. HTTP handlers, OpenAPI generated code, MCP code, and frontend code must not query the database directly.
+Application code accesses PostgreSQL through generated sqlc queries owned by backend feature components. OpenAPI generated code, MCP code, and frontend code must not query the database directly.
 
 ## Runtime Access
 
 The Go API uses `pgx` for runtime PostgreSQL access.
 
 - Connection pooling is handled with `pgxpool`.
-- Application repositories receive database handles and expose domain-oriented methods.
-- Domain services call repositories; services do not depend on SQL, pgx rows, or generated database types.
+- Application startup constructs sqlc `Queries` values over the shared connection pool.
+- Feature components receive concrete sqlc queries and call generated methods directly.
+- Feature components own database error translation and transactions.
 
 ## Migrations
 
@@ -75,10 +76,10 @@ go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate
 ## Boundary Rules
 
 - SQL belongs in migration files or query files, not as large raw strings in Go.
-- Repositories adapt generated sqlc rows and params to domain structs.
-- Domain structs use typed values such as `uuid.UUID`, not arbitrary string IDs.
-- HTTP/OpenAPI adapters adapt generated OpenAPI types to domain types.
-- Generated OpenAPI types and generated sqlc types should not leak into business logic.
+- Generated sqlc rows and params may represent table-shaped feature data directly.
+- HTTP adapters map generated OpenAPI DTOs into meaningful feature inputs or pass simple values directly. Feature components construct generated sqlc parameters internally.
+- Handwritten domain models should represent meaningful behavior, aggregates, or derived data rather than duplicate table rows.
+- Interfaces are reserved for meaningful boundaries or multiple production implementations, not database mocking.
 
 # Database Migrations
 

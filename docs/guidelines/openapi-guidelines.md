@@ -18,7 +18,7 @@ apps/api/internal/openapi/generated
 
 Do not edit generated files manually.
 
-The generated code is only the HTTP boundary. Handwritten HTTP handlers adapt generated request and response types to application services. Business logic stays outside generated code, and application services should not depend on HTTP or generated OpenAPI types.
+The generated code is the HTTP boundary. Runtime middleware validates incoming requests against the embedded specification. Handwritten handlers adapt generated request and response types to feature components; business logic stays outside generated code.
 
 ## Regenerate Code
 
@@ -50,13 +50,13 @@ openapi/finsight.yaml
 -> go generate ./...
 -> apps/api/internal/openapi/generated
 -> handwritten adapter in apps/api/internal/httpapi
--> application service
+-> feature component
 ```
 
 Keep these boundaries:
 
 - OpenAPI defines HTTP contracts.
 - Generated code defines HTTP boundary types and interfaces.
-- `internal/httpapi` adapts HTTP to services.
-- Application services own business logic.
-- Persistence packages own database access.
+- OpenAPI middleware rejects contract violations with `invalid_request`.
+- `internal/httpapi` owns transport mapping and HTTP responses.
+- Feature components own business workflows and call sqlc or provider adapters.

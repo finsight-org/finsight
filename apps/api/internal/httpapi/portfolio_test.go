@@ -84,7 +84,7 @@ func TestScopedPortfolioValueRoutesRejectUnavailablePortfolio(t *testing.T) {
 	}
 }
 
-func TestPortfolioValueHistoryMissingRangeUsesPortfolioError(t *testing.T) {
+func TestPortfolioValueHistoryMissingRangeUsesGenericValidationError(t *testing.T) {
 	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	service := &fakePortfolioService{}
 	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
@@ -94,7 +94,7 @@ func TestPortfolioValueHistoryMissingRangeUsesPortfolioError(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	assertErrorCode(t, response, "invalid_portfolio_range")
+	assertErrorCode(t, response, "invalid_request")
 	if service.calls != 0 {
 		t.Fatalf("portfolio service calls = %d, want 0", service.calls)
 	}
@@ -133,17 +133,17 @@ func TestScopedPortfolioValueRoutesRejectManagedModeBeforeLookup(t *testing.T) {
 	}
 }
 
-func TestPortfolioValueHistoryInvalidRangeUsesPortfolioError(t *testing.T) {
+func TestPortfolioValueHistoryServiceValidationUsesGenericError(t *testing.T) {
 	portfolioID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	service := &fakePortfolioService{err: portfolio.ErrInvalidRange}
 	router := newLocalPortfolioRouter(service, &fakePortfolioLocalContext{})
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/value-history?range=BAD", nil))
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolios/"+portfolioID.String()+"/value-history?range=1W", nil))
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	assertErrorCode(t, response, "invalid_portfolio_range")
+	assertErrorCode(t, response, "invalid_request")
 }
 
 func TestLegacyPortfolioValueRoutesAreNotRegistered(t *testing.T) {

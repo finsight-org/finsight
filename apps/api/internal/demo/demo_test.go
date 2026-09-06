@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 )
@@ -94,9 +93,9 @@ func (r *fakeRepository) DeleteDemoData(_ context.Context, workspaceID uuid.UUID
 	return nil
 }
 
-func (r *fakeRepository) UpsertDemoAccount(_ context.Context, input upsertAccountInput) (account.Account, error) {
+func (r *fakeRepository) UpsertDemoAccount(_ context.Context, _ upsertAccountInput) (uuid.UUID, error) {
 	r.accountCount++
-	return account.Account{ID: uuid.New(), PortfolioID: input.PortfolioID, Name: input.Name}, nil
+	return uuid.New(), nil
 }
 
 func (r *fakeRepository) UpsertMarketPrice(context.Context, upsertMarketPriceInput) error {

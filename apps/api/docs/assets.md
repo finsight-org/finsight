@@ -115,7 +115,7 @@ Search input rules:
 
 HTTP errors:
 
-- `400 invalid_asset_search_query`: invalid query or limit.
+- `400 invalid_request`: the request does not match the OpenAPI contract.
 - `502 asset_provider_unavailable`: provider lookup failed.
 - `500 asset_search_failed`: unexpected backend failure.
 

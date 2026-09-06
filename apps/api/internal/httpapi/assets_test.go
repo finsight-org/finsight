@@ -58,13 +58,13 @@ func TestSearchAssetsInvalidQuery(t *testing.T) {
 	router := NewRouter(Options{Assets: &fakeAssetService{err: asset.ErrInvalidSearchQuery}})
 
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/assets/search?q=A", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/assets/search?q=AAPL", nil)
 	router.ServeHTTP(response, request)
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	assertErrorCode(t, response, "invalid_asset_search_query")
+	assertErrorCode(t, response, "invalid_request")
 }
 
 func TestSearchAssetsMissingQuery(t *testing.T) {
@@ -78,7 +78,7 @@ func TestSearchAssetsMissingQuery(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	assertErrorCode(t, response, "invalid_asset_search_query")
+	assertErrorCode(t, response, "invalid_request")
 	if finder.called {
 		t.Fatal("asset finder was called for missing query")
 	}
@@ -95,9 +95,9 @@ func TestSearchAssetsInvalidLimit(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	assertErrorCode(t, response, "invalid_asset_search_query")
-	if finder.input.Limit == nil || *finder.input.Limit != 0 {
-		t.Fatalf("limit = %#v, want 0", finder.input.Limit)
+	assertErrorCode(t, response, "invalid_request")
+	if finder.called {
+		t.Fatal("asset finder was called for invalid limit")
 	}
 }
 
@@ -112,7 +112,7 @@ func TestSearchAssetsMalformedLimit(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
 	}
-	assertErrorCode(t, response, "invalid_asset_search_query")
+	assertErrorCode(t, response, "invalid_request")
 	if finder.called {
 		t.Fatal("asset finder was called for malformed limit")
 	}

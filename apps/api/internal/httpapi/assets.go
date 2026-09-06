@@ -45,7 +45,7 @@ func assetSearchResultResponse(value asset.AssetCandidate) generated.AssetSearch
 func writeAssetFinderError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, asset.ErrInvalidSearchQuery):
-		writeAssetError(w, http.StatusBadRequest, "invalid_asset_search_query", "asset search query is invalid")
+		writeInvalidRequest(w)
 	case errors.Is(err, asset.ErrProviderUnavailable):
 		writeAssetError(w, http.StatusBadGateway, "asset_provider_unavailable", "asset provider is unavailable")
 	default:

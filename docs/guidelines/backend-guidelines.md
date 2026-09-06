@@ -4,28 +4,26 @@ This document explains how to implement backend changes in the Go modular monoli
 
 ## Layering
 
-Backend layers should stay explicit and thin at the edges.
+Backend request paths should use the fewest layers needed to express the behavior clearly.
 
 ```mermaid
 flowchart LR
     Handler["HTTP Handler<br/>internal/httpapi"]
-    Service["Application Service<br/>internal/<feature>"]
-    Repository["Repository<br/>feature persistence adapter"]
+    Feature["Feature Component<br/>internal/<feature>"]
     SQLC["sqlc Generated Code"]
     DB[("PostgreSQL")]
 
-    Handler --> Service
-    Service --> Repository
-    Repository --> SQLC
+    Handler --> Feature
+    Feature --> SQLC
     SQLC --> DB
 ```
 
 Responsibilities:
 
-- Handlers decode requests, call services, map domain results to OpenAPI responses, and translate errors.
-- Services validate inputs, enforce business rules, coordinate repositories, and return domain-oriented results.
-- Repositories own persistence mapping and database error translation.
-- sqlc generated code owns typed SQL access but should not leak into services.
+- OpenAPI middleware validates the HTTP contract before handlers run.
+- Handlers decode requests, enforce the transport authorization entry point, map DTOs, and translate errors.
+- Feature components construct generated sqlc parameters, call sqlc directly, enforce business workflows, own transactions, and translate database errors.
+- Use a feature-owned input struct when an operation has several related fields, such as account creation. For one or two simple identifiers, pass arguments directly instead of introducing a wrapper params type.
 - Migrations own schema changes.
 
 ## Feature Packages
@@ -34,14 +32,27 @@ Use feature packages under `apps/api/internal` for domain/application behavior. 
 
 Package guidance:
 
-- Define domain structs and service inputs in the feature package.
-- Keep service constructors explicit about dependencies.
-- Use narrow interfaces when a service needs another service or repository.
-- Keep validation close to the service that owns the rule.
+- Prefer a concrete component with explicit dependencies.
+- Do not create feature or domain structs that merely copy generated sqlc rows. Feature-owned input structs are appropriate when they express a meaningful multi-field operation using transport- and database-independent Go types.
+- Define domain structs when representing aggregates, calculations, derived values, or rules that differ from the database shape.
+- Introduce an interface only when there is a meaningful external boundary or multiple production implementations.
+- Let OpenAPI own transport-shape validation and PostgreSQL constraints own persisted-data integrity.
 - Use sentinel errors for expected domain failures that adapters need to translate.
 - Wrap unexpected errors with useful context.
 
 Avoid large shared utility packages. Add shared helpers only when repeated behavior is real and the helper has a clear owner.
+
+## Go File Naming
+
+When creating or renaming Go files:
+
+- Use short, lowercase, descriptive filenames based on the concrete responsibility or concept implemented in the file.
+- Prefer domain or behavior names such as `store.go`, `validation.go`, `errors.go`, `handler.go`, `parser.go`, `client.go`, or `account.go`.
+- Avoid generic catch-all filenames such as `component.go`, `service.go`, `manager.go`, `utils.go`, `helpers.go`, `common.go`, or `misc.go` unless that term genuinely represents a well-defined concept in the codebase.
+- Do not repeat the package name unnecessarily. Inside package `account`, prefer `store.go` over `account_store.go`.
+- A file should normally have one cohesive responsibility. If no precise filename describes everything in the file, consider splitting the file rather than choosing a broader filename.
+- Name the file according to what a developer would expect to find inside it when browsing the directory, not according to an architectural layer imported from another ecosystem.
+- Do not assume every package needs a central or "main" file or type. Create structs only when they naturally group shared state, dependencies, or behavior.
 
 ## HTTP Adapters
 
@@ -50,12 +61,12 @@ HTTP code lives in `apps/api/internal/httpapi`.
 Handlers should:
 
 - Use generated OpenAPI request and response types only at the HTTP boundary.
-- Convert request values into service inputs.
-- Convert service results into generated response types.
-- Convert known service errors into documented HTTP status codes and `ErrorResponse` bodies.
-- Avoid direct SQL, pgx, sqlc, migration, or provider logic.
+- Convert request values into feature-owned input types when the operation has a meaningful multi-field input. Pass small values such as IDs directly. Keep generated sqlc parameter construction inside the feature component.
+- Convert feature results into generated response types.
+- Convert known feature errors into documented HTTP status codes and `ErrorResponse` bodies.
+- Never place raw SQL or migration logic in handlers.
 
-Handlers should not enforce financial business rules beyond transport-level decoding and basic request handling. Backend services are authoritative.
+Handlers should not enforce financial business rules. Feature components and PostgreSQL constraints are authoritative.
 
 ## Persistence
 
@@ -65,10 +76,10 @@ Use:
 
 - Goose migrations in `apps/api/migrations` for schema changes.
 - sqlc query files in `apps/api/internal/postgres/queries` for non-trivial SQL.
-- Repositories to adapt sqlc params and rows to domain types.
-- Domain structs with typed values such as `uuid.UUID`.
+- Concrete feature components that call generated sqlc methods directly.
+- Handwritten domain structs only when their meaning differs from a table row.
 
-Do not pass generated sqlc rows, pgx row types, or raw SQL details into services.
+Keep SQL in dedicated migration and query files. Do not introduce repository wrappers that only forward calls or map equivalent structures.
 
 ## Generated Code
 
@@ -89,9 +100,10 @@ The repository uses pinned `go run ...@version` generator commands, so generator
 
 Backend changes should include focused tests:
 
-- Service tests for validation, business rules, and orchestration.
+- Pure unit tests for validation, normalization, calculations, and other deterministic behavior.
 - HTTP tests for status codes, error bodies, and request/response mapping.
-- Repository tests when database behavior, SQL mapping, or constraint translation is important.
+- PostgreSQL integration tests for sqlc queries, constraints, mappings, error translation, and transactions.
+- Small fakes only for meaningful external boundaries.
 - Migration tests when schema startup behavior is touched.
 
 Run backend tests from `apps/api`:
