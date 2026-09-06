@@ -14,11 +14,11 @@ Finsight should remain a modular monolith for the MVP. The backend is one Go app
 Stable decisions:
 
 - Keep one deployable backend application unless the architecture docs change.
-- Keep business logic in backend application/domain services.
-- Keep HTTP handlers, MCP tools, repositories, and frontend components as adapters around the core behavior.
+- Keep business logic in focused backend feature components.
+- Keep HTTP handlers, MCP tools, provider adapters, and frontend components thin around feature behavior.
 - Keep portfolio views derived from transactions, ledger entries, prices, and FX rates.
 - Keep market data provider details behind provider adapters.
-- Keep generated OpenAPI and sqlc types at the boundaries.
+- Use generated OpenAPI types at the HTTP boundary and generated sqlc types directly for table-shaped persistence.
 - Keep code explicit, readable, and testable before optimizing for abstraction.
 
 ```mermaid
@@ -26,61 +26,61 @@ flowchart LR
     UI["React Web App"]
     MCP["MCP Tools"]
     HTTP["HTTP Adapters"]
-    Services["Application and Domain Services"]
-    Repositories["Repositories"]
+    Features["Feature Components"]
+    SQLC["sqlc Queries"]
     DB[("PostgreSQL")]
     Providers["Provider Adapters"]
 
     UI --> HTTP
-    MCP --> Services
-    HTTP --> Services
-    Services --> Repositories
-    Repositories --> DB
-    Services --> Providers
+    MCP --> Features
+    HTTP --> Features
+    Features --> SQLC
+    SQLC --> DB
+    Features --> Providers
 ```
 
 ## Dependency Direction
 
-Dependencies should flow inward toward application and domain behavior. Boundary code may depend on services, but services should not depend on boundary-specific generated types or transport concerns.
+Dependencies should flow from transport boundaries into focused feature behavior. Feature components may use generated sqlc types for table-shaped data, but they should not depend on generated OpenAPI types or transport concerns.
 
 ```mermaid
 flowchart TD
-    Boundary["HTTP, MCP, React, Provider, Database Adapters"]
-    App["Application Services"]
-    Domain["Domain Types and Rules"]
+    Boundary["HTTP, MCP, and React Boundaries"]
+    Feature["Feature Components"]
+    Data["SQLC and Provider Adapters"]
 
-    Boundary --> App
-    App --> Domain
+    Boundary --> Feature
+    Feature --> Data
 ```
 
 Implementation consequences:
 
-- HTTP handlers convert OpenAPI request types into service inputs.
-- Repositories convert sqlc rows into domain structs.
+- HTTP handlers convert OpenAPI request types into feature-owned inputs when a meaningful multi-field input exists; they pass simple identifiers directly. Feature components construct generated sqlc parameters internally.
+- Table-shaped features may return generated sqlc rows without duplicating them as domain structs.
 - Provider adapters convert external market data into Finsight concepts.
 - Frontend API wrappers convert generated client responses into feature-friendly hooks.
-- Domain and application services should be straightforward to unit test without HTTP, React, or database setup.
+- Handwritten domain models remain appropriate for aggregates, calculations, or behavior that differs materially from storage.
 
 ## Request Flow
 
-The normal mutation path should stay thin at the edges and explicit in the service layer.
+The normal mutation path should stay thin, explicit, and close to the feature that owns it.
 
 ```mermaid
 sequenceDiagram
     participant Web as React Feature
     participant API as OpenAPI HTTP API
-    participant Service as Application Service
-    participant Repo as Repository
+    participant Feature as Feature Component
+    participant SQLC as sqlc Queries
     participant DB as PostgreSQL
 
     Web->>API: Typed request
-    API->>Service: Domain-oriented input
-    Service->>Service: Validate and apply rules
-    Service->>Repo: Persistence operation
-    Repo->>DB: SQL or sqlc query
-    DB-->>Repo: Row data
-    Repo-->>Service: Domain struct
-    Service-->>API: Domain result
+    API->>Feature: Feature input or simple values
+    Feature->>Feature: Apply business rules when needed
+    Feature->>SQLC: Generated query method
+    SQLC->>DB: SQL query
+    DB-->>SQLC: Row data
+    SQLC-->>Feature: Generated row
+    Feature-->>API: Feature result
     API-->>Web: OpenAPI response
 ```
 
@@ -89,9 +89,9 @@ sequenceDiagram
 New features should start as the smallest complete vertical slice:
 
 - Define or update the OpenAPI contract when the frontend or external clients need HTTP access.
-- Add backend domain/application behavior before adding transport-specific behavior.
-- Add persistence through migrations, sqlc queries, and repositories when durable state is required.
+- Add focused backend feature behavior before adding transport-specific behavior.
+- Add persistence through migrations and sqlc queries when durable state is required.
 - Add frontend API wrappers and feature UI after the backend contract exists.
-- Add tests at the service, adapter, and UI levels according to risk.
+- Add pure unit, PostgreSQL integration, HTTP, and UI tests according to the behavior and risk.
 
 Prefer adding clear code to the current package structure over creating framework-like abstractions. Extract shared helpers only after repeated behavior is real and the extraction improves readability.

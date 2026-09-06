@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/config"
 )
 
@@ -15,7 +16,7 @@ type apiServer struct {
 	deploymentMode config.DeploymentMode
 	database       DatabasePinger
 	localContext   LocalContextService
-	accounts       AccountService
+	accounts       *account.Store
 	assets         AssetFinder
 	portfolio      PortfolioService
 }

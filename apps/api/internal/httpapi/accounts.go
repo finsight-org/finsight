@@ -3,6 +3,8 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/openapi/generated"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
+	"github.com/finsight-org/finsight/apps/api/internal/postgres/pgconv"
 )
 
 func (s apiServer) PostPortfolioAccount(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
@@ -18,34 +22,33 @@ func (s apiServer) PostPortfolioAccount(w http.ResponseWriter, r *http.Request, 
 		writeLocalContextError(w, err)
 		return
 	}
-	s.postAccountForPortfolio(w, r, requestedPortfolioID)
-}
-
-func (s apiServer) postAccountForPortfolio(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID) {
-	if s.accounts == nil {
-		writeAccountError(w, http.StatusInternalServerError, "accounts_unavailable", "account service is unavailable")
-		return
-	}
 
 	var request generated.PostPortfolioAccountJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		slog.Error("failed to deserialize account request body", "error", err, "method", r.Method, "path", r.URL.Path)
 		writeAccountError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
 		return
 	}
 
-	created, err := s.accounts.CreateAccount(r.Context(), portfolioID, account.CreateInput{
+	created, err := s.accounts.Create(r.Context(), account.CreateParams{
+		PortfolioID:       requestedPortfolioID,
 		Name:              request.Name,
 		InstitutionName:   request.InstitutionName,
-		Type:              account.Type(request.Type),
+		Type:              string(request.Type),
 		BaseCurrency:      request.BaseCurrency,
 		ExternalReference: request.ExternalReference,
 	})
 	if err != nil {
-		writeAccountServiceError(w, err)
+		writeAccountStoreError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, accountResponse(created))
+	response, err := accountResponse(created)
+	if err != nil {
+		writeAccountStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, response)
 }
 
 func (s apiServer) GetPortfolioAccounts(w http.ResponseWriter, r *http.Request, portfolioID openapi_types.UUID) {
@@ -54,24 +57,21 @@ func (s apiServer) GetPortfolioAccounts(w http.ResponseWriter, r *http.Request, 
 		writeLocalContextError(w, err)
 		return
 	}
-	s.getAccountsForPortfolio(w, r, requestedPortfolioID)
-}
 
-func (s apiServer) getAccountsForPortfolio(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID) {
-	if s.accounts == nil {
-		writeAccountError(w, http.StatusInternalServerError, "accounts_unavailable", "account service is unavailable")
-		return
-	}
-
-	accounts, err := s.accounts.ListAccounts(r.Context(), portfolioID)
+	accounts, err := s.accounts.List(r.Context(), requestedPortfolioID)
 	if err != nil {
-		writeAccountServiceError(w, err)
+		writeAccountStoreError(w, err)
 		return
 	}
 
 	response := generated.AccountListResponse{Accounts: make([]generated.Account, 0, len(accounts))}
 	for _, value := range accounts {
-		response.Accounts = append(response.Accounts, accountResponse(value))
+		mapped, err := accountResponse(value)
+		if err != nil {
+			writeAccountStoreError(w, err)
+			return
+		}
+		response.Accounts = append(response.Accounts, mapped)
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -82,46 +82,55 @@ func (s apiServer) GetPortfolioAccount(w http.ResponseWriter, r *http.Request, p
 		writeLocalContextError(w, err)
 		return
 	}
-	s.getAccountForPortfolio(w, r, requestedPortfolioID, uuid.UUID(accountID))
-}
 
-func (s apiServer) getAccountForPortfolio(w http.ResponseWriter, r *http.Request, portfolioID uuid.UUID, accountID uuid.UUID) {
-	if s.accounts == nil {
-		writeAccountError(w, http.StatusInternalServerError, "accounts_unavailable", "account service is unavailable")
-		return
-	}
-
-	found, err := s.accounts.GetAccount(r.Context(), portfolioID, accountID)
+	found, err := s.accounts.Get(r.Context(), requestedPortfolioID, uuid.UUID(accountID))
 	if err != nil {
-		writeAccountServiceError(w, err)
+		writeAccountStoreError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, accountResponse(found))
+	response, err := accountResponse(found)
+	if err != nil {
+		writeAccountStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
-func accountResponse(value account.Account) generated.Account {
+func accountResponse(value database.Account) (generated.Account, error) {
+	id, err := pgconv.DomainUUID(value.ID)
+	if err != nil {
+		return generated.Account{}, fmt.Errorf("map account id: %w", err)
+	}
+	portfolioID, err := pgconv.DomainUUID(value.PortfolioID)
+	if err != nil {
+		return generated.Account{}, fmt.Errorf("map account portfolio id: %w", err)
+	}
+	createdAt, err := pgconv.Time(value.CreatedAt)
+	if err != nil {
+		return generated.Account{}, fmt.Errorf("map account created at: %w", err)
+	}
+	updatedAt, err := pgconv.Time(value.UpdatedAt)
+	if err != nil {
+		return generated.Account{}, fmt.Errorf("map account updated at: %w", err)
+	}
 	return generated.Account{
-		Id:                openapiUUID(value.ID),
-		PortfolioId:       openapiUUID(value.PortfolioID),
+		Id:                openapiUUID(id),
+		PortfolioId:       openapiUUID(portfolioID),
 		Name:              value.Name,
-		InstitutionName:   value.InstitutionName,
+		InstitutionName:   pgconv.StringPointer(value.InstitutionName),
 		Type:              generated.AccountType(value.Type),
 		BaseCurrency:      value.BaseCurrency,
-		ExternalReference: value.ExternalReference,
-		CreatedAt:         value.CreatedAt,
-		UpdatedAt:         value.UpdatedAt,
-	}
+		ExternalReference: pgconv.StringPointer(value.ExternalReference),
+		CreatedAt:         createdAt,
+		UpdatedAt:         updatedAt,
+	}, nil
 }
 
-func writeAccountServiceError(w http.ResponseWriter, err error) {
+func writeAccountStoreError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, account.ErrInvalidName):
-		writeAccountError(w, http.StatusBadRequest, "invalid_account_name", "account name is required")
-	case errors.Is(err, account.ErrInvalidType):
-		writeAccountError(w, http.StatusBadRequest, "invalid_account_type", "account type is invalid")
-	case errors.Is(err, account.ErrInvalidCurrency):
-		writeAccountError(w, http.StatusBadRequest, "invalid_base_currency", "account base currency must be an uppercase 3-letter code")
+	case errors.Is(err, account.ErrInvalidInput):
+		writeInvalidRequest(w)
 	case errors.Is(err, account.ErrDuplicateName):
 		writeAccountError(w, http.StatusConflict, "account_name_conflict", "account name already exists in the default portfolio")
 	case errors.Is(err, account.ErrNotFound):

@@ -137,7 +137,7 @@ func portfolioWarningsResponse(values []portfolio.Warning) []generated.Portfolio
 func writePortfolioServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, portfolio.ErrInvalidRange):
-		writePortfolioError(w, http.StatusBadRequest, "invalid_portfolio_range", "portfolio range is invalid")
+		writeInvalidRequest(w)
 	case errors.Is(err, portfolio.ErrNotFound):
 		writePortfolioError(w, http.StatusNotFound, "portfolio_not_found", "portfolio was not found")
 	default:

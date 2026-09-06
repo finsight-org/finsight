@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
-	"github.com/finsight-org/finsight/apps/api/internal/account"
 	"github.com/finsight-org/finsight/apps/api/internal/asset"
 	"github.com/finsight-org/finsight/apps/api/internal/transaction"
 )
@@ -27,7 +26,7 @@ type TransactionRecorder interface {
 
 type Repository interface {
 	DeleteDemoData(context.Context, uuid.UUID, uuid.UUID) error
-	UpsertDemoAccount(context.Context, upsertAccountInput) (account.Account, error)
+	UpsertDemoAccount(context.Context, upsertAccountInput) (uuid.UUID, error)
 	UpsertMarketPrice(context.Context, upsertMarketPriceInput) error
 	UpsertFXRate(context.Context, upsertFXRateInput) error
 }
@@ -42,7 +41,7 @@ type upsertAccountInput struct {
 	PortfolioID       uuid.UUID
 	Name              string
 	InstitutionName   string
-	Type              account.Type
+	Type              string
 	BaseCurrency      string
 	ExternalReference string
 }
@@ -81,22 +80,22 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 		return fmt.Errorf("delete existing demo data: %w", err)
 	}
 
-	tfsa, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
+	tfsaID, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
 		PortfolioID:       portfolioID,
 		Name:              "Wealthsimple TFSA",
 		InstitutionName:   "Wealthsimple",
-		Type:              account.TypeRetirement,
+		Type:              "RETIREMENT",
 		BaseCurrency:      "CAD",
 		ExternalReference: "finsight-demo:wealthsimple-tfsa",
 	})
 	if err != nil {
 		return fmt.Errorf("upsert demo TFSA account: %w", err)
 	}
-	margin, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
+	marginID, err := s.repository.UpsertDemoAccount(ctx, upsertAccountInput{
 		PortfolioID:       portfolioID,
 		Name:              "Questrade Margin",
 		InstitutionName:   "Questrade",
-		Type:              account.TypeBrokerage,
+		Type:              "BROKERAGE",
 		BaseCurrency:      "CAD",
 		ExternalReference: "finsight-demo:questrade-margin",
 	})
@@ -206,14 +205,14 @@ func (s Seeder) Seed(ctx context.Context, workspaceID uuid.UUID, portfolioID uui
 	}
 
 	records := []transaction.CreateInput{
-		deposit(tfsa.ID, cash.ID, "2026-01-02", "50000", "finsight-demo:tfsa-deposit-1"),
-		buy(tfsa.ID, cash.ID, xeqt.ID, "2026-01-03", "100", "100", "finsight-demo:tfsa-buy-xeqt-1"),
-		buy(tfsa.ID, cash.ID, vfv.ID, "2026-02-01", "100", "120", "finsight-demo:tfsa-buy-vfv-1"),
-		deposit(margin.ID, cash.ID, "2026-03-15", "25000", "finsight-demo:margin-deposit-1"),
-		buy(margin.ID, cash.ID, xeqt.ID, "2026-03-16", "150", "105", "finsight-demo:margin-buy-xeqt-1"),
-		depositWithCurrency(margin.ID, usdCash.ID, "2026-04-01", "10000", "USD", "finsight-demo:margin-usd-deposit-1"),
-		buyWithCurrency(margin.ID, usdCash.ID, voo.ID, "2026-04-02", "10", "392", "USD", "finsight-demo:margin-buy-voo-1"),
-		dividend(tfsa.ID, cash.ID, "2026-05-01", "120", "finsight-demo:tfsa-dividend-1"),
+		deposit(tfsaID, cash.ID, "2026-01-02", "50000", "finsight-demo:tfsa-deposit-1"),
+		buy(tfsaID, cash.ID, xeqt.ID, "2026-01-03", "100", "100", "finsight-demo:tfsa-buy-xeqt-1"),
+		buy(tfsaID, cash.ID, vfv.ID, "2026-02-01", "100", "120", "finsight-demo:tfsa-buy-vfv-1"),
+		deposit(marginID, cash.ID, "2026-03-15", "25000", "finsight-demo:margin-deposit-1"),
+		buy(marginID, cash.ID, xeqt.ID, "2026-03-16", "150", "105", "finsight-demo:margin-buy-xeqt-1"),
+		depositWithCurrency(marginID, usdCash.ID, "2026-04-01", "10000", "USD", "finsight-demo:margin-usd-deposit-1"),
+		buyWithCurrency(marginID, usdCash.ID, voo.ID, "2026-04-02", "10", "392", "USD", "finsight-demo:margin-buy-voo-1"),
+		dividend(tfsaID, cash.ID, "2026-05-01", "120", "finsight-demo:tfsa-dividend-1"),
 	}
 	for _, record := range records {
 		if _, err := s.transactions.RecordTransaction(ctx, portfolioID, record); err != nil {

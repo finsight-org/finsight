@@ -15,6 +15,7 @@ import (
 	"github.com/finsight-org/finsight/apps/api/internal/localcontext"
 	"github.com/finsight-org/finsight/apps/api/internal/portfoliovalue"
 	"github.com/finsight-org/finsight/apps/api/internal/postgres"
+	database "github.com/finsight-org/finsight/apps/api/internal/postgres/generated"
 	"github.com/finsight-org/finsight/apps/api/internal/startup"
 	"github.com/finsight-org/finsight/apps/api/migrations"
 )
@@ -35,8 +36,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	bootstrapService := bootstrap.NewService(bootstrapRepository)
 	localContextRepository := localcontext.NewPostgresRepository(db)
 	localContextService := localcontext.NewService(localContextRepository)
-	accountRepository := account.NewPostgresRepository(db)
-	accountService := account.NewService(accountRepository)
+	accountStore := account.New(database.New(db))
 	portfolioRepository := portfoliovalue.NewPostgresRepository(db)
 	portfolioService := portfoliovalue.NewService(portfolioRepository)
 	assetFinder := asset.NewFinder(asset.NewYahooProvider())
@@ -58,7 +58,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Database:       db,
 		DeploymentMode: cfg.DeploymentMode,
 		LocalContext:   localContextService,
-		Accounts:       accountService,
+		Accounts:       accountStore,
 		Assets:         assetFinder,
 		Portfolio:      portfolioService,
 	})

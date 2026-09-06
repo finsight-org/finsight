@@ -25,15 +25,18 @@ Do not approve a change with unresolved blockers.
 
 Verify that the change preserves these boundaries:
 
-- Business rules live in backend application/domain services.
+- Business rules live in focused backend feature components.
 - HTTP handlers adapt OpenAPI requests and responses; they do not own financial
-  rules or persistence details.
-- Repositories map sqlc/pgx data into domain structs; services do not depend on
-  generated database types.
+  rules or raw SQL.
+- Table-shaped features may use generated sqlc params and rows directly.
+- Handwritten domain types represent meaningful behavior rather than duplicate
+  database rows.
+- Production interfaces exist for meaningful boundaries or multiple
+  implementations, not solely for mocks.
 - The React app calls only the OpenAPI HTTP API.
 - Frontend code does not query PostgreSQL, call market data providers, call MCP,
   or reimplement authoritative financial calculations.
-- MCP remains read-only for the MVP and calls backend application services.
+- MCP remains read-only for the MVP and calls backend feature components.
 - Provider-specific market data shapes do not leak into domain, HTTP, MCP, or
   frontend contracts.
 
@@ -49,8 +52,8 @@ Treat these as blockers unless the author has a clear documented reason:
   or route sources.
 - OpenAPI contract changes are not reflected in generated Go and TypeScript
   types.
-- Database migrations are missing for schema changes, or queries bypass the
-  documented repository/sqlc boundary.
+- Database migrations are missing for schema changes, or application SQL is
+  placed outside the documented migration/sqlc query boundary.
 - User-facing frontend strings are hard-coded instead of going through i18n
   resources.
 - Behavior changes lack tests proportional to risk.
@@ -62,11 +65,10 @@ Treat these as blockers unless the author has a clear documented reason:
 
 Ask for focused tests near the changed behavior:
 
-- Backend services: validation, business rules, orchestration, and expected
-  domain errors.
+- Pure backend logic: validation, calculations, and deterministic rules.
 - HTTP handlers: status codes, `ErrorResponse` bodies, and response mapping.
-- Repositories: SQL mapping, constraints, and database error translation when
-  meaningful.
+- PostgreSQL integration: sqlc queries, constraints, mappings, transactions, and
+  database error translation.
 - Frontend features: visible behavior, loading, empty, error, and mutation
   states.
 - Playwright: important cross-route or end-to-end workflows.

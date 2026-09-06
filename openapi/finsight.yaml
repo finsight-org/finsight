@@ -376,9 +376,12 @@ components:
         name:
           type: string
           minLength: 1
+          pattern: '^\S([\s\S]*\S)?$'
         institution_name:
           type: string
           nullable: true
+          minLength: 1
+          pattern: '^\S([\s\S]*\S)?$'
         type:
           $ref: "#/components/schemas/AccountType"
         base_currency:
@@ -389,6 +392,8 @@ components:
         external_reference:
           type: string
           nullable: true
+          minLength: 1
+          pattern: '^\S([\s\S]*\S)?$'
     Account:
       type: object
       required:

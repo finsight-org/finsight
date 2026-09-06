@@ -9,7 +9,27 @@ create table accounts (
     external_reference text,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
-    constraint accounts_name_not_blank_check check (length(btrim(name)) > 0),
+    constraint accounts_name_check check (
+        length(name) > 0
+        and name !~ '^[[:space:]]'
+        and name !~ '[[:space:]]$'
+    ),
+    constraint accounts_institution_name_check check (
+        institution_name is null
+        or (
+            length(institution_name) > 0
+            and institution_name !~ '^[[:space:]]'
+            and institution_name !~ '[[:space:]]$'
+        )
+    ),
+    constraint accounts_external_reference_check check (
+        external_reference is null
+        or (
+            length(external_reference) > 0
+            and external_reference !~ '^[[:space:]]'
+            and external_reference !~ '[[:space:]]$'
+        )
+    ),
     constraint accounts_type_check check (type in ('BROKERAGE', 'BANK', 'CRYPTO_EXCHANGE', 'RETIREMENT', 'MANUAL')),
     constraint accounts_base_currency_check check (base_currency ~ '^[A-Z]{3}$')
 );
