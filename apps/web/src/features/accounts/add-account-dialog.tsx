@@ -58,17 +58,21 @@ export function AddAccountDialog() {
   }
 
   async function onSubmit(values: AccountFormValues) {
-    await createAccount.mutateAsync({
-      portfolioId,
-      body: {
-        name: values.name.trim(),
-        institution_name: values.institutionName?.trim() || null,
-        type: values.type,
-        base_currency: values.baseCurrency.trim().toUpperCase(),
-      },
-    })
-    form.reset(defaultValues)
-    setOpen(false)
+    try {
+      await createAccount.mutateAsync({
+        portfolioId,
+        body: {
+          name: values.name.trim(),
+          institution_name: values.institutionName?.trim() || null,
+          type: values.type,
+          base_currency: values.baseCurrency.trim().toUpperCase(),
+        },
+      })
+      form.reset(defaultValues)
+      setOpen(false)
+    } catch {
+      // Keep the dialog open so the mutation error is rendered in the form.
+    }
   }
 
   return (
