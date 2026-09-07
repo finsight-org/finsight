@@ -1,51 +1,41 @@
 # Backend Guidelines
 
-This document explains how to implement backend changes in the Go modular monolith. Read it with [Architecture](../architecture.md), [Database Guidelines](database-guidelines.md), and [OpenAPI Guidelines](openapi-guidelines.md).
+This document explains how to modify the current Go modular monolith. Read it with [Architecture](../architecture.md), [Database Guidelines](database-guidelines.md), and [OpenAPI Guidelines](openapi-guidelines.md).
 
-## Layering
+## Request and Dependency Flow
 
-Backend request paths should use the fewest layers needed to express the behavior clearly.
+Use the fewest boundaries needed to express the behavior clearly:
 
-```mermaid
-flowchart LR
-    Handler["HTTP Handler<br/>internal/httpapi"]
-    Feature["Feature package/type<br/>internal/<feature>"]
-    SQLC["sqlc Generated Code"]
-    DB[("PostgreSQL")]
-
-    Handler --> Feature
-    Feature --> SQLC
-    SQLC --> DB
+```text
+HTTP handler
+→ feature-owned concrete type or function
+→ generated sqlc query or external-provider adapter
+→ PostgreSQL or external system
 ```
 
-Responsibilities:
-
 - OpenAPI middleware validates the HTTP contract before handlers run.
-- Handlers decode requests, enforce the transport authorization entry point, map DTOs, and translate errors.
-- Concrete feature types and functions construct generated sqlc parameters, call sqlc directly, enforce business workflows, own transactions, and translate database errors.
-- Use a feature-owned input struct when an operation has several related fields, such as account creation. For one or two simple identifiers, pass arguments directly instead of introducing a wrapper params type.
+- Handlers decode transport data, perform the current-context check, map values, and translate errors to HTTP responses.
+- Concrete feature types and functions own business workflows, financial rules, database transactions, and database-error translation.
 - Migrations own schema changes.
 
-## Feature Packages
+Direct sqlc access from feature code is valid. Prefer concrete feature types and functions. Do not introduce repository wrappers that only forward calls or map equivalent structures. Name types after their actual responsibility, such as `Store`, `Recorder`, `Calculator`, `Resolver`, or `Runner`.
 
-Use feature packages under `apps/api/internal` for domain/application behavior. Existing examples include `account`, `asset`, `bootstrap`, `localcontext`, `portfolio`, and `portfoliovalue`.
+## Feature Packages and Types
 
-Package guidance:
+Backend behavior lives in focused packages under `apps/api/internal`. Add behavior to the package that owns it.
 
 - Prefer a concrete type or function with explicit dependencies.
-- Do not create feature or domain structs that merely copy generated sqlc rows. Feature-owned input structs are appropriate when they express a meaningful multi-field operation using transport- and database-independent Go types.
-- Define domain structs when representing aggregates, calculations, derived values, or rules that differ from the database shape.
-- Define small interfaces at the consuming package when they represent a meaningful capability that needs substitution.
-- Do not create interfaces that merely mirror concrete implementations or manufacture mock seams for tests.
-- Let OpenAPI own transport-shape validation and PostgreSQL constraints own persisted-data integrity.
-- Use sentinel errors for expected domain failures that adapters need to translate.
+- Use a feature-owned input struct for a cohesive operation with several related values.
+- Pass one or two simple identifiers directly instead of wrapping them in a parameter type.
+- Use generated sqlc rows for table-shaped behavior when their meaning fits.
+- Create handwritten types for calculations, aggregates, or behavior that differs from storage.
+- Introduce an interface at a meaningful consuming or external boundary, not solely to create a mock.
+- Use sentinel errors for expected failures that an adapter must translate.
 - Wrap unexpected errors with useful context.
 
-Avoid large shared utility packages. Add shared helpers only when repeated behavior is real and the helper has a clear owner.
+Do not choose packages or types for unimplemented features in advance. Their ownership should be decided with the feature that needs them.
 
 ## Go File Naming
-
-When creating or renaming Go files:
 
 - Use short, lowercase, descriptive filenames based on the concrete responsibility or concept implemented in the file.
 - Prefer domain or behavior names such as `store.go`, `validation.go`, `errors.go`, `handler.go`, `parser.go`, `client.go`, or `account.go`.
@@ -61,26 +51,20 @@ HTTP code lives in `apps/api/internal/httpapi`.
 
 Handlers should:
 
-- Use generated OpenAPI request and response types only at the HTTP boundary.
-- Convert request values into feature-owned input types when the operation has a meaningful multi-field input. Pass small values such as IDs directly. Keep generated sqlc parameter construction inside the feature type or function.
-- Convert feature results into generated response types.
-- Convert known feature errors into documented HTTP status codes and `ErrorResponse` bodies.
-- Never place raw SQL or migration logic in handlers.
-
-Handlers should not enforce financial business rules. Feature types/functions and PostgreSQL constraints are authoritative.
+- Keep generated OpenAPI request and response types at the HTTP boundary.
+- Convert transport values to meaningful feature inputs or pass simple values directly.
+- Leave generated sqlc parameter construction inside feature code.
+- Convert known errors into documented status codes and `ErrorResponse` bodies.
+- Avoid raw SQL, migration logic, and authoritative financial rules.
 
 ## Persistence
 
-PostgreSQL access should follow [Database Guidelines](database-guidelines.md).
+Follow [Database Guidelines](database-guidelines.md):
 
-Use:
-
-- Goose migrations in `apps/api/migrations` for schema changes.
-- sqlc query files in `apps/api/internal/postgres/queries` for non-trivial SQL.
-- Concrete feature types and functions that call generated sqlc methods directly.
-- Handwritten domain structs only when their meaning differs from a table row.
-
-Keep SQL in dedicated migration and query files. Do not introduce repository wrappers that only forward calls or map equivalent structures.
+- Put schema changes in Goose migrations under `apps/api/migrations`.
+- Put non-trivial application SQL in `apps/api/internal/postgres/queries`.
+- Call generated sqlc methods from the concrete feature type or function that owns the behavior.
+- Keep multi-statement database operations atomic with explicit transactions.
 
 ## Generated Code
 
@@ -89,32 +73,26 @@ Do not manually edit:
 - `apps/api/internal/openapi/generated`
 - `apps/api/internal/postgres/generated`
 
-Regenerate from `apps/api` after OpenAPI, query, or schema changes:
+After changing OpenAPI, sqlc queries, or migrations, regenerate from `apps/api`:
 
 ```bash
 go generate ./...
 ```
 
-The repository uses pinned `go run ...@version` generator commands, so generator CLIs do not need to be added as runtime dependencies.
+Generator commands use pinned `go run ...@version` invocations and are not runtime dependencies.
 
 ## Tests
 
-Backend changes should include focused tests:
+- Unit test deterministic validation, normalization, and calculations.
+- Test HTTP status codes, error bodies, context checks, and request/response mapping.
+- Test sqlc queries, constraints, mappings, error translation, and transactions against PostgreSQL.
+- Use small fakes only at meaningful consuming or external boundaries.
+- Add migration tests when startup migration behavior changes.
 
-- Pure unit tests for validation, normalization, calculations, and other deterministic behavior.
-- HTTP tests for status codes, error bodies, and request/response mapping.
-- PostgreSQL integration tests for sqlc queries, constraints, mappings, error translation, and transactions.
-- Small fakes only for meaningful external boundaries.
-- Migration tests when schema startup behavior is touched.
-
-Run backend tests from `apps/api`:
+Run all backend tests from `apps/api`:
 
 ```bash
 go test ./...
 ```
 
-For full repository checks, run:
-
-```bash
-make test
-```
+PostgreSQL integration tests are skipped unless `FINSIGHT_TEST_DATABASE_URL` is set; see [Database Guidelines](database-guidelines.md).

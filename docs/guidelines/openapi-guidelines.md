@@ -8,6 +8,8 @@ openapi/finsight.yaml
 
 The OpenAPI spec is the source of truth for HTTP paths, request shapes, response shapes, and status codes.
 
+This contract currently connects the Finsight web application and Go API. Using OpenAPI internally does not by itself make every endpoint a stable, externally supported integration platform; such a product commitment must be made separately.
+
 ## Generated Go Code
 
 Generated Go server interfaces and types live under:
@@ -43,7 +45,7 @@ Finsight uses `oapi-codegen` because it generates Go types and server interfaces
 
 ## Implementation Pattern
 
-The expected flow is:
+The current implementation flow is:
 
 ```text
 openapi/finsight.yaml

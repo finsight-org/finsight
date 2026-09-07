@@ -46,6 +46,12 @@ pnpm -C apps/web openapi:gen
 Generated files live in `src/api/generated` and should not be edited manually.
 Runtime enum values are emitted from OpenAPI so UI option lists can be derived from the backend contract.
 
+## Current Screens
+
+The portfolio screen loads total value, daily value history, and account values from the real HTTP API and supports account creation. Global asset search also uses the API.
+
+The Imports, Agents, and Settings routes currently display placeholder pages. Their future implementation details are intentionally not defined here.
+
 ## Checks
 
 ```bash
@@ -54,5 +60,3 @@ pnpm -C apps/web test
 pnpm -C apps/web build
 pnpm -C apps/web test:e2e
 ```
-
-Portfolio chart and summary values are temporary mock data until portfolio summary endpoints exist. Account data is loaded from the real HTTP API.

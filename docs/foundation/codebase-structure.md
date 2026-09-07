@@ -1,102 +1,77 @@
 # Codebase Structure
 
-This document maps the current repository layout and where new implementation work should live. It complements [Architecture](../architecture.md), [Database Guidelines](../guidelines/database-guidelines.md), and [OpenAPI Guidelines](../guidelines/openapi-guidelines.md).
+This document maps the current tracked repository and explains where implementation work belongs. It complements [Architecture](../architecture.md) and the implementation guidelines.
 
 ## Repository Map
 
-```mermaid
-flowchart TD
-    Root["finsight"]
-    Docs["docs<br/>Project and contributor docs"]
-    OpenAPI["openapi<br/>HTTP contract source"]
-    API["apps/api<br/>Go backend"]
-    Web["apps/web<br/>React frontend"]
-    Tests["tests<br/>Cross-app tests"]
-
-    Root --> Docs
-    Root --> OpenAPI
-    Root --> API
-    Root --> Web
-    Root --> Tests
+```text
+finsight/
+├── apps/
+│   ├── api/                 Go API
+│   └── web/                 React web application
+├── docs/                    Product and contributor documentation
+├── openapi/finsight.yaml    HTTP contract source
+├── AGENTS.md                AI-agent routing instructions
+├── Makefile                 Common development commands
+└── docker-compose.yml       Local PostgreSQL and API services
 ```
 
-Primary areas:
+If a feature does not exist, its future package or directory is intentionally undecided. Add code to the package that owns the behavior being implemented.
 
-- `docs`: product, architecture, and implementation documentation.
-- `openapi/finsight.yaml`: source of truth for HTTP API contracts.
-- `apps/api`: Go modular monolith backend.
-- `apps/web`: React, TypeScript, and Vite frontend.
-- `tests`: repository-level end-to-end test assets.
+## Backend
 
-## Backend Layout
+Backend code lives in `apps/api`:
 
-Backend code lives in `apps/api`.
-
-Important areas:
-
-- `cmd`: application entrypoints.
-- `internal/<feature>`: focused feature packages and domain behavior such as `account`, `asset`, `bootstrap`, `localcontext`, `portfolio`, and `portfoliovalue`.
+- `cmd`: executable entry points for the API and demo seed command.
+- `internal/app`: application construction and dependency wiring.
+- `internal/startup`, `bootstrap`, and `localcontext`: startup and local deployment behavior.
+- `internal/account`, `asset`, `transaction`, `portfolio`, and `portfoliovalue`: current feature behavior.
 - `internal/httpapi`: handwritten HTTP adapters around generated OpenAPI interfaces.
-- `internal/openapi/generated`: generated OpenAPI server/types code. Do not edit manually.
-- `internal/postgres`: database setup, embedded migrations, and PostgreSQL support.
+- `internal/openapi/generated`: generated Go HTTP types and interfaces; do not edit manually.
 - `internal/postgres/queries`: sqlc query sources.
-- `internal/postgres/generated`: generated sqlc code. Do not edit manually.
-- `migrations`: Goose schema migrations.
+- `internal/postgres/generated`: generated sqlc code; do not edit manually.
+- `internal/postgres`: database setup, migration execution, and shared PostgreSQL conversion helpers.
+- `migrations`: Goose migrations embedded into the API.
+- `docs`: technical documentation for implemented API features.
 
-New backend features should usually add or extend one feature package under `internal`, then connect it through `internal/httpapi` if HTTP access is needed.
+Extend an existing feature package when it owns the behavior. Create a new feature package only when the implemented capability has a distinct owner.
 
-## Frontend Layout
+## Frontend
 
-Frontend code lives in `apps/web`.
+Frontend code lives in `apps/web`:
 
-Important areas:
+- `src/api`: API client setup, endpoint wrappers, and TanStack Query hooks.
+- `src/api/generated`: generated OpenAPI TypeScript types; do not edit manually.
+- `src/app`: providers, router construction, and query-client setup.
+- `src/components/ui`: shared UI primitives.
+- `src/components/layout`: application layout components.
+- `src/features`: feature-specific components and colocated tests.
+- `src/i18n`: translation configuration and resources.
+- `src/routes`: TanStack Router route sources.
+- `src/routeTree.gen.ts`: generated route tree; do not edit manually.
+- `tests/e2e`: Playwright browser tests.
 
-- `src/api`: API client setup, typed endpoint wrappers, and query/mutation hooks.
-- `src/api/generated`: generated OpenAPI TypeScript types. Do not edit manually.
-- `src/app`: app-level providers, router setup, and query client setup.
-- `src/components/ui`: shared reusable UI primitives.
-- `src/components/layout`: shared layout components.
-- `src/features/<feature>`: feature-specific pages, tables, dialogs, charts, and tests.
-- `src/i18n`: translation setup and resources.
-- `src/routes`: route definitions.
-- `src/routeTree.gen.ts`: generated TanStack Router tree. Do not edit manually.
+Keep feature behavior close to its owning UI and extract shared code only after reuse is real.
 
-New frontend features should usually live under `src/features/<feature>`, with API access in `src/api` when it is shared by that feature or route.
+## Dependency Direction
 
-## Package Boundaries
-
-```mermaid
-flowchart LR
-    FeatureUI["Frontend Feature"]
-    APIWrapper["Frontend API Wrapper"]
-    OpenAPIClient["Generated OpenAPI Client Types"]
-    Handler["HTTP Handler"]
-    Feature["Feature package/type"]
-    SQLC["sqlc Generated Queries"]
-    DB[("PostgreSQL")]
-
-    FeatureUI --> APIWrapper
-    APIWrapper --> OpenAPIClient
-    OpenAPIClient --> Handler
-    Handler --> Feature
-    Feature --> SQLC
-    SQLC --> DB
+```text
+frontend feature
+→ frontend API wrapper and generated types
+→ OpenAPI HTTP adapter
+→ backend feature package/type
+→ generated sqlc query or provider adapter
+→ PostgreSQL or external system
 ```
 
-Boundary rules:
+- Transport code maps requests and responses; it does not own financial rules.
+- Concrete feature types and functions own workflows, calculations, error translation, and database transactions where needed.
+- Feature code may use generated sqlc parameters and rows directly for table-shaped behavior.
+- Interfaces belong at meaningful consuming or external boundaries, not as mandatory layers.
 
-- Feature UI should not know database details.
-- HTTP handlers own transport parsing, authorization entry checks, DTO conversion, and HTTP error responses.
-- Feature packages and concrete types own business workflows, database error translation, and transactions.
-- Feature types and functions may use generated sqlc params and rows directly for table-shaped behavior.
-- Create handwritten domain types only when the feature represents aggregates, calculations, or rules that differ from storage.
-- Define small interfaces at the consuming package when they represent a meaningful capability that needs substitution; do not create them solely to mirror implementations or manufacture mocks.
-- Generated files should be regenerated from their source inputs, not edited directly.
+## Test Placement
 
-## Where To Add Tests
-
-- Pure backend rules: package-level Go unit tests beside the feature.
-- Backend HTTP behavior: tests in `apps/api/internal/httpapi`.
-- SQL, constraints, transactions, and database error translation: PostgreSQL integration tests beside the feature.
-- Frontend feature behavior: Vitest and Testing Library tests beside the feature UI code.
-- Browser flows: Playwright tests when user workflows cross routing, API, or rendering boundaries.
+- Go unit and PostgreSQL integration tests live beside their backend packages.
+- HTTP behavior tests live in `apps/api/internal/httpapi`.
+- Frontend API and component tests live beside the source they exercise.
+- Playwright tests live in `apps/web/tests/e2e`.

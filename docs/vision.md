@@ -2,89 +2,54 @@
 
 ## Mission
 
-Finsight is an open-source investment data platform that makes portfolio data accessible to both humans and AI agents.
+Finsight is an open-source investment data platform that makes portfolio data useful to both people and AI agents.
 
-Instead of building another complex portfolio dashboard, Finsight focuses on helping users import, understand, and interact with their investments through natural language while maintaining full ownership of their data.
+It gives investors a dependable place to bring together their investment data, understand it, and use it through the tools they prefer while retaining control over where that data lives and who can access it.
 
-## Principles
+## Product Principles
 
 ### AI-Native
 
-Users should be able to ask questions about their investments through ChatGPT, Claude, Gemini, Ollama, or any MCP-compatible agent.
+Natural-language interaction is a primary way to explore investment data, not an afterthought. Finsight should make normalized portfolio information available to compatible AI agents, including through product-facing standards such as MCP.
 
-AI product names are examples only unless explicitly listed as supported integrations.
+Specific AI products are examples unless explicitly listed as supported integrations.
 
 ### Data Ownership
 
-Users own their data.
-
-Finsight supports user-operated and managed deployments, allowing users to choose where their data lives and which AI systems can access it.
+Users own their financial data. Whether they operate Finsight themselves or choose a managed offering, they should be able to choose where their data lives and decide which external tools can access it.
 
 ### Open Platform
 
-Finsight provides a normalized investment data model and open APIs that can be integrated into applications, internal tools, and AI workflows.
+Finsight should be useful beyond its own interface. Open-source code and interoperable interfaces should allow individuals and organizations to connect the platform to their own applications, workflows, and AI tools.
 
-The MVP starts with MCP-first, read-only access for connected agents. OpenAPI support remains part of the long-term platform direction.
+### Provider Independence
 
-### Bring Your Own Provider
+Finsight should not lock users to one broker, market-data vendor, or AI provider. Provider and broker names in project documentation are examples unless explicitly listed as supported integrations.
 
-Users and organizations can connect their preferred market data providers rather than being locked into a single vendor.
+### Trustworthy Financial Information
 
-Broker and provider names in project documentation are examples only unless explicitly listed as supported integrations.
+Portfolio information should be derived consistently from the user's financial records. External market data can enrich those records, but uncertainty or missing information should be visible rather than hidden behind misleading values.
 
-## Target Users
+### Focused Human Interface
+
+The Finsight interface should make it easy to bring in data, review it, manage accounts, and understand a portfolio at a glance. Deeper exploration can happen through AI agents and other connected tools.
+
+## Who Finsight Is For
 
 ### Everyday Investors
 
-- Upload a statement or export from a broker.
-- Ask questions in plain English.
-- No spreadsheets, ticker symbols, or complicated setup.
+People who want to import investment data and ask useful questions without maintaining spreadsheets or learning complex portfolio software.
 
 ### Finance Enthusiasts
 
-- Self-host the platform.
-- Connect local LLMs.
-- Customize data providers.
-- Maintain full control of their data.
+People who want to self-host, connect local or preferred AI tools, customize their setup, and retain full control of their data.
 
-### Professionals & Organizations
+### Professionals and Organizations
 
-- Integrate internal market data providers.
-- Deploy on-premise.
-- Connect internal AI agents.
-- Control permissions and audit access as the platform matures.
+Teams that need an open foundation for connecting internal investment data, applications, and AI workflows while controlling deployment and access.
 
-## Core Product
-
-### Data Platform
-
-- Portfolio and transaction engine
-- Normalized investment data model
-- Market data abstraction layer
-- Multi-currency support
-- OpenAPI and MCP interfaces
-
-### User Interface
-
-- Import and review investment data
-- Manage accounts
-- Use one internal default portfolio in the MVP
-- Configure permissions in later platform versions
-- View portfolio summaries
-- Audit AI access
-
-### AI Integrations
-
-- Portfolio analysis
-- Risk analysis
-- Performance explanations
-- Scenario simulations
-- Natural language access to investments
-
-## Positioning
+## Long-Term Positioning
 
 Upload your investments once. Use them everywhere.
 
-Connect ChatGPT, Claude, Gemini, local LLMs, or your own AI agents to a single source of truth for your investment data.
-
-For MVP architecture, connected agents receive read-only, workspace-scoped access and every access should be auditable.
+Finsight aims to become a user-controlled source of portfolio information that works equally well for human-facing applications and AI-assisted analysis.
