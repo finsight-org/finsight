@@ -1,0 +1,15 @@
+schema:
+  - internal/gateway/schema.graphqls
+exec:
+  filename: internal/gateway/generated/generated.go
+  package: generated
+model:
+  filename: internal/gateway/model/models_gen.go
+  package: model
+resolver:
+  layout: follow-schema
+  dir: internal/gateway/resolver
+  package: resolver
+models:
+  JSON:
+    model: github.com/finsight-org/finsight/internal/gateway/jsonvalue.JSON

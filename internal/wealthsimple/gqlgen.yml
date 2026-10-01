@@ -1,0 +1,15 @@
+schema:
+  - internal/wealthsimple/schema.graphqls
+exec:
+  filename: internal/wealthsimple/generated/generated.go
+  package: generated
+model:
+  filename: internal/wealthsimple/model/models_gen.go
+  package: model
+resolver:
+  layout: follow-schema
+  dir: internal/wealthsimple/resolver
+  package: resolver
+models:
+  Decimal:
+    model: github.com/finsight-org/finsight/internal/wealthsimple.Decimal

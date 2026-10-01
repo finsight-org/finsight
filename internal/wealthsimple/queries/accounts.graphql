@@ -1,0 +1,37 @@
+# Current values of open Wealthsimple accounts. No external linked institutions.
+query FinSightAccounts($identityId: ID!, $cursor: String) {
+  identity(id: $identityId) {
+    netWorth {
+      accounts(filter: {archived: false, closed: false}, first: 25, after: $cursor) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        edges {
+          node {
+            id
+            nickname
+            unifiedAccountType
+            currency
+            archivedAt
+            closedAt
+            financials {
+              currentCombined {
+                netLiquidationValueV2 {
+                  amount
+                  currency
+                }
+                creditCard {
+                  current {
+                    cents
+                    currency
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

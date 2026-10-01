@@ -1,0 +1,12 @@
+"""JSON values used for GraphQL variables and provider response data."""
+scalar JSON
+type ConnectedProvider { id: ID!, name: String! }
+type ProviderQueryError { message: String!, path: JSON, extensions: JSON }
+type ProviderQueryResponse { data: JSON, errors: [ProviderQueryError!]! }
+type Query {
+  connectedProviders: [ConnectedProvider!]!
+  """Return the public provider schema, whether or not a connection is active."""
+  providerSchema(provider: ID!): String!
+  """Execute a read-only query against a registered provider."""
+  executeProviderQuery(provider: ID!, query: String!, variables: JSON, operationName: String): ProviderQueryResponse!
+}

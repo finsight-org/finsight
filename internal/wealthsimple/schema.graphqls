@@ -1,0 +1,16 @@
+"""An exact decimal amount and the currency reported by Wealthsimple."""
+scalar Decimal
+"""A decimal balance with the currency reported by Wealthsimple."""
+type Money { amount: Decimal!, currency: String! }
+type Account {
+  id: ID!
+  name: String!
+  type: String!
+  currency: String!
+  balanceKind: String!
+  balance: Money
+}
+type Warning { accountId: ID, code: String!, message: String! }
+type AccountsResult { accounts: [Account!]!, warnings: [Warning!]! }
+"""Open Wealthsimple accounts. Investment and cash balances are net liquidation value, not buying power or available cash. Credit card balances are amount owed. A missing balance is null; values are not converted or summed."""
+type Query { accounts: AccountsResult }
