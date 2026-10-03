@@ -18,6 +18,17 @@ test('registry snapshots metadata, sorts registrations and freezes its collectio
   assert.ok(Object.isFrozen(registry[0].metadata));
 });
 
+test('connection endpoints are optional and handlers are kept out of public metadata', () => {
+  const connectionRoutes = async () => {};
+  const definition = { ...libraryProvider().provider, connectionRoutes };
+  const registry = createProviderRegistry([definition, weatherProvider()]);
+  definition.connectionRoutes = async () => { throw new Error('changed'); };
+  assert.equal(registry[0].connectionRoutes, connectionRoutes);
+  assert.equal(registry[0].metadata.connectionEndpoint, '/providers/library/connection');
+  assert.ok(!('connectionRoutes' in registry[0].metadata));
+  assert.ok(!('connectionEndpoint' in registry[1].metadata));
+});
+
 test('registration rejects invalid identities and duplicate IDs', () => {
   const { provider } = libraryProvider();
   for (const id of ['', 'Library', 'a/b', '-a', 'a-', 'a--b', 'a_b', 'a.b', 'a b']) {

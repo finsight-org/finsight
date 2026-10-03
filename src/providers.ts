@@ -1,4 +1,5 @@
 import { assertValidSchema, type GraphQLSchema } from 'graphql';
+import type { FastifyPluginAsync } from 'fastify';
 
 /** Providers own their schemas and private dependencies. Resolvers must perform
  * financial reads only; GraphQL query validation cannot enforce upstream intent.
@@ -9,6 +10,8 @@ export interface ProviderDefinition {
   readonly name: string;
   readonly description: string;
   readonly schema: GraphQLSchema;
+  /** Provider-owned HTTP interface, mounted beneath its connection endpoint. */
+  readonly connectionRoutes?: FastifyPluginAsync;
 }
 
 /** The supported resolver context. Pass signal to asynchronous provider work. */
@@ -21,18 +24,20 @@ export interface ProviderMetadata {
   readonly name: string;
   readonly description: string;
   readonly graphqlEndpoint: string;
+  readonly connectionEndpoint?: string;
 }
 
 export interface RegisteredProvider {
   readonly metadata: Readonly<ProviderMetadata>;
   readonly schema: GraphQLSchema;
+  readonly connectionRoutes?: FastifyPluginAsync;
 }
 
 export function createProviderRegistry(
   definitions: readonly ProviderDefinition[],
 ): readonly RegisteredProvider[] {
   const ids = new Set<string>();
-  const providers = definitions.map(({ id, name, description, schema }) => {
+  const providers = definitions.map(({ id, name, description, schema, connectionRoutes }) => {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
       throw new Error('Provider IDs must contain lowercase alphanumeric segments separated by hyphens.');
     }
@@ -50,8 +55,10 @@ export function createProviderRegistry(
     return Object.freeze({
       metadata: Object.freeze({
         id, name, description, graphqlEndpoint: `/providers/${id}/graphql`,
+        ...(connectionRoutes ? { connectionEndpoint: `/providers/${id}/connection` } : {}),
       }),
       schema,
+      connectionRoutes,
     });
   });
   providers.sort((a, b) => a.metadata.id < b.metadata.id ? -1 : a.metadata.id > b.metadata.id ? 1 : 0);
