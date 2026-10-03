@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Transport, MAX_RESPONSE_BYTES } from '../src/providers/wealthsimple/upstream/http.js';
+import { WealthsimpleHttpClient, MAX_RESPONSE_BYTES } from '../src/providers/wealthsimple/upstream/http.js';
 import { endpoint, fixture, credentials } from './wealthsimple-fixtures.js';
 
 const signal = () => new AbortController().signal;
 
 test('transport uses scoped cookies, multiple Set-Cookie headers, and clears private state', async () => {
   const calls: { url: string; headers: Headers }[] = [];
-  const transport = new Transport({ endpoints: { login: 'https://my.wealthsimple.com/app/login' }, fetch: async (url, init) => {
+  const transport = new WealthsimpleHttpClient({ endpoints: { login: 'https://my.wealthsimple.com/app/login' }, fetch: async (url, init) => {
     calls.push({ url: String(url), headers: new Headers(init?.headers) });
     const headers = new Headers();
     if (calls.length === 1) {
@@ -29,7 +29,7 @@ test('transport uses scoped cookies, multiple Set-Cookie headers, and clears pri
 
 test('untrusted assets and redirects cannot receive authentication requests', async t => {
   for (const target of ['https://evil.test/app-test.js', 'http://my.wealthsimple.com/app-test.js', 'https://user:pass@my.wealthsimple.com/app-test.js', 'https://wealthsimple.com.evil.test/app-test.js']) {
-    assert.throws(() => new Transport().assetUrl(target));
+    assert.throws(() => new WealthsimpleHttpClient().assetUrl(target));
   }
   for (const route of ['/login', '/token']) await t.test(route, async t => {
     const f = await fixture(t, { [route]: (_call, _req, res) => {
@@ -43,7 +43,7 @@ test('untrusted assets and redirects cannot receive authentication requests', as
     assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
   });
   let calls = 0;
-  const transport = new Transport({ fetch: async () => {
+  const transport = new WealthsimpleHttpClient({ fetch: async () => {
     calls++;
     return new Response(null, { status: 302, headers: { location: 'https://evil.test/' } });
   } });
@@ -53,14 +53,14 @@ test('untrusted assets and redirects cannot receive authentication requests', as
 
 test('same-origin public redirects are bounded', async () => {
   let calls = 0;
-  const transport = new Transport({ fetch: async () => { calls++; return new Response(null, { status: 302, headers: { location: '/loop' } }); } });
+  const transport = new WealthsimpleHttpClient({ fetch: async () => { calls++; return new Response(null, { status: 302, headers: { location: '/loop' } }); } });
   await assert.rejects(transport.request(transport.endpoints.login, signal()));
   assert.equal(calls, 6);
 });
 
 test('oversized streamed upstream responses are stopped and exposed safely', async () => {
   let cancelled = false;
-  const transport = new Transport({ fetch: async () => new Response(new ReadableStream({
+  const transport = new WealthsimpleHttpClient({ fetch: async () => new Response(new ReadableStream({
     start(controller) { controller.enqueue(new Uint8Array(MAX_RESPONSE_BYTES + 1)); },
     cancel() { cancelled = true; },
   })) });

@@ -15,7 +15,7 @@ function code(response: { json(): any }, expected: string) {
 test('Wealthsimple discovery, disconnected introspection and control instructions need no upstream', async t => {
   const f = await fixture(t);
   const catalog = (await f.app.inject('/providers')).json().providers;
-  assert.deepEqual(catalog, [{ id: 'wealthsimple', name: 'Wealthsimple', description: 'Read Wealthsimple account metadata.', graphqlEndpoint: graphql, connectionEndpoint: endpoint }]);
+  assert.deepEqual(catalog, [{ id: 'wealthsimple', name: 'Wealthsimple', description: 'Read financial data from Wealthsimple.', graphqlEndpoint: graphql, connectionEndpoint: endpoint }]);
   const introspection = await f.app.inject({ method: 'POST', url: graphql, payload: { query: getIntrospectionQuery() } });
   const schema = introspection.json().data.__schema;
   assert.equal(schema.mutationType, null);

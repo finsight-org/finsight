@@ -1,13 +1,15 @@
 import { GraphQLError } from 'graphql';
 import { createSchema } from 'graphql-yoga';
 import type { ProviderContext } from '../../providers.js';
-import { createAccounts, type AccountPageArguments } from './operations/accounts.js';
-import type { WealthsimpleApiClient } from './upstream/client.js';
+import type { AccountPageArguments, createAccounts } from './operations/accounts.js';
 import { publicError, WealthsimpleError } from './errors.js';
 
+export interface WealthsimpleOperations {
+  accounts: ReturnType<typeof createAccounts>;
+}
+
 /** FinSight-facing schema; resolvers use provider operations only. */
-export function createWealthsimpleSchema(client: WealthsimpleApiClient) {
-  const accounts = createAccounts(client);
+export function createWealthsimpleSchema({ accounts }: WealthsimpleOperations) {
   return createSchema<ProviderContext>({
     typeDefs: `
       "An account reported by Wealthsimple; types and statuses retain Wealthsimple's meanings."

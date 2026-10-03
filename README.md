@@ -21,7 +21,7 @@ choose another port. Normal startup registers Wealthsimple:
 
 ```sh
 curl http://127.0.0.1:4000/providers
-# {"providers":[{"id":"wealthsimple","name":"Wealthsimple","description":"Read Wealthsimple account metadata.","graphqlEndpoint":"/providers/wealthsimple/graphql","connectionEndpoint":"/providers/wealthsimple/connection"}]}
+# {"providers":[{"id":"wealthsimple","name":"Wealthsimple","description":"Read financial data from Wealthsimple.","graphqlEndpoint":"/providers/wealthsimple/graphql","connectionEndpoint":"/providers/wealthsimple/connection"}]}
 ```
 
 The server is a trusted local, single-user service. It remains loopback-only,
@@ -279,11 +279,11 @@ src/providers/wealthsimple/
 
 | Component | Responsibility |
 | --- | --- |
-| `index.ts` | Provider composition only: one connection, one shared API client, schema, and connection routes per provider instance. |
-| `schema.ts` | What FinSight exposes to the AI agent: GraphQL types, descriptions, input validation, resolvers calling operations, and public GraphQL errors. |
+| `index.ts` | Provider composition only: creates one connection, one shared API client, operations, schema, and connection routes per provider instance. |
+| `schema.ts` | What FinSight exposes to the AI agent: GraphQL types, descriptions, input validation, resolvers calling the supplied operations, and public GraphQL errors. Receives operations already created by `index.ts`. |
 | `operations/*` | Provider capabilities, upstream queries, variables, and capability-specific response validation. Account operations are bound to the shared client once. |
 | `upstream/client.ts` | Authenticated API boundary: request construction, GraphQL decoding, authentication interception, and one refresh/retry. Holds no persistent authentication state. |
-| `upstream/http.ts` | Provider-specific HTTP implementation: fetch, private cookies, endpoints, trusted destinations, redirects, request timeout, and response limits. |
+| `upstream/http.ts` | `WealthsimpleHttpClient` with `WealthsimpleHttpOptions`: provider-specific fetch, private cookies, endpoints, trusted destinations, redirects, request timeout, and response limits. |
 | `connection/routes.ts` | Manual connection HTTP adapter: instructions, incoming request validation, status/error mapping, request cancellation, and shutdown hooks. |
 | `connection/connection.ts` | How access is maintained: session state, OTP attempts, lifetime cancellation, token commits, shared refresh coordination, and cleanup. |
 | `connection/auth.ts` | Wealthsimple authentication protocol: bootstrap, device/client discovery, password/OTP login, refresh exchange, and identity lookup. Returns results for connection to commit. |

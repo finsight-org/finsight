@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Transport, type TransportOptions } from '../upstream/http.js';
+import { WealthsimpleHttpClient, type WealthsimpleHttpOptions } from '../upstream/http.js';
 import { OTPRequired, RequestAborted, Unauthorized, WealthsimpleError } from '../errors.js';
 import {
   authenticatedHeaders, bootstrap, login, lookupIdentity, refreshTokens,
@@ -12,7 +12,7 @@ export interface Clock {
   /** Schedule expiry and return a cancellation function. */
   schedule(callback: () => void, delayMs: number): () => void;
 }
-export interface WealthsimpleOptions extends TransportOptions {
+export interface WealthsimpleOptions extends WealthsimpleHttpOptions {
   clock?: Clock;
   operationTimeoutMs?: number;
 }
@@ -20,7 +20,7 @@ export interface WealthsimpleOptions extends TransportOptions {
 export interface SessionContext {
   readonly identityId: string;
   readonly headers: Readonly<Record<string, string>>;
-  readonly transport: Pick<Transport, 'endpoints' | 'request'>;
+  readonly transport: Pick<WealthsimpleHttpClient, 'endpoints' | 'request'>;
   readonly lifetimeSignal: AbortSignal;
   readonly assertCurrent: (signal: AbortSignal) => void;
   readonly refresh: (signal: AbortSignal) => Promise<SessionContext>;
@@ -28,7 +28,7 @@ export interface SessionContext {
 }
 
 interface Session extends AuthIdentifiers {
-  transport: Transport;
+  transport: WealthsimpleHttpClient;
   lifetime: AbortController;
   identity: string;
   tokens?: Tokens;
@@ -85,7 +85,7 @@ export class WealthsimpleConnection {
     } else {
       if (input.attemptId) throw new WealthsimpleError('CONNECTION_CONFLICT');
       session = {
-        transport: new Transport(this.#options), lifetime: new AbortController(),
+        transport: new WealthsimpleHttpClient(this.#options), lifetime: new AbortController(),
         sessionId: randomUUID(), deviceId: '', clientId: '', identity: '', tokenRevision: 0,
       };
     }

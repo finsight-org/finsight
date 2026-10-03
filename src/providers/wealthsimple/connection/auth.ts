@@ -1,4 +1,4 @@
-import type { Transport } from '../upstream/http.js';
+import type { WealthsimpleHttpClient } from '../upstream/http.js';
 import { OTPRequired, Unauthorized, WealthsimpleError } from '../errors.js';
 import { authFailure, checkStatus, json, requiredString } from '../protocol.js';
 
@@ -13,7 +13,7 @@ export interface AuthIdentifiers {
 export interface Tokens { access: string; refresh: string }
 
 /** Authentication protocol functions return results; connection owns all commits. */
-export async function bootstrap(transport: Transport, signal: AbortSignal) {
+export async function bootstrap(transport: WealthsimpleHttpClient, signal: AbortSignal) {
   const page = await transport.request(transport.endpoints.login, signal);
   checkStatus(page.status);
   const deviceId = requiredString(transport.deviceId());
@@ -38,7 +38,7 @@ export function authenticatedHeaders(identifiers: Readonly<AuthIdentifiers>, acc
 }
 
 export async function login(
-  transport: Transport, identifiers: Readonly<AuthIdentifiers>, input: ConnectInput, signal: AbortSignal,
+  transport: WealthsimpleHttpClient, identifiers: Readonly<AuthIdentifiers>, input: ConnectInput, signal: AbortSignal,
 ): Promise<Tokens> {
   const headers = sessionHeaders(identifiers, 'undefined');
   if (input.otp) headers['x-wealthsimple-otp'] = `${input.otp};remember=true`;
@@ -57,7 +57,7 @@ export async function login(
 }
 
 export async function refreshTokens(
-  transport: Transport, identifiers: Readonly<AuthIdentifiers>, refreshToken: string, signal: AbortSignal,
+  transport: WealthsimpleHttpClient, identifiers: Readonly<AuthIdentifiers>, refreshToken: string, signal: AbortSignal,
 ): Promise<Tokens> {
   const response = await transport.request(transport.endpoints.token, signal, {
     grant_type: 'refresh_token', refresh_token: refreshToken, client_id: identifiers.clientId,
@@ -70,7 +70,7 @@ export async function refreshTokens(
 }
 
 export async function lookupIdentity(
-  transport: Pick<Transport, 'endpoints' | 'request'>, headers: Readonly<Record<string, string>>, signal: AbortSignal,
+  transport: Pick<WealthsimpleHttpClient, 'endpoints' | 'request'>, headers: Readonly<Record<string, string>>, signal: AbortSignal,
 ): Promise<string> {
   const response = await transport.request(transport.endpoints.tokenInfo, signal, undefined, {
     ...headers, 'x-wealthsimple-client': '@wealthsimple/wealthsimple',

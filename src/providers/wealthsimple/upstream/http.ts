@@ -14,19 +14,19 @@ export const defaultEndpoints: Endpoints = {
   tokenInfo: 'https://api.production.wealthsimple.com/v1/oauth/v2/token/info',
   graphql: 'https://my.wealthsimple.com/graphql',
 };
-export interface TransportOptions {
+export interface WealthsimpleHttpOptions {
   /** Application/test configuration only; never sourced from incoming requests. */
   endpoints?: Partial<Endpoints>;
   fetch?: typeof globalThis.fetch;
   requestTimeoutMs?: number;
 }
 
-export class Transport {
+export class WealthsimpleHttpClient {
   readonly endpoints: Endpoints;
   #jar = new CookieJar();
   #fetch: typeof globalThis.fetch;
   #timeout: number;
-  constructor(options: TransportOptions = {}) {
+  constructor(options: WealthsimpleHttpOptions = {}) {
     this.endpoints = { ...defaultEndpoints, ...options.endpoints };
     for (const address of Object.values(this.endpoints)) {
       const url = new URL(address);
