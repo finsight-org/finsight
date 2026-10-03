@@ -20,6 +20,9 @@ export function createApp(providers: readonly ProviderDefinition[] = []) {
       reply.header('Cache-Control', 'no-store');
     });
     for (const provider of registry) {
+      if (provider.connectionRoutes) {
+        providerRoutes.register(provider.connectionRoutes, { prefix: provider.metadata.connectionEndpoint });
+      }
       const yoga = createProviderApi(provider);
       providerRoutes.route({
         url: yoga.graphqlEndpoint,
