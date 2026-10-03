@@ -173,13 +173,6 @@ limits or challenge HTML produce safe errors, without retrying authentication or
 installing browser impersonation workarounds. If fingerprint enforcement blocks
 the flow, investigate transport compatibility before expanding runtime requirements.
 
-The behavioral reference is
-[ws-api-python at 109010a](https://github.com/gboudreau/ws-api-python/tree/109010addc514eda037aa177c0078a71577f25a3).
-The implementation and synthetic fixtures are independent; no GPL source or large
-reference GraphQL fragments are incorporated. Balances, positions, transactions,
-performance, tax data, market data, persistence, web UI, and multi-user support
-remain out of scope.
-
 ## Register a provider
 
 1. Construct an executable `GraphQLSchema` with the provider's types, resolvers,
