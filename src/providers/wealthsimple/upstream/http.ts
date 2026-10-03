@@ -1,5 +1,5 @@
 import { CookieJar } from 'tough-cookie';
-import { RequestAborted, WealthsimpleError } from './errors.js';
+import { RequestAborted, WealthsimpleError } from '../errors.js';
 
 export const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 export interface Endpoints {

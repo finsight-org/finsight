@@ -1,6 +1,6 @@
-import type { SessionContext, WealthsimpleConnection } from './connection.js';
-import { Unauthorized, WealthsimpleError } from './errors.js';
-import { authFailure, checkStatus, json, object } from './protocol.js';
+import type { SessionContext, WealthsimpleConnection } from '../connection/connection.js';
+import { Unauthorized, WealthsimpleError } from '../errors.js';
+import { authFailure, checkStatus, json, object } from '../protocol.js';
 
 export interface GraphQLOperation {
   operationName: string;

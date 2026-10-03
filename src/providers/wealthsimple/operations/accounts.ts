@@ -1,6 +1,6 @@
-import type { WealthsimpleApiClient } from './client.js';
-import { WealthsimpleError } from './errors.js';
-import { object } from './protocol.js';
+import type { WealthsimpleApiClient } from '../upstream/client.js';
+import { WealthsimpleError } from '../errors.js';
+import { object } from '../protocol.js';
 
 export interface AccountPageArguments { first: number; after?: string | null }
 

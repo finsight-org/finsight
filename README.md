@@ -255,26 +255,54 @@ excluded from production build output.
 - `src/app.ts`: REST discovery and Fastify endpoint mounting.
 - `src/providers.ts`: provider contracts and registry validation.
 - `src/provider-api.ts`: shared Yoga configuration and read-only policy.
-- `src/providers/wealthsimple/index.ts`: public API adapter. Defines the GraphQL
-  schema and connection routes, validates caller input, and formats public errors.
-- `src/providers/wealthsimple/accounts.ts`: the account query, page variables,
-  and account-connection validation. Created once with the provider's shared
-  API client; resolvers call `accounts.getPage(args, signal)` to retrieve one
-  unchanged upstream page.
-- `src/providers/wealthsimple/client.ts`: the configured GraphQL API client.
-  Its authentication interceptor acquires a session context, sends the request,
-  decodes the GraphQL response, and refreshes/retries once on authentication
-  rejection. It holds no persistent authentication state.
-- `src/providers/wealthsimple/connection.ts`: the sole owner of login/OTP,
-  identity, tokens, shared refresh, session lifetime, and cleanup. Supplies
-  read-only request contexts to the API client; login and refresh use the
-  underlying transport directly.
-- `src/providers/wealthsimple/transport.ts`: HTTP transport, private cookies,
-  trusted destinations, redirects, request deadlines, and response limits.
-- `src/providers/wealthsimple/protocol.ts`: small JSON, object, and HTTP-status
-  decoding helpers shared by the provider's protocol boundaries.
-- `src/providers/wealthsimple/errors.ts`: provider error codes, safe messages,
-  and typed errors shared by those components.
+
+### Provider convention
+
+Wealthsimple is the reference for how provider responsibilities are organized:
+
+```text
+src/providers/wealthsimple/
+├── index.ts
+├── schema.ts
+├── errors.ts
+├── protocol.ts
+├── connection/
+│   ├── routes.ts
+│   ├── connection.ts
+│   └── auth.ts
+├── upstream/
+│   ├── client.ts
+│   └── http.ts
+└── operations/
+    └── accounts.ts
+```
+
+| Component | Responsibility |
+| --- | --- |
+| `index.ts` | Provider composition only: one connection, one shared API client, schema, and connection routes per provider instance. |
+| `schema.ts` | What FinSight exposes to the AI agent: GraphQL types, descriptions, input validation, resolvers calling operations, and public GraphQL errors. |
+| `operations/*` | Provider capabilities, upstream queries, variables, and capability-specific response validation. Account operations are bound to the shared client once. |
+| `upstream/client.ts` | Authenticated API boundary: request construction, GraphQL decoding, authentication interception, and one refresh/retry. Holds no persistent authentication state. |
+| `upstream/http.ts` | Provider-specific HTTP implementation: fetch, private cookies, endpoints, trusted destinations, redirects, request timeout, and response limits. |
+| `connection/routes.ts` | Manual connection HTTP adapter: instructions, incoming request validation, status/error mapping, request cancellation, and shutdown hooks. |
+| `connection/connection.ts` | How access is maintained: session state, OTP attempts, lifetime cancellation, token commits, shared refresh coordination, and cleanup. |
+| `connection/auth.ts` | Wealthsimple authentication protocol: bootstrap, device/client discovery, password/OTP login, refresh exchange, and identity lookup. Returns results for connection to commit. |
+| `errors.ts` | Safe provider error types, codes, messages, and allowlisted public error selection. |
+| `protocol.ts` | Small shared JSON, object, and HTTP-status decoding helpers; no state or request orchestration. |
+
+Two rules define the boundaries:
+
+1. **Operations never know how authentication works.**
+2. **Connection/authentication code never knows what financial operations exist.**
+
+A new Wealthsimple capability belongs in `operations/`, such as
+`transactions.ts`, `positions.ts`, or `performance.ts`, with its public fields
+and resolver added to `schema.ts`. It uses the authenticated client without
+handling MFA, tokens, cookies, or refresh.
+
+These are organizational conventions, not a shared provider framework. Each
+provider owns its schema, upstream protocol, and connection mechanism; another
+provider may use OAuth redirects, an API key, or a public wallet address.
 
 The public request flow is
 `agent → discovery → provider endpoint → provider resolvers`.

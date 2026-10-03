@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Transport, MAX_RESPONSE_BYTES } from '../src/providers/wealthsimple/transport.js';
+import { Transport, MAX_RESPONSE_BYTES } from '../src/providers/wealthsimple/upstream/http.js';
 import { endpoint, fixture, credentials } from './wealthsimple-fixtures.js';
 
 const signal = () => new AbortController().signal;

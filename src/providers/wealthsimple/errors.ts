@@ -32,3 +32,8 @@ export class RequestAborted extends WealthsimpleError {
 /** Internal protocol outcomes, handled by the client before reaching the adapter. */
 export class Unauthorized extends Error {}
 export class OTPRequired extends Error {}
+
+/** Only allowlisted provider errors cross the public adapters. */
+export function publicError(error: unknown): WealthsimpleError {
+  return error instanceof WealthsimpleError ? error : new WealthsimpleError('UPSTREAM_FAILURE');
+}
