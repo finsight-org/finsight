@@ -27,8 +27,8 @@ test('discover, introspect and query two unrelated provider schemas over HTTP', 
   const app = appFor(t, [weatherProvider(), libraryProvider().provider]);
   const catalog = (await app.inject('/providers')).json();
   assert.deepEqual(catalog.providers, [
-    { id: 'library', name: 'Library', description: 'Synthetic books and publication dates.', graphqlEndpoint: '/providers/library/graphql' },
-    { id: 'weather', name: 'Weather', description: 'Synthetic weather observations.', graphqlEndpoint: '/providers/weather/graphql' },
+    { id: 'library', mode: 'schema', name: 'Library', description: 'Synthetic books and publication dates.', graphqlEndpoint: '/providers/library/graphql' },
+    { id: 'weather', mode: 'schema', name: 'Weather', description: 'Synthetic weather observations.', graphqlEndpoint: '/providers/weather/graphql' },
   ]);
   for (const provider of catalog.providers) {
     const response = await app.inject({ method: 'POST', url: provider.graphqlEndpoint, payload: { query: getIntrospectionQuery() } });
@@ -161,6 +161,7 @@ test('disconnecting a real HTTP request cancels cooperative provider work', { ti
   const cancelled = new Promise<void>((resolve) => { markCancelled = resolve; });
   const provider: ProviderDefinition = {
     id: 'slow', name: 'Slow', description: 'Cancellation fixture.',
+    mode: 'schema',
     schema: createSchema<ProviderContext>({
       typeDefs: 'type Query { wait: String }',
       resolvers: { Query: { wait: (_parent, _args, { signal }) => new Promise((resolve) => {

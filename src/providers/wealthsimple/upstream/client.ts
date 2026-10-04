@@ -1,12 +1,7 @@
 import type { SessionContext, WealthsimpleConnection } from '../connection/connection.js';
 import { Unauthorized, WealthsimpleError } from '../errors.js';
-import { authFailure, checkStatus, json, object } from '../protocol.js';
-
-export interface GraphQLOperation {
-  operationName: string;
-  query: string;
-  variables: Record<string, unknown>;
-}
+import { authFailure, json, object } from '../protocol.js';
+import type { ForwardingRequest, ForwardingResponse } from '../../../providers.js';
 
 /** Configured GraphQL client. Authentication snapshots exist only during requests. */
 export class WealthsimpleApiClient {
@@ -15,23 +10,23 @@ export class WealthsimpleApiClient {
     private readonly operationTimeoutMs = 60_000,
   ) {}
 
-  async query(operation: GraphQLOperation, requestSignal: AbortSignal): Promise<Record<string, unknown>> {
+  async query(operation: ForwardingRequest, requestSignal: AbortSignal, injectIdentity = false): Promise<ForwardingResponse> {
     const context = this.connection.acquireSession();
     const signal = AbortSignal.any([
       requestSignal, context.lifetimeSignal, AbortSignal.timeout(this.operationTimeoutMs),
     ]);
-    return this.#withAuthentication(operation, context, signal);
+    return this.#withAuthentication(operation, context, signal, injectIdentity);
   }
 
   // Fixed authentication interceptor: one send, at most one refresh and retry.
-  async #withAuthentication(operation: GraphQLOperation, context: SessionContext, signal: AbortSignal) {
+  async #withAuthentication(operation: ForwardingRequest, context: SessionContext, signal: AbortSignal, injectIdentity: boolean) {
     context.assertCurrent(signal);
-    let data: Record<string, unknown>;
-    try { data = await this.#send(operation, context, signal); }
+    let data: ForwardingResponse;
+    try { data = await this.#send(operation, context, signal, injectIdentity); }
     catch (error) {
       if (!(error instanceof Unauthorized)) throw error;
       context = await context.refresh(signal);
-      try { data = await this.#send(operation, context, signal); }
+      try { data = await this.#send(operation, context, signal, injectIdentity); }
       catch (error) {
         if (error instanceof Unauthorized) context.rejectAuthentication(signal);
         throw error;
@@ -41,25 +36,30 @@ export class WealthsimpleApiClient {
     return data;
   }
 
-  async #send(operation: GraphQLOperation, context: SessionContext, signal: AbortSignal) {
+  async #send(operation: ForwardingRequest, context: SessionContext, signal: AbortSignal, injectIdentity: boolean) {
     const response = await context.transport.request(context.transport.endpoints.graphql, signal, {
-      ...operation, variables: { ...operation.variables, identityId: context.identityId },
+      ...operation, ...(injectIdentity ? { variables: { ...operation.variables, identityId: context.identityId } } : {}),
     }, {
       ...context.headers, 'x-ws-profile': 'trade', 'x-ws-api-version': '12',
       'x-ws-locale': 'en-CA', 'x-platform-os': 'web',
     });
-    checkStatus(response.status);
-    const body = json(response.text);
+    let body: Record<string, unknown>;
+    try { body = json(response.text); }
+    catch {
+      throw new WealthsimpleError(response.status === 429 ? 'RATE_LIMITED' : response.status >= 400 ? 'UPSTREAM_FAILURE' : 'INVALID_RESPONSE');
+    }
     if (authFailure(body)) throw new Unauthorized();
-    if (body.errors !== undefined) {
-      if (!Array.isArray(body.errors)) throw new WealthsimpleError('INVALID_RESPONSE');
+    if (Array.isArray(body.errors)) {
       for (const entry of body.errors) {
         const error = object(entry);
         const extensions = error.extensions == null ? {} : object(error.extensions);
         if (extensions.code === 'UNAUTHENTICATED' || authFailure(error)) throw new Unauthorized();
       }
-      if (body.errors.length) throw new WealthsimpleError('UPSTREAM_FAILURE');
     }
-    return object(body.data);
+    const invalid = () => new WealthsimpleError(response.status === 429 ? 'RATE_LIMITED' : response.status >= 400 ? 'UPSTREAM_FAILURE' : 'INVALID_RESPONSE');
+    if (!('data' in body) && !('errors' in body)) throw invalid();
+    if ('data' in body && body.data !== null && (typeof body.data !== 'object' || Array.isArray(body.data))) throw invalid();
+    if ('errors' in body && (!Array.isArray(body.errors) || body.errors.length === 0 || body.errors.some(error => !error || typeof error !== 'object' || Array.isArray(error) || typeof error.message !== 'string'))) throw invalid();
+    return response;
   }
 }

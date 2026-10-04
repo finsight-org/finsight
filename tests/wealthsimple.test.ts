@@ -12,27 +12,26 @@ function code(response: { json(): any }, expected: string) {
   assert.equal(body.error?.code ?? body.errors?.[0]?.extensions?.code, `WEALTHSIMPLE_${expected}`);
 }
 
-test('Wealthsimple discovery, disconnected introspection and control instructions need no upstream', async t => {
+test('Wealthsimple discovery and catalog need no upstream', async t => {
   const f = await fixture(t);
-  const catalog = (await f.app.inject('/providers')).json().providers;
-  assert.deepEqual(catalog, [{ id: 'wealthsimple', name: 'Wealthsimple', description: 'Read financial data from Wealthsimple.', graphqlEndpoint: graphql, connectionEndpoint: endpoint }]);
-  const introspection = await f.app.inject({ method: 'POST', url: graphql, payload: { query: getIntrospectionQuery() } });
-  const schema = introspection.json().data.__schema;
-  assert.equal(schema.mutationType, null);
-  assert.equal(schema.subscriptionType, null);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccount').fields.map((x: any) => x.name), ['id', 'nickname', 'unifiedAccountType', 'currency', 'status']);
-  const accounts = schema.types.find((x: any) => x.name === 'Query').fields.find((x: any) => x.name === 'accounts');
-  assert.equal(accounts.type.name, 'WealthsimpleAccountConnection');
-  assert.deepEqual(accounts.args.map((arg: any) => [arg.name, arg.defaultValue]), [['first', '25'], ['after', null]]);
-  assert.match(accounts.description, /One account page/);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccountConnection').fields.map((x: any) => x.name), ['edges', 'pageInfo']);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccountEdge').fields.map((x: any) => x.name), ['node']);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccountPageInfo').fields.map((x: any) => x.name), ['hasNextPage', 'endCursor']);
+  const providers = (await f.app.inject('/providers')).json().providers;
+  assert.deepEqual(providers, [{ id: 'wealthsimple', mode: 'forward', name: 'Wealthsimple', description: 'Read financial data from Wealthsimple.', graphqlEndpoint: graphql, connectionEndpoint: endpoint }]);
+  for (const url of [graphql, graphql + '?query=%7B__schema%7D']) {
+    const response = await f.app.inject({ url, headers: { accept: 'text/html' } });
+    assert.equal(response.statusCode, 200);
+    assert.match(response.headers['content-type']!, /application\/json/);
+    assert.deepEqual(response.json().provider, providers[0]);
+    assert.equal(response.json().introspection, 'disabled');
+    assert.equal(response.json().queries[0].query, accountQuery);
+    assert.deepEqual(response.json().queries[0].injectedVariables, ['identityId']);
+    assert.equal(response.headers['cache-control'], 'no-store');
+  }
   const status = await f.app.inject(endpoint);
   assert.equal(status.json().status, 'disconnected');
   assert.deepEqual(status.json().instructions.login.required, ['email', 'password']);
-  assert.equal(status.headers['cache-control'], 'no-store');
   code(await f.query(), 'NOT_CONNECTED');
+  const introspection = await f.app.inject({ method: 'POST', url: graphql, payload: { query: getIntrospectionQuery() } });
+  code(introspection, 'NOT_CONNECTED');
   assert.equal(f.calls.length, 0);
 });
 
@@ -41,7 +40,7 @@ test('real HTTP upstream: connect, query complete metadata, reuse session, and d
   assert.deepEqual((await f.login()).json(), { status: 'connected' });
   for (let i = 0; i < 2; i++) {
     const response = await f.query();
-    assert.deepEqual(response.json(), { data: { accounts: page().data.identity.accounts } });
+    assert.deepEqual(response.json(), page());
     assert.equal(response.headers['cache-control'], 'no-store');
     assert.doesNotMatch(response.body, secret);
   }
@@ -126,137 +125,17 @@ test('identity lookup must complete before reporting connected', async t => {
   code(await f.query(), 'NOT_CONNECTED');
 });
 
-test('clients request pages explicitly; edge order and duplicate IDs are preserved', async t => {
-  const firstNodes = [
-    { id: 'b', nickname: null, status: 'closed', unifiedAccountType: 'future-type' },
-    { id: 'a', status: 'archived' }, { id: 'b', nickname: 'Duplicate' },
-  ];
+test('clients request pages explicitly; edges and opaque cursors are untouched', async t => {
+  const nodes = [{ id: 'b', extra: 'native' }, { id: 'a' }, { id: 'b' }];
   const f = await fixture(t, { '/graphql': (call, _req, res) => respond(res,
-    call.body.variables.after === null ? page(firstNodes, true, 'next') : page([{ id: 'c' }])) });
-  await f.login();
-  const first = (await f.query()).json();
-  assert.deepEqual(first, { data: { accounts: {
-    edges: [
-      { node: { id: 'b', nickname: null, status: 'closed', unifiedAccountType: 'future-type', currency: null } },
-      { node: { id: 'a', nickname: null, status: 'archived', unifiedAccountType: null, currency: null } },
-      { node: { id: 'b', nickname: 'Duplicate', status: null, unifiedAccountType: null, currency: null } },
-    ], pageInfo: { hasNextPage: true, endCursor: 'next' },
-  } } });
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 1);
-  const second = (await f.query({ first: 10, after: first.data.accounts.pageInfo.endCursor })).json();
-  assert.deepEqual(second.data.accounts.edges.map((edge: any) => edge.node.id), ['c']);
-  assert.deepEqual(second.data.accounts.pageInfo, { hasNextPage: false, endCursor: null });
-  assert.deepEqual(f.calls.filter(c => c.path === '/graphql').map(c => [c.body.variables.first, c.body.variables.after]), [[25, null], [10, 'next']]);
-});
-
-test('empty pages succeed; malformed envelopes and upstream errors fail the field safely', async t => {
-  for (const [name, body, expected] of [
-    ['empty', page([]), null],
-    ['missing identity', { data: { identity: null } }, 'INVALID_RESPONSE'],
-    ['missing edges', { data: { identity: { accounts: { pageInfo: { hasNextPage: false } } } } }, 'INVALID_RESPONSE'],
-    ['missing page info', { data: { identity: { accounts: { edges: [] } } } }, 'INVALID_RESPONSE'],
-    ['bad page flag', { data: { identity: { accounts: { edges: [], pageInfo: { hasNextPage: 'yes' } } } } }, 'INVALID_RESPONSE'],
-    ['missing cursor', page([{ id: 'a' }], true, null), 'INVALID_RESPONSE'],
-    ['empty continuation cursor', page([], true, ''), 'INVALID_RESPONSE'],
-    ['invalid cursor', page([], false, 3), 'INVALID_RESPONSE'],
-    ['partial upstream', { ...page(), errors: [{ message: 'UPSTREAM_SECRET' }] }, 'UPSTREAM_FAILURE'],
-  ] as const) {
-    await t.test(name, async t => {
-      const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, body) });
-      await f.login();
-      const response = await f.query();
-      if (expected) { code(response, expected); assert.equal(response.json().data.accounts, null); }
-      else assert.deepEqual(response.json(), { data: { accounts: page([]).data.identity.accounts } });
-      assert.doesNotMatch(response.body, secret);
-    });
-  }
-});
-
-test('later client page failures do not invalidate earlier responses', async t => {
-  const f = await fixture(t, { '/graphql': (call, _req, res) => {
-    if (call.body.variables.after !== null) respond(res, { message: 'UPSTREAM_SECRET' }, 503);
-    else respond(res, page([{ id: 'a' }], true, 'next'));
-  } });
+    call.body.variables.after === null ? page(nodes, true, 'opaque +/cursor=') : page([])) });
   await f.login();
   const first = await f.query();
-  const before = first.body;
-  const second = await f.query({ after: 'next' });
-  code(second, 'UPSTREAM_FAILURE');
-  assert.equal(second.json().data.accounts, null);
-  assert.equal(first.body, before);
-  assert.equal(first.json().data.accounts.edges[0].node.id, 'a');
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 2);
-});
-
-test('page sizes are bounded before upstream calls; valid cursors are passed unchanged', async t => {
-  const f = await fixture(t);
-  await f.login();
-  const callsBefore = f.calls.length;
-  for (const first of [0, -1, 101]) code(await f.query({ first }), 'INVALID_PAGINATION');
-  for (const first of [null, 1.5]) {
-    const response = await f.query({ first });
-    assert.ok(response.json().errors.length);
-    assert.equal(response.json().data, undefined);
-  }
-  assert.equal(f.calls.length, callsBefore);
-  for (const first of [1, 100]) {
-    assert.ok((await f.query({ first, after: 'opaque +/cursor=' })).json().data.accounts);
-    const read = f.calls.at(-1)!;
-    assert.deepEqual(read.body.variables, { identityId: 'IDENTITY_SENTINEL', first, after: 'opaque +/cursor=' });
-  }
-  await f.query({ after: null });
-  assert.equal(f.calls.at(-1)!.body.variables.after, null);
-});
-
-test('aliases, fragments and variables execute through the paginated local schema', async t => {
-  const f = await fixture(t);
-  await f.login();
-  const response = await f.app.inject({ method: 'POST', url: graphql, payload: {
-    query: `query Read($size: Int!, $cursor: String) {
-      chosen: accounts(first: $size, after: $cursor) {
-        edges { node { ...Details } }
-        continuation: pageInfo { hasNextPage endCursor }
-      }
-    } fragment Details on WealthsimpleAccount { identifier: id nickname }`,
-    variables: { size: 7, cursor: 'chosen-cursor' }, operationName: 'Read',
-  } });
-  assert.deepEqual(response.json(), { data: { chosen: {
-    edges: [{ node: { identifier: 'a', nickname: 'Savings' } }],
-    continuation: { hasNextPage: false, endCursor: null },
-  } } });
-  assert.equal(f.calls.at(-1)!.body.variables.first, 7);
-  assert.equal(f.calls.at(-1)!.body.variables.after, 'chosen-cursor');
+  assert.deepEqual(first.json(), page(nodes, true, 'opaque +/cursor='));
   assert.equal(f.calls.filter(c => c.path === '/graphql').length, 1);
-});
-
-test('cursor progress belongs to the caller, with no tracking between requests', async t => {
-  const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, page([], true, 'same')) });
-  await f.login();
-  for (let i = 0; i < 2; i++) {
-    const response = await f.query({ after: 'same' });
-    assert.deepEqual(response.json(), { data: { accounts: page([], true, 'same').data.identity.accounts } });
-  }
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 2);
-});
-
-test('nested completion errors obey nullability without leaking upstream values', async t => {
-  for (const [name, node, fieldNullable] of [
-    ['missing id', {}, false], ['null node', null, false],
-    ['invalid id', { id: { detail: 'UPSTREAM_SECRET' } }, false],
-    ['invalid nickname', { id: 'a', nickname: { detail: 'UPSTREAM_SECRET' } }, true],
-  ] as const) await t.test(name, async t => {
-    const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, page([node])) });
-    await f.login();
-    const response = await f.query();
-    const body = response.json();
-    assert.ok(body.errors.length);
-    assert.equal(body.errors[0].message, 'Unexpected error.');
-    if (fieldNullable) {
-      assert.equal(body.data.accounts.edges[0].node.nickname, null);
-      assert.deepEqual(body.errors[0].path, ['accounts', 'edges', 0, 'node', 'nickname']);
-    } else assert.equal(body.data.accounts, null);
-    assert.doesNotMatch(response.body, secret);
-  });
+  assert.deepEqual((await f.query({ first: 101, after: first.json().data.identity.accounts.pageInfo.endCursor })).json(), page([]));
+  assert.deepEqual(f.calls.at(-1)!.body.variables, { identityId: 'IDENTITY_SENTINEL', first: 101, after: 'opaque +/cursor=' });
+  assert.deepEqual(first.json(), page(nodes, true, 'opaque +/cursor='));
 });
 
 test('HTTP and GraphQL authentication errors refresh once and rotate both tokens', async t => {
@@ -272,13 +151,13 @@ test('HTTP and GraphQL authentication errors refresh once and rotate both tokens
       },
       '/graphql': (call, _req, res) => {
         if (call.headers.authorization === `Bearer rotated-${refreshes}` && refreshes) return respond(res, page());
-        if (kind === 'http') respond(res, {}, 401);
+        if (kind === 'http') respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401);
         else if (kind === 'graphql') respond(res, { errors: [{ message: 'UPSTREAM_SECRET', extensions: { code: 'UNAUTHENTICATED' } }] });
         else respond(res, { message: 'Not Authorized.' });
       },
     });
     await f.login();
-    assert.ok((await f.query({ first: 7, after: 'retry +/cursor=' })).json().data.accounts);
+    assert.ok((await f.query({ first: 7, after: 'retry +/cursor=' })).json().data.identity.accounts);
     assert.equal(refreshes, 1);
     const reads = f.calls.filter(call => call.path === '/graphql');
     assert.equal(reads.length, 2);
@@ -300,13 +179,13 @@ test('concurrent expired reads share one refresh rotation', async t => {
       if (call.headers.authorization === `Bearer ${tokens.access_token}`) {
         if (++stale === 4) ready.resolve();
         await ready.promise;
-        respond(res, {}, 401);
+        respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401);
       } else respond(res, page());
     },
   });
   await f.login();
   const results = await Promise.all(Array.from({ length: 4 }, () => f.query()));
-  for (const response of results) assert.ok(response.json().data.accounts);
+  for (const response of results) assert.ok(response.json().data.identity.accounts);
   assert.equal(refreshes, 1);
 });
 
@@ -320,7 +199,7 @@ test('refresh rejection or a second unauthorized read requires reconnect and no 
         if (rejected) respond(res, { error: 'invalid_grant' }, 400);
         else respond(res, { access_token: 'rotated', refresh_token: 'rotated-refresh' });
       },
-      '/graphql': (_call, _req, res) => { reads++; respond(res, {}, 401); },
+      '/graphql': (_call, _req, res) => { reads++; respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401); },
     });
     await f.login();
     code(await f.query(), 'RECONNECT_REQUIRED');
@@ -401,7 +280,7 @@ test('shutdown cancels pending provider work before waiting for requests', { tim
   await started.promise;
   await f.app.close();
   await cancelled.promise;
-  assert.equal((await request).json().data.accounts, null);
+  assert.ok((await request).json().errors.length);
 });
 
 test('connections are isolated across app instances and unrelated providers stay independent', async t => {
@@ -429,7 +308,7 @@ test('cancelling one reader does not cancel a refresh needed by another', { time
     '/graphql': (call, _req, res) => {
       if (call.headers.authorization === `Bearer ${tokens.access_token}`) {
         if (++stale === 2) secondStale.resolve();
-        respond(res, {}, 401);
+        respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401);
       } else respond(res, page());
     },
   });
@@ -444,7 +323,7 @@ test('cancelling one reader does not cancel a refresh needed by another', { time
   controller.abort();
   await first;
   release.resolve();
-  assert.ok((await second).json().data.accounts);
+  assert.ok((await second).json().data.identity.accounts);
   assert.equal(refreshes, 1);
   assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
 });
@@ -458,7 +337,7 @@ test('disconnect and shutdown abort refresh and cannot revive an old session', {
         if (call.body.grant_type === 'password') return respond(res, tokens);
         res.once('close', () => cancelled.resolve()); started.resolve();
       },
-      '/graphql': (_call, _req, res) => { if (refreshed) respond(res, page()); else respond(res, {}, 401); },
+      '/graphql': (_call, _req, res) => { if (refreshed) respond(res, page()); else respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401); },
     });
     await f.login();
     const read = f.query().then(response => response);
@@ -466,11 +345,11 @@ test('disconnect and shutdown abort refresh and cannot revive an old session', {
     if (shutdown) await f.app.close();
     else await f.app.inject({ method: 'DELETE', url: endpoint });
     await cancelled.promise;
-    assert.equal((await read).json().data.accounts, null);
+    assert.ok((await read).json().errors.length);
     if (!shutdown) {
       refreshed = true;
       await f.login();
-      assert.ok((await f.query()).json().data.accounts);
+      assert.ok((await f.query()).json().data.identity.accounts);
     }
   });
 });
@@ -483,7 +362,7 @@ test('read and upstream request timeouts preserve the established connection', {
     code(await f.query(), 'TIMEOUT');
     assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
     stall = false;
-    assert.ok((await f.query()).json().data.accounts);
+    assert.ok((await f.query()).json().data.identity.accounts);
   });
 });
 
@@ -534,7 +413,7 @@ test('a rejected shared refresh remains visible after its only reader cancels', 
       if (call.body.grant_type === 'password') return respond(res, tokens);
       started.resolve(); await release.promise; respond(res, { error: 'invalid_grant' }, 400);
     },
-    '/graphql': (_call, _req, res) => respond(res, {}, 401),
+    '/graphql': (_call, _req, res) => respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401),
   });
   await f.login();
   const address = await f.app.listen({ host: '127.0.0.1', port: 0 });
@@ -570,7 +449,7 @@ test('delayed old-session responses cannot change a replacement connection', { t
       },
       '/graphql': (call, _req, res) => {
         if (operation === 'refresh' && call.headers.authorization === 'Bearer access-1') {
-          respond(res, {}, 401);
+          respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401);
         } else respond(res, page([{ id: call.headers.authorization }]));
       },
     }, {
@@ -596,7 +475,7 @@ test('delayed old-session responses cannot change a replacement connection', { t
     assert.equal((await f.login()).json().status, 'connected');
     release.resolve();
     code(await oldRequest, operation === 'login' ? 'CONNECTION_CONFLICT' : 'CANCELLED');
-    const accounts = (await f.query()).json().data.accounts;
+    const accounts = (await f.query()).json().data.identity.accounts;
     assert.equal(accounts.edges[0].node.id, 'Bearer access-2');
     assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
   });
@@ -634,7 +513,7 @@ test('identity lookup preserves one refresh and retry before connecting', async 
       code(await f.query(), 'NOT_CONNECTED');
     } else {
       assert.equal(response.json().status, 'connected');
-      assert.ok((await f.query()).json().data.accounts);
+      assert.ok((await f.query()).json().data.identity.accounts);
       const read = f.calls.find(call => call.path === '/graphql');
       assert.equal(read?.headers.authorization, 'Bearer identity-rotated');
       assert.equal(read?.body.variables.identityId, 'IDENTITY_SENTINEL');
@@ -659,7 +538,7 @@ test('a late authentication rejection reuses the token another reader already re
     '/graphql': async (call, _req, res) => {
       if (call.headers.authorization === `Bearer ${tokens.access_token}`) {
         if (++staleReads === 1) { delayed.resolve(); await release.promise; }
-        respond(res, {}, 401);
+        respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401);
       } else {
         assert.equal(call.headers.authorization, 'Bearer rotated');
         respond(res, page());
@@ -669,9 +548,9 @@ test('a late authentication rejection reuses the token another reader already re
   await f.login();
   const first = f.query({ first: 3, after: 'delayed-page' }).then(response => response);
   await delayed.promise;
-  assert.ok((await f.query({ first: 7, after: 'other-page' })).json().data.accounts);
+  assert.ok((await f.query({ first: 7, after: 'other-page' })).json().data.identity.accounts);
   release.resolve();
-  assert.ok((await first).json().data.accounts);
+  assert.ok((await first).json().data.identity.accounts);
   assert.equal(refreshes, 1);
   const reads = f.calls.filter(call => call.path === '/graphql');
   assert.equal(reads.length, 4);
@@ -706,7 +585,7 @@ test('non-authentication refresh failures preserve the session without recursive
         if (call.headers.authorization === 'Bearer rotated') respond(res, page());
         else {
           assert.equal(call.headers.authorization, `Bearer ${tokens.access_token}`);
-          respond(res, {}, 401);
+          respond(res, { errors: [{ message: 'Not Authorized', extensions: { code: 'UNAUTHENTICATED' } }] }, 401);
         }
       },
     });
@@ -718,7 +597,7 @@ test('non-authentication refresh failures preserve the session without recursive
     assert.equal(f.calls.filter(call => call.path === '/graphql').length, 1);
     assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
     recover = true;
-    assert.ok((await f.query()).json().data.accounts);
+    assert.ok((await f.query()).json().data.identity.accounts);
     assert.equal(refreshes, 2);
     assert.equal(f.calls.filter(call => call.body.grant_type === 'password').length, 1);
   });

@@ -57,3 +57,36 @@ test('registration rejects missing query roots, invalid schemas and write/stream
   });
   assert.equal(createProviderRegistry([{ ...provider, schema }]).length, 1);
 });
+
+test('forwarding definitions preserve their mode and snapshot catalogs', () => {
+  const catalog = { introspection: 'disabled' as const, queries: [{ id: 'one', description: 'Example', operationName: 'One', query: 'query One { __typename }', variables: {}, injectedVariables: [] }] };
+  const executor = async () => ({ status: 200, text: '{"data":null}' });
+  const registry = createProviderRegistry([{ id: 'native', name: 'Native', description: 'Example native provider.', mode: 'forward', executor, catalog }]);
+  catalog.queries[0].query = 'changed';
+  const registered = registry[0];
+  assert.equal(registered.metadata.mode, 'forward');
+  assert.equal(registered.mode, 'forward');
+  if (registered.mode !== 'forward') throw new Error('Expected forward mode');
+  assert.equal(registered.executor, executor);
+  assert.equal(registered.catalog!.queries[0]!.query, 'query One { __typename }');
+  assert.ok(!('executor' in registered.metadata));
+});
+
+test('runtime registry rejects invalid mode combinations and catalogs', () => {
+  const base = { id: 'native', name: 'Native', description: 'Example' };
+  const schema = buildSchema('type Query { ok: String }');
+  const executor = async () => ({ status: 200, text: '{"data":null}' });
+  for (const invalid of [
+    { ...base, schema },
+    { ...base, mode: 'unknown', executor },
+    { ...base, mode: 'schema', schema, executor },
+    { ...base, mode: 'schema', schema, catalog: {} },
+    { ...base, mode: 'forward' },
+    { ...base, mode: 'forward', executor, catalog: null },
+    { ...base, mode: 'forward', executor, schema },
+    { ...base, mode: 'forward', executor, catalog: { introspection: 'unknown', queries: [{}] } },
+  ]) {
+    // Exercise JavaScript callers that bypass the discriminated TypeScript union.
+    assert.throws(() => createProviderRegistry([invalid as unknown as import('../src/providers.js').ProviderDefinition]));
+  }
+});

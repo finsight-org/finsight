@@ -1,6 +1,5 @@
 const messages = {
   INVALID_REQUEST: 'Invalid Wealthsimple connection request.',
-  INVALID_PAGINATION: 'Wealthsimple account page size must be between 1 and 100.',
   LOGIN_FAILED: 'Wealthsimple login failed. Check your credentials and OTP.',
   CONNECTION_CONFLICT: 'The connection or pending attempt changed. Disconnect or start a new attempt.',
   NOT_CONNECTED: 'Connect to Wealthsimple before querying financial data.',

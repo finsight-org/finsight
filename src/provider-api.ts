@@ -21,7 +21,7 @@ const readOnlyPlugin: Plugin = {
   onValidate: ({ addValidationRule }) => addValidationRule(readOnlyRule),
 };
 
-export function createProviderApi(provider: RegisteredProvider) {
+export function createProviderApi(provider: Extract<RegisteredProvider, { mode: 'schema' }>) {
   return createYoga({
     schema: provider.schema,
     graphqlEndpoint: provider.metadata.graphqlEndpoint,

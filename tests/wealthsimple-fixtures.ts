@@ -1,13 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { TestContext } from 'node:test';
+import { accountsQuery } from '../src/providers/wealthsimple/catalog.js';
 import { createApp } from '../src/app.js';
 import { wealthsimpleProvider, type WealthsimpleOptions } from '../src/providers/wealthsimple/index.js';
 
 export const endpoint = '/providers/wealthsimple/connection';
 export const graphql = '/providers/wealthsimple/graphql';
 export const credentials = { email: 'person@example.test', password: 'PASSWORD_SENTINEL' };
-export const accountFields = 'edges { node { id nickname unifiedAccountType currency status } } pageInfo { hasNextPage endCursor }';
-export const accountQuery = `{ accounts { ${accountFields} } }`;
+export const accountQuery = accountsQuery;
 export const tokens = { access_token: 'ACCESS_SENTINEL', refresh_token: 'REFRESH_SENTINEL' };
 export function page(nodes: unknown[] = [{ id: 'a', nickname: 'Savings', unifiedAccountType: 'tfsa', currency: 'CAD', status: 'open' }], next = false, cursor: unknown = null) {
   return { data: { identity: { accounts: { edges: nodes.map(node => ({ node })), pageInfo: { hasNextPage: next, endCursor: cursor } } } } };
@@ -56,9 +56,7 @@ export async function fixture(t: TestContext, overrides: Record<string, Override
     app, calls, provider,
     login: (payload: unknown = credentials) => app.inject({ method: 'POST', url: endpoint, payload: payload as object }),
     query: (variables?: { first?: number | null; after?: string | null }) => app.inject({ method: 'POST', url: graphql,
-      payload: variables === undefined ? { query: accountQuery } : {
-        query: `query Accounts($first: Int! = 25, $after: String) { accounts(first: $first, after: $after) { ${accountFields} } }`, variables,
-      } }),
+      payload: { query: accountQuery, variables: { first: 25, after: null, ...variables } } }),
   };
 }
 export function deferred<T = void>() {

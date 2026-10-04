@@ -1,3 +1,4 @@
+import { createForwardingApi } from './forwarding-api.js';
 import Fastify, { LogController } from 'fastify';
 import { createProviderApi, MAX_REQUEST_BODY_SIZE } from './provider-api.js';
 import { createProviderRegistry, type ProviderDefinition } from './providers.js';
@@ -22,6 +23,10 @@ export function createApp(providers: readonly ProviderDefinition[] = []) {
     for (const provider of registry) {
       if (provider.connectionRoutes) {
         providerRoutes.register(provider.connectionRoutes, { prefix: provider.metadata.connectionEndpoint });
+      }
+      if (provider.mode === 'forward') {
+        providerRoutes.register(createForwardingApi(provider));
+        continue;
       }
       const yoga = createProviderApi(provider);
       providerRoutes.route({

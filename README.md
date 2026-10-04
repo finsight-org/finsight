@@ -2,10 +2,10 @@
 
 Open-source financial connectors for AI agents.
 
-FinSight discovers and hosts independent, read-only provider GraphQL APIs.
-Providers retain their own concepts and schemas; agents handle financial
-reasoning. There is no universal financial model, schema federation, or outer
-GraphQL operation wrapping a provider query.
+FinSight discovers and hosts independent provider GraphQL APIs. Providers either
+execute a local schema or forward their native API. FinSight owns connection,
+authentication, and GraphQL query-only enforcement; it does not define a universal
+financial model or recreate Wealthsimple's financial types.
 
 ## Run locally
 
@@ -16,47 +16,43 @@ npm ci
 npm run dev
 ```
 
-The server listens at `http://127.0.0.1:4000`. Use `PORT=4001 npm run dev` to
-choose another port. Normal startup registers Wealthsimple:
+The server listens at `http://127.0.0.1:4000`. Use `PORT=4001 npm run dev` for
+another port. The server is a trusted local, single-user service with no local
+bearer authentication or multi-user isolation. It binds only to loopback; do not
+expose it to a network. Wealthsimple uses an experimental unofficial API.
+Credentials, cookies, and tokens stay in memory; restarting requires reconnecting.
+
+## Discover providers and queries
 
 ```sh
 curl http://127.0.0.1:4000/providers
-# {"providers":[{"id":"wealthsimple","name":"Wealthsimple","description":"Read financial data from Wealthsimple.","graphqlEndpoint":"/providers/wealthsimple/graphql","connectionEndpoint":"/providers/wealthsimple/connection"}]}
+curl http://127.0.0.1:4000/providers/wealthsimple/graphql
 ```
 
-The server is a trusted local, single-user service. It remains loopback-only,
-with no local bearer authentication or multi-user isolation. Wealthsimple uses
-an experimental unofficial API. Credentials, cookies, and tokens stay in memory;
-restart or disconnect to discard the connection. Synthetic providers exist only
-in tests. Do not expose this service to a network.
+`GET /providers` returns sorted metadata: `id`, `name`, `description`, `mode`,
+`graphqlEndpoint`, and an optional `connectionEndpoint`. Registration means an
+endpoint exists, not that it is connected or healthy.
 
-## Discover, introspect, query
+Wealthsimple uses `mode: "forward"`. Its single GraphQL URL supports two methods:
 
-`GET /providers` returns a process-wide catalog, sorted by provider ID. Each
-entry contains `id`, `name`, `description`, and `graphqlEndpoint`, an
-origin-relative path. Providers with a connection interface also advertise
-`connectionEndpoint`. GET that endpoint for provider-owned instructions; other
-providers may use entirely different connection mechanisms. Registration means
-that the API is mounted, not that a provider is authenticated, connected, or healthy.
+- **GET** returns `{ provider, introspection, queries }`, available even while
+  disconnected. Each catalog entry has `id`, `description`, `operationName`,
+  `query`, example `variables`, and `injectedVariables`.
+- **POST** executes a JSON GraphQL request: `query`, optional `operationName`,
+  and optional object `variables`.
 
-Wealthsimple is registered before login. An agent can inspect its schema even
-while disconnected, without contacting Wealthsimple:
+GET never executes a query, even with query-string parameters or an HTML Accept
+header. There is no separate catalog endpoint or browser UI for Wealthsimple.
+The catalog provides examples, not an allowlist: callers may submit native query
+fields that FinSight has never modeled. Accounts is the initial example.
 
-```sh
-curl http://127.0.0.1:4000/providers/wealthsimple/graphql \
-  -H 'Content-Type: application/json' \
-  --data '{"query":"{ __schema { queryType { name fields { name description } } } }"}'
-```
+Authenticated Wealthsimple introspection was observed to return HTTP 403 with
+`INTROSPECTION_DISABLED`. Catalog metadata reports `introspection: "disabled"`.
+Explicit POST introspection requests are still forwarded and return the native
+response; FinSight does not synthesize a schema or automatically probe upstream.
 
-Then send a normal GraphQL request to the same endpoint with `query`, optional
-`variables`, and optional `operationName`. Responses are standard GraphQL
-`data` and `errors`, including partial results, error locations, paths, and
-explicitly public extensions. FinSight does not interpret provider data.
-
-Each provider endpoint supports GraphQL GET/POST requests and hosts GraphiQL
-when opened in a browser. Normal GraphQL introspection is enabled. There is no
-global `/graphql` endpoint or separate schema-download API. Unknown endpoints
-return HTTP 404.
+Providers with `mode: "schema"` retain Yoga's GET/POST execution, local
+introspection, and GraphiQL. There is no global `/graphql` endpoint.
 
 ## Connect to Wealthsimple manually
 
@@ -103,126 +99,150 @@ promise that a listed provider is connected or healthy.
 
 ### Query accounts
 
-Once connected, request one account page from the separately discoverable
-GraphQL endpoint:
+This replaces the former local `{ accounts { ... } }` API. Use Wealthsimple's
+native `identity` root and field names instead. Retrieve and execute the catalog
+example (requires `jq`):
 
 ```sh
-curl http://127.0.0.1:4000/providers/wealthsimple/graphql \
-  -H 'Content-Type: application/json' \
-  --data '{"query":"query Accounts($after: String) { accounts(first: 25, after: $after) { edges { node { id nickname unifiedAccountType currency status } } pageInfo { hasNextPage endCursor } } }","variables":{"after":null}}'
+curl --silent http://127.0.0.1:4000/providers/wealthsimple/graphql \
+  | jq '.queries[] | select(.id == "accounts") | {query, operationName, variables}' \
+  | curl http://127.0.0.1:4000/providers/wealthsimple/graphql \
+      -H 'Content-Type: application/json' --data-binary @-
 ```
 
-When `pageInfo.hasNextPage` is true, send another request using the returned
-`pageInfo.endCursor` as the `after` variable. Each account-field execution reads
-one page, with a single retry only if authentication needs refreshing. FinSight
-does not follow cursors, combine pages, flatten edges, or remove duplicates.
-The agent decides when to request another page.
+The example uses this native selection:
 
-`accounts(first: Int! = 25, after: String)` returns a
-`WealthsimpleAccountConnection` containing `edges { node { ... } }` and
-`pageInfo { hasNextPage endCursor }`. Page sizes must be between 1 and 100;
-this is FinSight's local limit. Omitted or null `after` requests the first page;
-other cursor strings are passed unchanged. A missing continuation cursor on a
-page that claims another page exists produces a safe error.
+```graphql
+query Accounts($identityId: ID!, $first: Int = 25, $after: String) {
+  identity(id: $identityId) {
+    accounts(filter: {}, first: $first, after: $after) {
+      edges {
+        cursor
+        node {
+          id nickname unifiedAccountType currency supportedCurrencies status createdAt
+          custodianAccounts { id custodian status }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+```
 
-The page comes from the authenticated identity's direct account collection,
-including non-open statuses. Account order and duplicate IDs are preserved.
-Nicknames, account types, currencies, and statuses retain Wealthsimple's values;
-unavailable optional fields are null. An empty page has `edges: []` with its
-upstream page information. A failed/malformed page fails the `accounts` field
-for that request. Earlier page responses remain valid. Nested field errors
-follow normal GraphQL nullability and partial-result rules, with unexpected
-diagnostics masked.
+Send `{"first":25,"after":null}` as variables. FinSight supplies `identityId`.
+The response stays in Wealthsimple's `data.identity.accounts` structure. To read
+another page, send `pageInfo.endCursor` as `after`. FinSight makes one request per
+submitted query, except for one authentication retry. It does not follow cursors,
+reshape fields, fill missing values, remove duplicates, validate account pages,
+or enforce a local page-size range. Wealthsimple validates fields and pagination.
 
-This is a Wealthsimple-shaped subset with a local `accounts` root and private
-identity resolution. The endpoint uses a fixed minimal upstream operation and
-normal local GraphQL selection; it does not forward arbitrary queries upstream.
-The former flat-list query shape is replaced by the paginated connection.
+### Identity binding and response behavior
 
-The provider obtains the canonical identity privately during login. Reads reuse
-the session and refresh tokens lazily on recognized authentication failures,
-retrying the failed read once. Concurrent expired reads share a token rotation.
-Rejected refresh or another authentication failure requires reconnection. There
-is no background keep-alive, token persistence, or financial cache. Upstream
-requests have 30-second timeouts and 8 MiB response limits; login and account
-operations have 60-second deadlines. Client disconnect, local disconnect, and
-server shutdown cancel associated work.
+Every field actually named `identity`, including aliases and fields in fragments,
+must use exactly `id: $identityId`. Literals, other variables, missing IDs, and
+duplicate ID arguments are rejected. Each operation accessing identity must
+declare `$identityId: ID!`. The selected operation's declared identity variable
+is overwritten with the connected identity; other variables and the query text
+are preserved. The reserved variable must have this type whenever declared.
+Queries without that declaration receive no injected variable.
 
-Disconnect locally:
+This binds `identity(id: ...)` access only. Wealthsimple remains responsible for
+authorizing other roots, account IDs, and resources. FinSight does not claim
+comprehensive resource isolation.
+
+Valid non-authentication GraphQL responses retain their original response text
+and HTTP status, including partial data, unknown fields, numeric representations,
+errors, locations, paths, and extensions. **Upstream GraphQL diagnostics now pass
+through**, replacing the old generic error masking for those responses. Upstream
+cookies and headers are not forwarded. Local exceptions, malformed responses,
+and transport failures still become safe FinSight GraphQL errors.
+
+Recognized `UNAUTHENTICATED` errors and exact `Not Authorized` messages trigger
+at most one refresh and retry. Status 401 or 403 alone does not trigger refresh.
+Non-authentication GraphQL responses, including introspection denial, pass
+through unchanged. Concurrent expired reads share refresh coordination. Rejected
+refresh or a second authentication failure requires reconnecting. Authentication
+endpoint error handling is separate from financial GraphQL response forwarding.
+
+Requests have 30-second upstream timeouts and 8 MiB response limits. Login and
+GraphQL operations have 60-second overall deadlines. Client disconnect, local
+disconnect, and shutdown cancel associated work. There is no background refresh,
+token persistence, or financial cache.
 
 ```sh
 curl -X DELETE http://127.0.0.1:4000/providers/wealthsimple/connection
-# HTTP 204
 ```
 
-This clears local state; it does not claim to revoke Wealthsimple's remote session.
+Disconnect clears local state; it does not revoke the remote Wealthsimple session.
 
-### Transport compatibility and manual smoke test
+### Transport compatibility
 
-Native Node fetch and a private cookie jar are used. A public bootstrap check
-successfully fetched the login page and app bundle and extracted device/client
-identifiers. Authenticated transport and account coverage still require a real
-local smoke test: discover, connect (including OTP if requested), introspect,
-query accounts, disconnect, and confirm account reads then require connection.
-Restarting must also require login again. Do not commit credentials, tokens,
-account output, or real upstream response fixtures.
-
-Wealthsimple/Cloudflare may reject clients based on their browser/TLS fingerprint.
-Public bootstrap success does not establish authenticated compatibility. Rate
-limits or challenge HTML produce safe errors, without retrying authentication or
-installing browser impersonation workarounds. If fingerprint enforcement blocks
-the flow, investigate transport compatibility before expanding runtime requirements.
+Native Node fetch and a private cookie jar are used. Wealthsimple/Cloudflare may
+reject clients based on their browser/TLS fingerprint. Public bootstrap success
+does not establish authenticated compatibility. Challenge HTML produces safe
+errors. Tests use synthetic upstreams; the accounts catalog is based on the
+known native query, not a schema introspection result. Do not commit credentials,
+tokens, account output, or real upstream response fixtures.
 
 ## Register a provider
 
-1. Construct an executable `GraphQLSchema` with the provider's types, resolvers,
-   descriptions, and custom scalars. Yoga's `createSchema` or GraphQL's schema
-   constructors can be used. Capture private dependencies in provider-owned
-   resolver closures.
-2. Export a definition implementing `ProviderDefinition` (from `src/providers.ts`)
-   containing `id`, `name`, `description`, and `schema`. IDs use lowercase
-   alphanumeric segments separated by single hyphens (for example, `example-2`).
-   Names and descriptions must not be blank.
-3. Optionally provide a `connectionRoutes` Fastify async plugin. Core mounts it
-   beneath `/providers/{id}/connection`; register `/` with
-   `prefixTrailingSlash: 'both'` for the entry point. The provider owns request
-   shapes, statuses, errors, and any subroutes. Use lifecycle hooks to cancel
-   work and dispose private state. Core only advertises and mounts the interface.
-4. At application composition in `src/main.ts`, supply provider definitions to
-   `createApp([provider])`. Core infrastructure does not import concrete providers.
+`ProviderDefinition` is a discriminated union with common `id`, `name`,
+`description`, and optional `connectionRoutes`:
 
-Registration validates schemas, rejects duplicate IDs and mutation/subscription
-roots, snapshots public metadata, and derives endpoint paths. A query root is
-required. The registry is immutable; treat registered schema objects as immutable
-too. Restart the application to change registrations or schemas.
+- `mode: "schema"` requires an executable `schema`. Local types, resolvers,
+  descriptions, and scalars belong to that provider. Only a query root is allowed.
+- `mode: "forward"` requires an `executor(request, signal)` returning
+  `{ status, text }` and optionally a `catalog`. The executor owns provider-specific
+  authentication and identity policy. The common adapter owns request parsing
+  and query-only policy. Expected public request errors may use `GraphQLError`;
+  other exceptions are masked.
 
-Providers can use unrelated schemas, including identically named types with
-different fields. Adding provider capabilities changes only that provider.
-There is no required account, balance, or transaction model.
+The registry validates metadata and mode configuration, rejects duplicate IDs,
+and snapshots metadata and catalogs. IDs use lowercase alphanumeric segments
+separated by single hyphens. Treat registered configuration as immutable.
 
-The supported resolver context is `ProviderContext`, whose `signal` is fresh
-for each request. Pass this cancellation signal to asynchronous work, including
-upstream fetches. Cancellation is cooperative: providers must observe it.
-Fastify and Yoga transport context internals are not part of the GraphQL resolver
-contract. Only the optional HTTP connection adapter depends on Fastify.
+Connection routes are a provider-owned Fastify async plugin mounted beneath
+`/providers/{id}/connection`. Register `/` with `prefixTrailingSlash: 'both'`.
+The provider owns inputs, statuses, errors, and lifecycle cleanup. Compose
+providers with `createApp([provider])`; core infrastructure never imports concrete
+providers. Schema resolvers receive `ProviderContext.signal`; forwarding
+executors receive the signal directly. Cancellation is cooperative.
 
 ## Execution policy
 
-- Only queries are accepted. Documents containing any mutation or subscription
-  are rejected even if another operation is selected. Provider resolvers must
-  perform financial reads only; GraphQL validation cannot enforce upstream intent.
-- Each provider has its own Yoga instance, schema, and parser/validation caches.
-- Unexpected exceptions are masked without development diagnostics. A deliberate
-  `GraphQLError` is public: providers must keep its message and extensions safe.
-- Fastify and Yoga enforce a 1 MiB request-body ceiling; Wealthsimple connection
-  POSTs have a tighter 16 KiB ceiling. Batching, multipart
-  uploads, and incremental-delivery directives are disabled.
-- Provider responses use `Cache-Control: no-store`. Cross-origin browser access
-  is not enabled. Automatic request logging is disabled to avoid logging GET
-  query strings; GraphQL bodies and results are not logged.
+- FinSight enforces **GraphQL query-only operations**. Any mutation or subscription
+  in a document is rejected, even if another query is selected. Only the upstream
+  controls whether its query fields have side effects; there is no field allowlist.
+- Forwarding rejects invalid request envelopes, syntax, operation selection,
+  schema definitions, duplicate operation/fragment names, and `@defer`/`@stream`.
+  It delegates financial fields, argument types, and fragment validity to upstream.
+- JSON POST is the forwarding execution interface. Persisted-query extensions,
+  batches, and multipart uploads are unsupported. The parser limits documents to
+  50,000 tokens, and request bodies to 1 MiB. Connection POSTs have a 16 KiB limit.
+- Provider responses are `Cache-Control: no-store`; CORS is not enabled. Automatic
+  request logging is disabled. Queries, variables, and results are not logged.
+- Schema-mode providers retain independent Yoga schemas and masked unexpected
+  resolver exceptions. Deliberate `GraphQLError` messages and extensions are public.
 
-There is no dynamic plugin system, generic authentication/session framework,
-connection selection, remote providers, or provider-specific query-cost limit.
+## Architecture
+
+Shared provider infrastructure registers both modes and mounts their endpoints.
+Schema mode uses Yoga. Forward mode validates the operation, calls the provider's
+executor, and returns its response text. Wealthsimple's flow is:
+
+```text
+POST native query → query-only policy → identity binding
+  → authenticated API client → transport → Wealthsimple
+  → original GraphQL response text and status → caller
+```
+
+Wealthsimple's `index.ts` composes the connection, shared API client, forwarding
+executor, and catalog. `forwarding.ts` owns identity binding and safe local error
+mapping. `catalog.ts` contains query examples, not financial models.
+`upstream/client.ts` owns GraphQL authentication interception and response
+classification; `upstream/http.ts` owns cookies, destinations, limits, and fetch.
+`connection/` owns login, OTP, identity resolution, refresh coordination, and
+session lifecycle. Connection code does not know what financial queries exist.
 
 ## Verify and build
 
@@ -233,75 +253,8 @@ npm run build
 npm start
 ```
 
-Tests use Node's built-in runner and `tsx`, with no external services or real
-credentials. Two unrelated synthetic providers demonstrate discovery, direct
-introspection, isolated schemas, standard execution, safe errors, transport
-policy, and cancellation on an actual client disconnect. Wealthsimple tests
-exercise the full HTTP surface against a local synthetic upstream, including
-authentication, OTP, token refresh, pagination, safe errors,
-and cancellation. Tests have a separate no-emit TypeScript configuration and are
-excluded from production build output.
-
-## Components
-
-- `src/main.ts`: application composition, startup, and shutdown.
-- `src/app.ts`: REST discovery and Fastify endpoint mounting.
-- `src/providers.ts`: provider contracts and registry validation.
-- `src/provider-api.ts`: shared Yoga configuration and read-only policy.
-
-### Provider convention
-
-Wealthsimple is the reference for how provider responsibilities are organized:
-
-```text
-src/providers/wealthsimple/
-├── index.ts
-├── schema.ts
-├── errors.ts
-├── protocol.ts
-├── connection/
-│   ├── routes.ts
-│   ├── connection.ts
-│   └── auth.ts
-├── upstream/
-│   ├── client.ts
-│   └── http.ts
-└── operations/
-    └── accounts.ts
-```
-
-| Component | Responsibility |
-| --- | --- |
-| `index.ts` | Provider composition only: creates one connection, one shared API client, operations, schema, and connection routes per provider instance. |
-| `schema.ts` | What FinSight exposes to the AI agent: GraphQL types, descriptions, input validation, resolvers calling the supplied operations, and public GraphQL errors. Receives operations already created by `index.ts`. |
-| `operations/*` | Provider capabilities, upstream queries, variables, and capability-specific response validation. Account operations are bound to the shared client once. |
-| `upstream/client.ts` | Authenticated API boundary: request construction, GraphQL decoding, authentication interception, and one refresh/retry. Holds no persistent authentication state. |
-| `upstream/http.ts` | `WealthsimpleHttpClient` with `WealthsimpleHttpOptions`: provider-specific fetch, private cookies, endpoints, trusted destinations, redirects, request timeout, and response limits. |
-| `connection/routes.ts` | Manual connection HTTP adapter: instructions, incoming request validation, status/error mapping, request cancellation, and shutdown hooks. |
-| `connection/connection.ts` | How access is maintained: session state, OTP attempts, lifetime cancellation, token commits, shared refresh coordination, and cleanup. |
-| `connection/auth.ts` | Wealthsimple authentication protocol: bootstrap, device/client discovery, password/OTP login, refresh exchange, and identity lookup. Returns results for connection to commit. |
-| `errors.ts` | Safe provider error types, codes, messages, and allowlisted public error selection. |
-| `protocol.ts` | Small shared JSON, object, and HTTP-status decoding helpers; no state or request orchestration. |
-
-Two rules define the boundaries:
-
-1. **Operations never know how authentication works.**
-2. **Connection/authentication code never knows what financial operations exist.**
-
-A new Wealthsimple capability belongs in `operations/`, such as
-`transactions.ts`, `positions.ts`, or `performance.ts`, with its public fields
-and resolver added to `schema.ts`. It uses the authenticated client without
-handling MFA, tokens, cookies, or refresh.
-
-These are organizational conventions, not a shared provider framework. Each
-provider owns its schema, upstream protocol, and connection mechanism; another
-provider may use OAuth redirects, an API key, or a public wallet address.
-
-The public request flow is
-`agent → discovery → provider endpoint → provider resolvers`.
-Wealthsimple account reads follow
-`adapter → accounts → API client/interceptor → transport → Wealthsimple`.
-The interceptor consults connection state for authentication and shared refresh;
-accounts never handles tokens or retries. Each request retains one overall
-operation deadline across refresh and retry. Disconnect cancels session work,
-while cancelling one reader leaves a shared refresh available to other readers.
+Tests use Node's test runner and synthetic local upstreams with no real credentials.
+They cover both provider modes, catalog discovery, exact response passthrough,
+identity binding, query policy, authentication, refresh coordination, pagination,
+transport limits, cancellation, and masked local errors. Restarting after an
+upgrade discards the in-memory connection and requires login again.

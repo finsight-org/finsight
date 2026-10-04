@@ -8,6 +8,7 @@ export function libraryProvider() {
     id: 'library',
     name: 'Library',
     description: 'Synthetic books and publication dates.',
+    mode: 'schema',
     schema: createSchema<ProviderContext>({
       typeDefs: `
         scalar PublicationDate
@@ -52,6 +53,7 @@ export function weatherProvider(): ProviderDefinition {
     id: 'weather',
     name: 'Weather',
     description: 'Synthetic weather observations.',
+    mode: 'schema',
     schema: createSchema({
       typeDefs: `
         type Record { celsius: Float!, station: String! }
