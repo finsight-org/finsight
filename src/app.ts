@@ -1,12 +1,13 @@
 import Fastify, { LogController } from 'fastify';
-import { createProviderApi, MAX_REQUEST_BODY_SIZE } from './provider-api.js';
-import { createProviderRegistry, type ProviderDefinition } from './providers.js';
+import { createProviderRegistry, type Provider } from './providers.js';
 
-export function createApp(providers: readonly ProviderDefinition[] = []) {
+export const MAX_REQUEST_BODY_SIZE = 1024 * 1024;
+
+export function createApp(providers: readonly Provider[] = []) {
   const registry = createProviderRegistry(providers);
   const app = Fastify({
     logger: true,
-    // GraphQL GET requests can contain sensitive variables in their URLs.
+    // Provider requests can contain sensitive credentials and query variables.
     logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: MAX_REQUEST_BODY_SIZE,
   });
@@ -20,15 +21,7 @@ export function createApp(providers: readonly ProviderDefinition[] = []) {
       reply.header('Cache-Control', 'no-store');
     });
     for (const provider of registry) {
-      if (provider.connectionRoutes) {
-        providerRoutes.register(provider.connectionRoutes, { prefix: provider.metadata.connectionEndpoint });
-      }
-      const yoga = createProviderApi(provider);
-      providerRoutes.route({
-        url: yoga.graphqlEndpoint,
-        method: ['GET', 'POST', 'OPTIONS'],
-        handler: (req, reply) => yoga.handleNodeRequestAndResponse(req, reply),
-      });
+      providerRoutes.register(provider.routes, { prefix: `/providers/${provider.metadata.id}` });
     }
   });
 

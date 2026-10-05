@@ -1,0 +1,41 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Variables example: {"since":"2026-01-01","first":20}.
+# Dividends and realized returns share the account/currency/date scope.
+# Only the realized-security breakdown is paginated; an empty connection is valid.
+query InvestmentIncome(
+  $identityId: ID!
+  $currency: Currency! = CAD
+  $accountIds: [ID!]
+  $since: Date
+  $first: Int = 20
+  $after: String
+) {
+  identity(id: $identityId) {
+    financials(filter: {accounts: $accountIds}, accountScope: OWN) {
+      dividendsV2(currency: $currency, startDate: $since) {
+        totalValue { amount currency }
+        issuingSecurityBreakdown {
+          security { ...IncomeSecurity }
+          totalValue { amount currency }
+        }
+      }
+      realizedReturns(currency: $currency, startDate: $since) {
+        totalValue { amount currency }
+        securityBreakdown(first: $first, after: $after) {
+          edges {
+            node {
+              security { ...IncomeSecurity }
+              totalValue { amount currency }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }
+}
+
+fragment IncomeSecurity on Security {
+  id
+  stock { symbol name }
+}

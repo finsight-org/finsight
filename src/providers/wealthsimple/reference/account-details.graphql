@@ -1,0 +1,26 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Supply accountId from AccountInventory. Dates, nickname, and financials may be null.
+# Custodian entries remain separate; do not assume their values should be summed.
+query AccountDetails($accountId: ID!) {
+  account(id: $accountId) {
+    id
+    nickname
+    currency
+    status
+    createdAt
+    closedAt
+    accountFeatures { name enabled }
+    custodianAccounts {
+      custodian
+      branch
+      status
+      financials {
+        current {
+          deposits { amount currency }
+          withdrawals { amount currency }
+          earnings { amount currency }
+        }
+      }
+    }
+  }
+}

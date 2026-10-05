@@ -1,59 +1,42 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildSchema, GraphQLSchema, GraphQLObjectType, GraphQLString } from 'graphql';
 import { createProviderRegistry } from '../src/providers.js';
 import { libraryProvider, weatherProvider } from './fixtures.js';
 
-test('registry snapshots metadata, sorts registrations and freezes its collection', () => {
-  const definition = { ...libraryProvider().provider };
+test('registry snapshots metadata, sorts providers and freezes its collection', () => {
+  const provider = libraryProvider().provider;
+  const definition = { metadata: { ...provider.metadata }, routes: provider.routes };
   const definitions = [weatherProvider(), definition];
   const registry = createProviderRegistry(definitions);
-  definition.name = 'Changed';
+  definition.metadata.name = 'Changed';
+  definition.routes = async () => {};
   definitions.length = 0;
   assert.deepEqual(registry.map(({ metadata }) => metadata.id), ['library', 'weather']);
   assert.equal(registry[0].metadata.name, 'Library');
-  assert.equal(registry[0].metadata.graphqlEndpoint, '/providers/library/graphql');
+  assert.equal(registry[0].routes, provider.routes);
   assert.ok(Object.isFrozen(registry));
   assert.ok(Object.isFrozen(registry[0]));
   assert.ok(Object.isFrozen(registry[0].metadata));
 });
 
-test('connection endpoints are optional and handlers are kept out of public metadata', () => {
-  const connectionRoutes = async () => {};
-  const definition = { ...libraryProvider().provider, connectionRoutes };
-  const registry = createProviderRegistry([definition, weatherProvider()]);
-  definition.connectionRoutes = async () => { throw new Error('changed'); };
-  assert.equal(registry[0].connectionRoutes, connectionRoutes);
-  assert.equal(registry[0].metadata.connectionEndpoint, '/providers/library/connection');
-  assert.ok(!('connectionRoutes' in registry[0].metadata));
+test('providers supply endpoint metadata without exposing their routes', () => {
+  const provider = libraryProvider().provider;
+  const registry = createProviderRegistry([{
+    ...provider, metadata: { ...provider.metadata, connectionEndpoint: '/providers/library/sign-in' },
+  }, weatherProvider()]);
+  assert.equal(registry[0].metadata.connectionEndpoint, '/providers/library/sign-in');
+  assert.ok(!('routes' in registry[0].metadata));
   assert.ok(!('connectionEndpoint' in registry[1].metadata));
 });
 
-test('registration rejects invalid identities and duplicate IDs', () => {
-  const { provider } = libraryProvider();
+test('registry rejects invalid identities, duplicate IDs and blank descriptions', () => {
+  const provider = libraryProvider().provider;
   for (const id of ['', 'Library', 'a/b', '-a', 'a-', 'a--b', 'a_b', 'a.b', 'a b']) {
-    assert.throws(() => createProviderRegistry([{ ...provider, id }]), /Provider IDs/);
+    assert.throws(() => createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, id } }]), /Provider IDs/);
   }
-  assert.equal(createProviderRegistry([{ ...provider, id: 'library-2' }]).length, 1);
-  for (const metadata of [{ name: '' }, { name: '  ' }, { description: '' }, { description: '\n' }]) {
-    assert.throws(() => createProviderRegistry([{ ...provider, ...metadata }]), /name and description/);
+  assert.equal(createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, id: 'library-2' } }]).length, 1);
+  for (const fields of [{ name: '' }, { name: '  ' }, { description: '' }, { description: '\n' }]) {
+    assert.throws(() => createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, ...fields } }]), /name and description/);
   }
   assert.throws(() => createProviderRegistry([provider, provider]), /Duplicate provider ID/);
-});
-
-test('registration rejects missing query roots, invalid schemas and write/stream roots', () => {
-  const { provider } = libraryProvider();
-  const invalid = [
-    new GraphQLSchema({}),
-    new GraphQLSchema({ query: new GraphQLObjectType({ name: 'Query', fields: {} }) }),
-    buildSchema('type Query { ok: String } type Mutation { write: String }'),
-    buildSchema('type Query { ok: String } type Subscription { events: String }'),
-  ];
-  for (const schema of invalid) {
-    assert.throws(() => createProviderRegistry([{ ...provider, schema }]));
-  }
-  const schema = new GraphQLSchema({
-    query: new GraphQLObjectType({ name: 'Query', fields: { ok: { type: GraphQLString } } }),
-  });
-  assert.equal(createProviderRegistry([{ ...provider, schema }]).length, 1);
 });
