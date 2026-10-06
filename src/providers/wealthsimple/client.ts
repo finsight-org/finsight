@@ -65,7 +65,7 @@ export class WealthsimpleClient {
   #mfaRequired = false;
 
   constructor(options: WealthsimpleOptions = {}) {
-    this.#fetch = fetchCookie(options.fetch ?? globalThis.fetch, this.#jar);
+    this.#fetch = options.fetch ?? globalThis.fetch;
     this.#endpoints = {
       login: 'https://my.wealthsimple.com/app/login',
       token: 'https://api.production.wealthsimple.com/v1/oauth/v2/token',
@@ -80,34 +80,34 @@ export class WealthsimpleClient {
     return this.#mfaRequired ? 'mfa_required' : 'disconnected';
   }
 
-  async #bootstrap(signal: AbortSignal) {
-    this.#session.sessionId ??= randomUUID();
+  async #bootstrap(session: Session, signal: AbortSignal) {
+    session.sessionId ??= randomUUID();
     const page = await this.#request(this.#endpoints.login, { signal });
+    this.#assertCurrent(session);
     if (page.status !== 200) throw new WealthsimpleError('UPSTREAM_FAILURE');
-    this.#session.deviceId = requiredString(
+    session.deviceId = requiredString(
       this.#jar.getCookiesSync(this.#endpoints.login).find(cookie => cookie.key === 'wssdi')?.value,
     );
     const appBundleSource = requiredString(page.text.match(APP_BUNDLE_SOURCE)?.[1]);
     const loginUrl = new URL(this.#endpoints.login);
     const appBundleUrl = new URL(appBundleSource.replaceAll('&amp;', '&'), loginUrl);
-    const sameOrigin = appBundleUrl.origin === loginUrl.origin;
-    const wealthsimpleHttpsHost = appBundleUrl.protocol === 'https:' && appBundleUrl.hostname.endsWith('.wealthsimple.com');
-    if ((!sameOrigin && !wealthsimpleHttpsHost) || appBundleUrl.username || appBundleUrl.password) {
-      throw new WealthsimpleError('UPSTREAM_FAILURE');
-    }
     const appBundle = await this.#request(appBundleUrl.href, { signal });
+    this.#assertCurrent(session);
     if (appBundle.status !== 200) throw new WealthsimpleError('UPSTREAM_FAILURE');
-    this.#session.clientId = requiredString(appBundle.text.match(PRODUCTION_CLIENT_ID)?.[1]);
+    session.clientId = requiredString(appBundle.text.match(PRODUCTION_CLIENT_ID)?.[1]);
   }
 
   async login(input: LoginInput, signal: AbortSignal) {
+    // A new object invalidates old work while retaining identifiers for OTP completion.
+    const { clientId, deviceId, sessionId } = this.#session;
+    const session: Session = this.#session = { clientId, deviceId, sessionId };
+    this.#jar = this.#jar.cloneSync()!;
+    this.#refreshing = undefined;
     this.#mfaRequired = false;
     // Credentials are used only for this request, never retained for OTP completion.
-    this.#session.accessToken = undefined;
-    this.#session.refreshToken = undefined;
-    this.#session.identityId = undefined;
     try {
-      if (!this.#session.clientId || !this.#session.deviceId) await this.#bootstrap(signal);
+      if (!session.clientId || !session.deviceId) await this.#bootstrap(session, signal);
+      this.#assertCurrent(session);
       const response = await this.#request(this.#endpoints.token, {
         signal,
         body: {
@@ -116,7 +116,7 @@ export class WealthsimpleClient {
           password: input.password,
           skip_provision: 'true',
           scope: 'invest.read trade.read tax.read',
-          client_id: this.#session.clientId,
+          client_id: session.clientId,
           otp_claim: null,
         },
         headers: {
@@ -125,6 +125,7 @@ export class WealthsimpleClient {
           ...(input.otp ? { 'x-wealthsimple-otp': `${input.otp};remember=true` } : {}),
         },
       });
+      this.#assertCurrent(session);
       const body = json(response.text);
       if (!input.otp && ['invalid_grant', 'otp_required', 'mfa_required'].includes(String(body.error))) {
         this.#mfaRequired = true;
@@ -133,36 +134,39 @@ export class WealthsimpleClient {
       if (response.status !== 200 || body.error) throw new WealthsimpleError('LOGIN_FAILED');
       const accessToken = requiredString(body.access_token);
       const refreshToken = requiredString(body.refresh_token);
-      this.#session.accessToken = accessToken;
-      this.#session.refreshToken = refreshToken;
+      session.accessToken = accessToken;
+      session.refreshToken = refreshToken;
       const info = await this.#request(this.#endpoints.tokenInfo, {
         signal,
         headers: {
-          authorization: `Bearer ${this.#session.accessToken}`,
+          authorization: `Bearer ${session.accessToken}`,
           'x-wealthsimple-client': '@wealthsimple/wealthsimple',
         },
       });
+      this.#assertCurrent(session);
       if (info.status !== 200) throw new WealthsimpleError('LOGIN_FAILED');
-      this.#session.identityId = requiredString(json(info.text).identity_canonical_id);
+      session.identityId = requiredString(json(info.text).identity_canonical_id);
       return { status: 'connected' as const };
     } catch (error) {
-      this.disconnect();
+      if (session === this.#session) this.disconnect();
       throw error;
     }
   }
 
-  async #refresh() {
+  async #refresh(session: Session) {
+    this.#assertCurrent(session);
     const response = await this.#request(this.#endpoints.token, {
       body: {
         grant_type: 'refresh_token',
-        refresh_token: this.#session.refreshToken,
-        client_id: this.#session.clientId,
+        refresh_token: session.refreshToken,
+        client_id: session.clientId,
       },
       headers: {
         'x-wealthsimple-client': '@wealthsimple/wealthsimple',
         'x-ws-profile': 'invest',
       },
     });
+    this.#assertCurrent(session);
     if (response.status === 400 || response.status === 401) {
       this.disconnect();
       throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple session expired. Connect again.');
@@ -175,37 +179,49 @@ export class WealthsimpleClient {
     }
     const accessToken = requiredString(body.access_token);
     const refreshToken = requiredString(body.refresh_token);
-    this.#session.accessToken = accessToken;
-    this.#session.refreshToken = refreshToken;
+    session.accessToken = accessToken;
+    session.refreshToken = refreshToken;
   }
 
   async graphql(input: GraphQLRequest, signal: AbortSignal) {
     if (this.getStatus() !== 'connected') throw new WealthsimpleError('NOT_CONNECTED');
-    const accessToken = this.#session.accessToken;
-    const send = () => this.#request(this.#endpoints.graphql, {
-      signal,
-      body: {
-        ...input,
-        variables: { ...input.variables, identityId: this.#session.identityId },
-      },
-      headers: {
-        authorization: `Bearer ${this.#session.accessToken}`,
-        'x-ws-profile': 'trade',
-        'x-ws-api-version': '12',
-        'x-ws-locale': 'en-CA',
-        'x-platform-os': 'web',
-      },
-    });
+    const session = this.#session;
+    const accessToken = session.accessToken;
+    const send = () => {
+      this.#assertCurrent(session);
+      return this.#request(this.#endpoints.graphql, {
+        signal,
+        body: {
+          ...input,
+          variables: { ...input.variables, identityId: session.identityId },
+        },
+        headers: {
+          authorization: `Bearer ${session.accessToken}`,
+          'x-ws-profile': 'trade',
+          'x-ws-api-version': '12',
+          'x-ws-locale': 'en-CA',
+          'x-platform-os': 'web',
+        },
+      });
+    };
     let response = await send();
+    this.#assertCurrent(session);
     if (!authenticationFailure(response)) return response;
 
     // Another request may already have refreshed the token while this response was pending.
-    if (this.#session.accessToken === accessToken) {
-      this.#refreshing ??= this.#refresh().finally(() => { this.#refreshing = undefined; });
+    if (session.accessToken === accessToken) {
+      if (!this.#refreshing) {
+        const refreshing = this.#refresh(session).finally(() => {
+          if (this.#refreshing === refreshing) this.#refreshing = undefined;
+        });
+        this.#refreshing = refreshing;
+      }
       await this.#refreshing;
     }
+    this.#assertCurrent(session);
     signal.throwIfAborted();
     response = await send();
+    this.#assertCurrent(session);
     if (authenticationFailure(response)) {
       this.disconnect();
       throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple session expired. Connect again.');
@@ -218,17 +234,31 @@ export class WealthsimpleClient {
     body?: Record<string, unknown>;
     headers?: Record<string, string>;
   } = {}) {
+    const session = this.#session;
+    // Each request keeps its original jar, so late cookies cannot reach a replacement login.
+    const checkedFetch: typeof globalThis.fetch = async (input, init) => {
+      this.#assertCurrent(session);
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      const configuredOrigin = Object.values(this.#endpoints).some(endpoint => new URL(endpoint).origin === url.origin);
+      const wealthsimpleHttpsHost = url.protocol === 'https:' && url.hostname.endsWith('.wealthsimple.com');
+      if ((!configuredOrigin && !wealthsimpleHttpsHost) || url.username || url.password ||
+          !['http:', 'https:'].includes(url.protocol)) {
+        throw new WealthsimpleError('UPSTREAM_FAILURE');
+      }
+      return this.#fetch(input, init);
+    };
+    const fetchWithCookies = fetchCookie(checkedFetch, this.#jar);
     const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
     try {
-      const response = await this.#fetch(address, {
+      const response = await fetchWithCookies(address, {
         method: body === undefined ? 'GET' : 'POST',
-        // Let fetch-cookie handle public redirects; never replay credentials or queries through a redirect.
+        // fetch-cookie follows only destinations checked above; POST redirects remain rejected.
         redirect: body === undefined ? 'follow' : 'error',
         headers: {
           accept: 'application/json, text/html;q=0.9, */*;q=0.8',
-          'x-ws-device-id': this.#session.deviceId ?? '',
-          'x-ws-session-id': this.#session.sessionId ?? '',
+          'x-ws-device-id': session.deviceId ?? '',
+          'x-ws-session-id': session.sessionId ?? '',
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           ...headers,
         },
@@ -244,8 +274,10 @@ export class WealthsimpleClient {
         chunks.push(chunk);
       }
       requestSignal.throwIfAborted();
+      this.#assertCurrent(session);
       return { status: response.status, text: Buffer.concat(chunks).toString('utf8') };
     } catch (error) {
+      this.#assertCurrent(session);
       if (error instanceof WealthsimpleError || requestSignal.aborted) throw error;
       throw new WealthsimpleError('UPSTREAM_FAILURE');
     }
@@ -253,8 +285,15 @@ export class WealthsimpleClient {
 
   disconnect() {
     this.#session = {};
-    this.#jar.removeAllCookiesSync();
+    this.#jar = new CookieJar();
+    this.#refreshing = undefined;
     this.#mfaRequired = false;
+  }
+
+  #assertCurrent(session: Session) {
+    if (session !== this.#session) {
+      throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple connection changed. Submit a new request.');
+    }
   }
 }
 

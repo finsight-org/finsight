@@ -85,6 +85,50 @@ test('fetch-cookie bounds public redirects without a manual redirect loop', asyn
   assert.equal(calls, 21);
 });
 
+test('login, bundle and token-info redirects are checked before sending headers to untrusted targets', async t => {
+  for (const path of ['/login', '/assets/app-test.js', '/info']) {
+    for (const target of ['http://127.0.0.1:9/private', 'https://evil.test/private',
+      'http://my.wealthsimple.com/private', 'https://user:pass@api.production.wealthsimple.com/private',
+      'ftp://my.wealthsimple.com/private']) {
+      await t.test(`${path} to ${target}`, async t => {
+        let foreignRequests = 0;
+        const f = await fixture(t, { [path]: (_call, _req, res) => {
+          res.writeHead(302, { location: target });
+          res.end();
+        } }, { fetch: async (input, init) => {
+          if (String(input) === target) {
+            foreignRequests++;
+            return Response.json({ identity_canonical_id: 'foreign' });
+          }
+          return fetch(input, init);
+        } });
+        assert.equal((await f.login()).statusCode, 502);
+        assert.equal(foreignRequests, 0);
+      });
+    }
+  }
+});
+
+test('trusted HTTPS Wealthsimple redirects still work with fetch-cookie', async () => {
+  const destinations: string[] = [];
+  const client = new WealthsimpleClient({ fetch: async (input) => {
+    const address = String(input);
+    destinations.push(address);
+    if (address.endsWith('/app/login')) return responseAt(address, '', {
+      status: 302,
+      headers: { location: 'https://login.wealthsimple.com/page', 'set-cookie': 'wssdi=device; Domain=wealthsimple.com; Secure; Path=/' },
+    });
+    if (address === 'https://login.wealthsimple.com/page') return responseAt(address, '<script src="https://assets.wealthsimple.com/app-test.js"></script>');
+    if (address.endsWith('/app-test.js')) return new Response('config={environment:"production",clientId:"fixture"}');
+    if (address.endsWith('/token/info')) return Response.json({ identity_canonical_id: 'identity' });
+    return Response.json(tokens);
+  } });
+  assert.deepEqual(await client.login(credentials, signal()), { status: 'connected' });
+  assert.ok(destinations.includes('https://login.wealthsimple.com/page'));
+  assert.ok(destinations.includes('https://assets.wealthsimple.com/app-test.js'));
+  client.disconnect();
+});
+
 test('oversized streamed responses are cancelled and reported as upstream failure', async () => {
   let cancelled = false;
   const client = new WealthsimpleClient({ fetch: async () => new Response(new ReadableStream({

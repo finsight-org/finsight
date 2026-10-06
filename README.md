@@ -79,8 +79,10 @@ python3 -c 'import getpass,json; print(json.dumps({"email":getpass.getpass("Emai
 An OTP may also be supplied on the initial login. Bootstrap identifiers are
 reused for OTP completion; there are no attempt IDs or local expiry timers.
 Passwords and OTPs are never retained between requests. Identity lookup must
-succeed before FinSight reports connected. Login uses the same mutable session;
-callers should submit login and OTP requests sequentially.
+succeed before FinSight reports connected. Submit login and OTP requests
+sequentially. A new login replaces
+the current connection. Pending work from an older connection fails safely rather
+than updating or querying the replacement connection.
 
 Disconnect locally:
 
@@ -91,7 +93,8 @@ curl -X DELETE http://127.0.0.1:4000/providers/wealthsimple/connection
 
 This clears the mutable session and cookie jar; it does not revoke Wealthsimple's
 remote session or cancel pending requests. Caller abort signals control request
-cancellation. Status is `disconnected`, `mfa_required`, or `connected`. A
+cancellation; late responses cannot restore the disconnected session or its cookies.
+Status is `disconnected`, `mfa_required`, or `connected`. A
 terminal authentication failure clears the session and requires another login.
 
 ## Submit native GraphQL
@@ -147,6 +150,8 @@ uses its own request timeout; an aborted reader is not retried when refresh
 finishes. Cookie storage, sending, and public redirects are handled by
 [fetch-cookie](https://github.com/valeriangalliat/fetch-cookie) wrapping native
 Node fetch.
+Every request and redirect destination must use HTTPS on a Wealthsimple subdomain
+or an explicitly configured endpoint origin. POST redirects are rejected.
 Provider responses use `Cache-Control: no-store`; CORS and automatic request
 logging are disabled.
 
