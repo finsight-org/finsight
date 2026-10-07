@@ -34,6 +34,8 @@ export function wealthsimpleProvider(options: WealthsimpleOptions = {}): Provide
       connectionEndpoint: '/providers/wealthsimple/connection',
     },
     routes: async (app) => {
+      // Cancel upstream work before Fastify waits for active HTTP requests.
+      app.addHook('preClose', async () => { client.close(); });
       app.addHook('onClose', async () => { client.disconnect(); });
       app.setErrorHandler((error, _req, reply) => {
         const status = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;

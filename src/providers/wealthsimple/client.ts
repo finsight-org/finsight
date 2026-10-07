@@ -63,6 +63,8 @@ export class WealthsimpleClient {
   #endpoints: Endpoints;
   #refreshing?: Promise<void>;
   #mfaRequired = false;
+  // Server shutdown cancels all upstream work, including the shared refresh.
+  #shutdown = new AbortController();
 
   constructor(options: WealthsimpleOptions = {}) {
     this.#fetch = options.fetch ?? globalThis.fetch;
@@ -249,8 +251,9 @@ export class WealthsimpleClient {
     };
     const fetchWithCookies = fetchCookie(checkedFetch, this.#jar);
     const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const requestSignal = AbortSignal.any([this.#shutdown.signal, timeout, ...(signal ? [signal] : [])]);
     try {
+      requestSignal.throwIfAborted();
       const response = await fetchWithCookies(address, {
         method: body === undefined ? 'GET' : 'POST',
         // fetch-cookie follows only destinations checked above; POST redirects remain rejected.
@@ -288,6 +291,11 @@ export class WealthsimpleClient {
     this.#jar = new CookieJar();
     this.#refreshing = undefined;
     this.#mfaRequired = false;
+  }
+
+  close() {
+    this.#shutdown.abort();
+    this.disconnect();
   }
 
   #assertCurrent(session: Session) {

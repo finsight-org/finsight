@@ -94,6 +94,8 @@ curl -X DELETE http://127.0.0.1:4000/providers/wealthsimple/connection
 This clears the mutable session and cookie jar; it does not revoke Wealthsimple's
 remote session or cancel pending requests. Caller abort signals control request
 cancellation; late responses cannot restore the disconnected session or its cookies.
+Server shutdown aborts active upstream requests, including shared token refresh,
+before Fastify drains incoming requests.
 Status is `disconnected`, `mfa_required`, or `connected`. A
 terminal authentication failure clears the session and requires another login.
 
