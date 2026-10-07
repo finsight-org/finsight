@@ -1,0 +1,44 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Holdings with security IDs for SecurityResearch and account IDs for filtering.
+# aggregated=true combines holdings; false also succeeded. Follow the String cursor.
+query HoldingInventory(
+  $identityId: ID!
+  $currency: Currency! = CAD
+  $accountIds: [ID!]
+  $first: Int = 20
+  $after: String
+  $aggregated: Boolean = true
+) {
+  identity(id: $identityId) {
+    financials(filter: {accounts: $accountIds}) {
+      current(currency: $currency) {
+        positions(first: $first, after: $after, aggregated: $aggregated) {
+          totalCount
+          edges {
+            node {
+              id
+              quantity
+              percentageOfAccount
+              accounts { id }
+              security {
+                id
+                securityType
+                currency
+                stock { symbol name }
+              }
+              ...HoldingAmounts
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }
+}
+
+fragment HoldingAmounts on PositionV2 {
+  bookValue { amount currency }
+  totalValue { amount currency }
+  averagePrice { amount currency }
+  unrealizedReturns { amount currency }
+}

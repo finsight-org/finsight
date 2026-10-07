@@ -1,0 +1,33 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Variables example: {"start":"2026-09-01","end":"2026-09-04","first":2}.
+# Daily portfolio valuation and net deposits. Follow pageInfo, not date arithmetic.
+query PortfolioHistory(
+  $identityId: ID!
+  $start: Date!
+  $end: Date!
+  $currency: Currency! = CAD
+  $accountIds: [ID!]
+  $first: Int = 20
+  $after: String
+) {
+  identity(id: $identityId) {
+    financials(filter: {accounts: $accountIds}) {
+      historicalDaily(
+        startDate: $start
+        endDate: $end
+        currency: $currency
+        first: $first
+        after: $after
+      ) {
+        edges {
+          node {
+            date
+            netLiquidationValueV2 { amount currency }
+            netDepositsV2 { amount currency }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}

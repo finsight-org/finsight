@@ -1,0 +1,35 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Recent account activity; asset and security fields may be null for cash events.
+# after uses the native Cursor scalar, unlike the String cursors in other examples.
+# condition was tested omitted and as {}; specific filter keys are not established.
+# Latest credit-card purchase: match accountId from a CREDIT_CARD inventory entry,
+# then type=CREDIT_CARD and subType=PURCHASE. Continue pages until a match is found.
+# spendMerchant identifies the merchant; status=authorized does not establish posting.
+query RecentActivity($first: Int = 20, $after: Cursor, $condition: ActivityCondition) {
+  activityFeedItems(
+    first: $first
+    after: $after
+    condition: $condition
+    orderBy: [OCCURRED_AT_DESC]
+    accountScope: OWN
+  ) {
+    edges {
+      node {
+        canonicalId
+        accountId
+        occurredAt
+        type
+        subType
+        status
+        amount
+        amountSign
+        currency
+        spendMerchant
+        assetSymbol
+        assetQuantity
+        securityId
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}

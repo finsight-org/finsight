@@ -1,0 +1,71 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Aggregate valuation, deposits, and simple returns in CAD or USD.
+# Optional accountIds restrict the portfolio; since is a Date such as "2026-01-01".
+# Omitting since uses Wealthsimple's reference date. asOf was nullable in live results.
+# Select PortfolioSnapshot or InvestmentPerformance with operationName.
+query PortfolioSnapshot(
+  $identityId: ID!
+  $currency: Currency! = CAD
+  $accountIds: [ID!]
+  $since: Date
+) {
+  identity(id: $identityId) {
+    financials(filter: {accounts: $accountIds}) {
+      current(currency: $currency) {
+        netLiquidationValueV2 { amount currency }
+        netDepositsV2 { amount currency }
+        simpleReturns(referenceDate: $since) {
+          amount { amount currency }
+          rate
+          referenceDate
+          asOf
+        }
+      }
+    }
+  }
+}
+
+# Combined account-level performance and current holdings, live tested on 2026-10-04.
+# Supply investment accountIds from AccountInventory to exclude cash/card accounts.
+# Overall return percent = simpleReturns.rate * 100.
+# Holding return percent = unrealizedReturns.amount / bookValue.amount * 100.
+# Compare matching currencies and handle zero book value. Holding returns exclude
+# dividends and realized gains; they need not sum to the account-level return.
+query InvestmentPerformance(
+  $identityId: ID!
+  $accountIds: [ID!]
+  $currency: Currency! = CAD
+  $first: Int = 20
+  $after: String
+) {
+  identity(id: $identityId) {
+    financials(filter: {accounts: $accountIds}) {
+      current(currency: $currency) {
+        netLiquidationValueV2 { amount currency }
+        netDepositsV2 { amount currency }
+        simpleReturns {
+          amount { amount currency }
+          rate
+          referenceDate
+          asOf
+        }
+        positions(first: $first, after: $after, aggregated: true) {
+          edges {
+            node {
+              quantity
+              accounts { id }
+              security {
+                id
+                stock { symbol name }
+              }
+              bookValue { amount currency }
+              totalValue { amount currency }
+              unrealizedReturns { amount currency }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }
+}

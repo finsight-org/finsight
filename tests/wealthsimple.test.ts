@@ -1,294 +1,260 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { getIntrospectionQuery } from 'graphql';
-import { createApp } from '../src/app.js';
-import { wealthsimpleProvider, type Clock } from '../src/providers/wealthsimple/index.js';
+import { readFile } from 'node:fs/promises';
+import { getEventListeners } from 'node:events';
+import { setImmediate } from 'node:timers/promises';
+import { Kind, parse } from 'graphql';
+import { createApp, MAX_REQUEST_BODY_SIZE } from '../src/app.js';
+import { wealthsimpleProvider } from '../src/providers/wealthsimple/index.js';
+import { WealthsimpleClient } from '../src/providers/wealthsimple/client.js';
 import { libraryProvider } from './fixtures.js';
 import { accountQuery, credentials, deferred, endpoint, fixture, graphql, page, respond, tokens } from './wealthsimple-fixtures.js';
 
 const secret = /PASSWORD_SENTINEL|ACCESS_SENTINEL|REFRESH_SENTINEL|COOKIE_SENTINEL|DEVICE_SENTINEL|IDENTITY_SENTINEL|UPSTREAM_SECRET/;
 function code(response: { json(): any }, expected: string) {
-  const body = response.json();
-  assert.equal(body.error?.code ?? body.errors?.[0]?.extensions?.code, `WEALTHSIMPLE_${expected}`);
+  assert.equal(response.json().error.code, `WEALTHSIMPLE_${expected}`);
 }
 
-test('Wealthsimple discovery, disconnected introspection and control instructions need no upstream', async t => {
+test('discovery and connection instructions need no upstream and expose all nine reference documents', async t => {
   const f = await fixture(t);
   const catalog = (await f.app.inject('/providers')).json().providers;
-  assert.deepEqual(catalog, [{ id: 'wealthsimple', name: 'Wealthsimple', description: 'Read financial data from Wealthsimple.', graphqlEndpoint: graphql, connectionEndpoint: endpoint }]);
-  const introspection = await f.app.inject({ method: 'POST', url: graphql, payload: { query: getIntrospectionQuery() } });
-  const schema = introspection.json().data.__schema;
-  assert.equal(schema.mutationType, null);
-  assert.equal(schema.subscriptionType, null);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccount').fields.map((x: any) => x.name), ['id', 'nickname', 'unifiedAccountType', 'currency', 'status']);
-  const accounts = schema.types.find((x: any) => x.name === 'Query').fields.find((x: any) => x.name === 'accounts');
-  assert.equal(accounts.type.name, 'WealthsimpleAccountConnection');
-  assert.deepEqual(accounts.args.map((arg: any) => [arg.name, arg.defaultValue]), [['first', '25'], ['after', null]]);
-  assert.match(accounts.description, /One account page/);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccountConnection').fields.map((x: any) => x.name), ['edges', 'pageInfo']);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccountEdge').fields.map((x: any) => x.name), ['node']);
-  assert.deepEqual(schema.types.find((x: any) => x.name === 'WealthsimpleAccountPageInfo').fields.map((x: any) => x.name), ['hasNextPage', 'endCursor']);
+  assert.deepEqual(catalog, [f.provider.metadata]);
   const status = await f.app.inject(endpoint);
   assert.equal(status.json().status, 'disconnected');
-  assert.deepEqual(status.json().instructions.login.required, ['email', 'password']);
-  assert.equal(status.headers['cache-control'], 'no-store');
+  assert.deepEqual(status.json().instructions.completeMfa.required, ['email', 'password', 'otp']);
+  const docs = await f.app.inject(`${graphql}?query=mutation%20%7B%20anything%20%7D`);
+  assert.match(docs.json().description, /introspection is disabled/);
+  assert.equal(docs.headers['cache-control'], 'no-store');
+  assert.equal(docs.headers['access-control-allow-origin'], undefined);
+  const references = docs.json().references as { file: string; query: string }[];
+  assert.deepEqual(references.map(reference => reference.file), [
+    'account-details.graphql', 'accounts.graphql', 'activities.graphql', 'income.graphql',
+    'performance-history.graphql', 'portfolio.graphql', 'positions.graphql',
+    'security-research.graphql', 'security-search.graphql',
+  ]);
+  assert.ok(references.length <= 10);
+  const operationNames = new Set<string>();
+  for (const reference of references) {
+    assert.equal(reference.query, await readFile(new URL(`../src/providers/wealthsimple/reference/${reference.file}`, import.meta.url), 'utf8'));
+    const document = parse(reference.query);
+    const operations = document.definitions.filter(definition => definition.kind === Kind.OPERATION_DEFINITION);
+    assert.ok(operations.length >= 1);
+    for (const operation of operations) {
+      assert.equal(operation.operation, 'query');
+      assert.ok(operation.name);
+      assert.ok(!operationNames.has(operation.name.value));
+      operationNames.add(operation.name.value);
+    }
+    assert.match(reference.query, /Independently reconstructed and live tested through FinSight/);
+  }
+  assert.ok(operationNames.has('PortfolioSnapshot'));
+  assert.ok(operationNames.has('InvestmentPerformance'));
   code(await f.query(), 'NOT_CONNECTED');
   assert.equal(f.calls.length, 0);
+  assert.doesNotMatch(status.body + docs.body, secret);
+  for (const url of ['/graphql', '/accounts', '/providers/wealthsimple/accounts']) {
+    assert.equal((await f.app.inject(url)).statusCode, 404);
+  }
 });
 
-test('real HTTP upstream: connect, query complete metadata, reuse session, and disconnect', async t => {
+test('connect, cache canonical identity, reuse session, forward native data and disconnect', async t => {
   const f = await fixture(t);
   assert.deepEqual((await f.login()).json(), { status: 'connected' });
-  for (let i = 0; i < 2; i++) {
-    const response = await f.query();
-    assert.deepEqual(response.json(), { data: { accounts: page().data.identity.accounts } });
-    assert.equal(response.headers['cache-control'], 'no-store');
-    assert.doesNotMatch(response.body, secret);
-  }
-  assert.equal(f.calls.filter(c => c.path === '/token').length, 1);
-  const token = f.calls.find(c => c.path === '/token')!;
-  assert.equal(token.body.grant_type, 'password');
-  assert.equal(token.body.scope, 'invest.read trade.read tax.read');
-  assert.equal(token.headers.authorization, undefined);
-  assert.equal(token.headers['x-ws-device-id'], 'DEVICE_SENTINEL');
-  assert.match(token.headers.cookie!, /session_cookie=COOKIE_SENTINEL/);
-  const read = f.calls.find(c => c.path === '/graphql')!;
-  assert.equal(read.body.variables.identityId, 'IDENTITY_SENTINEL');
-  assert.match(read.body.query, /accounts\(filter: \{\}, first: \$first, after: \$after\)/);
-  assert.equal(read.body.variables.first, 25);
-  assert.equal(read.body.variables.after, null);
-  assert.doesNotMatch(read.body.query, /financials|netWorth|accountOwners/);
-  assert.equal(read.headers['x-ws-api-version'], '12');
-  assert.equal((await f.login()).statusCode, 409);
+  const login = f.calls.find(call => call.path === '/token')!;
+  assert.deepEqual(login.body, {
+    grant_type: 'password', username: credentials.email, password: credentials.password, skip_provision: 'true',
+    scope: 'invest.read trade.read tax.read', client_id: 'fixture-client', otp_claim: null,
+  });
+  assert.equal(login.headers.authorization, undefined);
+  assert.equal(login.headers['x-ws-device-id'], 'DEVICE_SENTINEL');
+  assert.equal(login.headers['x-ws-profile'], 'undefined');
+  assert.match(String(login.headers['x-ws-session-id']), /^[a-f0-9-]{36}$/);
+  assert.deepEqual((await f.query()).json(), page());
+  assert.deepEqual((await f.query({ first: 500, after: 'cursor +/=' })).json(), page());
+  assert.equal(f.calls.filter(call => call.path === '/info').length, 1);
+  const reads = f.calls.filter(call => call.path === '/graphql');
+  assert.equal(reads[0].body.query, accountQuery);
+  assert.deepEqual(reads[1].body.variables, { first: 500, after: 'cursor +/=', identityId: 'IDENTITY_SENTINEL' });
+  assert.equal(reads[0].headers['x-ws-api-version'], '12');
+  assert.equal(reads[0].headers['x-ws-profile'], 'trade');
+  assert.equal(reads[0].headers['x-ws-locale'], 'en-CA');
+  assert.equal(reads[0].headers['x-platform-os'], 'web');
+  assert.equal(reads[0].headers['x-ws-session-id'], login.headers['x-ws-session-id']);
+  assert.equal(reads[0].headers.authorization, `Bearer ${tokens.access_token}`);
+  assert.doesNotMatch((await f.app.inject(endpoint)).body, secret);
+  assert.deepEqual((await f.login()).json(), { status: 'connected' });
   assert.equal((await f.app.inject({ method: 'DELETE', url: endpoint })).statusCode, 204);
   code(await f.query(), 'NOT_CONNECTED');
-  assert.deepEqual((await f.login()).json(), { status: 'connected' });
-});
-
-test('OTP challenge binds an attempt, hides state, and reuses bootstrap exactly once', async t => {
-  const f = await fixture(t, { '/token': (call, _req, res) => {
-    if (!call.headers['x-wealthsimple-otp']) respond(res, { error: 'invalid_grant', error_description: 'UPSTREAM_SECRET' }, 400);
-    else { assert.equal(call.headers['x-wealthsimple-otp'], '123456;remember=true'); respond(res, tokens); }
-  } });
-  const challenge = (await f.login()).json();
-  assert.equal(challenge.status, 'mfa_required');
-  assert.ok(challenge.attemptId);
-  const status = await f.app.inject(endpoint);
-  assert.equal(status.json().status, 'mfa_required');
-  assert.ok(!status.body.includes(challenge.attemptId));
-  assert.doesNotMatch(status.body, secret);
-  code(await f.login(), 'CONNECTION_CONFLICT');
-  code(await f.login({ ...credentials, attemptId: challenge.attemptId, otp: '123456', email: 'wrong@example.test' }), 'CONNECTION_CONFLICT');
-  assert.deepEqual((await f.login({ ...credentials, attemptId: challenge.attemptId, otp: '123456' })).json(), { status: 'connected' });
-  assert.equal(f.calls.filter(c => c.path === '/login').length, 1);
-});
-
-test('OTP expiry, rejection, and cancellation consume pending attempts', async t => {
-  let now = 0;
-  let expiry: (() => void) | undefined;
-  const clock: Clock = { now: () => now, schedule: callback => { expiry = callback; return () => { expiry = undefined; }; } };
-  const f = await fixture(t, { '/token': (_call, _req, res) => respond(res, { error: 'invalid_grant', error_description: 'UPSTREAM_SECRET' }, 400) }, { clock });
-  const first = (await f.login()).json();
-  now = 300_001; expiry!();
-  code(await f.login({ ...credentials, attemptId: first.attemptId, otp: '123456' }), 'CONNECTION_CONFLICT');
-  const second = (await f.login()).json();
-  const rejected = await f.login({ ...credentials, attemptId: second.attemptId, otp: '123456' });
-  code(rejected, 'LOGIN_FAILED');
-  assert.equal(rejected.statusCode, 401);
-  assert.doesNotMatch(rejected.body, secret);
-  code(await f.login({ ...credentials, attemptId: second.attemptId, otp: '123456' }), 'CONNECTION_CONFLICT');
+  assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
   await f.login();
-  await f.app.inject({ method: 'DELETE', url: endpoint });
-  assert.equal(expiry, undefined);
+  const logins = f.calls.filter(call => call.path === '/login');
+  assert.equal(logins.length, 2);
+  assert.equal(logins[1].headers.cookie, undefined);
 });
 
-test('connection validation, parse errors and oversized bodies never disclose submitted data', async t => {
+test('OTP repeats credential login without attempts, timers or another bootstrap', async t => {
+  const f = await fixture(t, { '/token': (call, _req, res) => {
+    if (!call.headers['x-wealthsimple-otp']) return respond(res, { error: 'invalid_grant' }, 400);
+    assert.equal(call.headers['x-wealthsimple-otp'], '123456;remember=true');
+    respond(res, tokens);
+  } });
+  assert.deepEqual((await f.login()).json(), { status: 'mfa_required' });
+  assert.equal((await f.app.inject(endpoint)).json().status, 'mfa_required');
+  assert.deepEqual((await f.login({ ...credentials, otp: '123456' })).json(), { status: 'connected' });
+  assert.equal(f.calls.filter(call => call.path === '/login').length, 1);
+  const logins = f.calls.filter(call => call.path === '/token');
+  assert.equal(logins[0].headers['x-ws-session-id'], logins[1].headers['x-ws-session-id']);
+});
+
+test('OTP may be supplied initially; a rejected OTP clears the session', async t => {
+  const first = await fixture(t);
+  assert.equal((await first.login({ ...credentials, otp: '654321' })).json().status, 'connected');
+  assert.equal(first.calls.find(call => call.path === '/token')!.headers['x-wealthsimple-otp'], '654321;remember=true');
+  const second = await fixture(t, { '/token': (_call, _req, res) => respond(res, { error: 'invalid_grant' }, 400) });
+  assert.equal((await second.login()).json().status, 'mfa_required');
+  code(await second.login({ ...credentials, otp: '111111' }), 'LOGIN_FAILED');
+  assert.equal((await second.app.inject(endpoint)).json().status, 'disconnected');
+});
+
+test('connection payload errors and obsolete attempt IDs never disclose submitted values', async t => {
   const f = await fixture(t);
-  for (const payload of [{ ...credentials, otp: '123456' }, { ...credentials, attemptId: 'id' }, { ...credentials, extra: 'UPSTREAM_SECRET' }, { email: 'x', password: 123 }, { ...credentials, attemptId: 'id', otp: '123\r\n456' }]) {
+  for (const payload of [
+    {}, [], { ...credentials, attemptId: 'obsolete' }, { ...credentials, scope: 'trade.write' },
+    { ...credentials, otp: 'UPSTREAM_SECRET' }, { ...credentials, email: '' }, { ...credentials, password: '' },
+    { ...credentials, password: 'PASSWORD_SENTINEL'.repeat(2000) },
+  ]) {
     const response = await f.login(payload);
     assert.equal(response.statusCode, 400);
     assert.doesNotMatch(response.body, secret);
   }
-  for (const payload of ['{"password":"UPSTREAM_SECRET"', JSON.stringify({ ...credentials, password: 'PASSWORD_SENTINEL'.repeat(2000) })]) {
-    const response = await f.app.inject({ method: 'POST', url: endpoint, headers: { 'content-type': 'application/json' }, payload });
-    assert.equal(response.statusCode, 400);
-    assert.doesNotMatch(response.body, secret);
-    assert.equal(response.headers['cache-control'], 'no-store');
-  }
+  const malformed = await f.app.inject({ method: 'POST', url: endpoint, headers: { 'content-type': 'application/json' }, payload: '{"password":"PASSWORD_SENTINEL"' });
+  assert.equal(malformed.statusCode, 400);
+  assert.doesNotMatch(malformed.body, secret);
   assert.equal(f.calls.length, 0);
 });
 
-test('identity lookup must complete before reporting connected', async t => {
-  const f = await fixture(t, { '/info': (_call, _req, res) => respond(res, { identity_canonical_id: null, message: 'UPSTREAM_SECRET' }) });
-  const response = await f.login();
-  code(response, 'INVALID_RESPONSE');
+test('identity lookup must succeed before reporting connected', async t => {
+  const f = await fixture(t, { '/info': (_call, _req, res) => respond(res, {}) });
+  code(await f.login(), 'UPSTREAM_FAILURE');
   assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
   code(await f.query(), 'NOT_CONNECTED');
 });
 
-test('clients request pages explicitly; edge order and duplicate IDs are preserved', async t => {
-  const firstNodes = [
-    { id: 'b', nickname: null, status: 'closed', unifiedAccountType: 'future-type' },
-    { id: 'a', status: 'archived' }, { id: 'b', nickname: 'Duplicate' },
+test('the only document guard rejects syntax errors and every non-query definition', async t => {
+  const f = await fixture(t);
+  for (const payload of [
+    { query: 'mutation { anything }' }, { query: 'subscription { anything }' },
+    { query: 'query Read { anything } mutation Write { anything }', operationName: 'Read' },
+    { query: 'query Read { anything } subscription Watch { anything }', operationName: 'Read' },
+    { query: '{' }, { query: '' },
+  ]) {
+    const response = await f.app.inject({ method: 'POST', url: graphql, payload });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error.message, payload.query.includes('mutation') || payload.query.includes('subscription')
+      ? 'Only GraphQL queries are allowed' : 'Invalid GraphQL syntax.');
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('envelope validation rejects invalid shapes, batches, multipart and oversized bodies', async t => {
+  const f = await fixture(t);
+  for (const payload of [[], {}, { query: 1 }, { query: '{ anything }', variables: [] },
+    { query: '{ anything }', variables: 'invalid' }, { query: '{ anything }', operationName: 123 }]) {
+    assert.equal((await f.app.inject({ method: 'POST', url: graphql, payload })).statusCode, 400);
+  }
+  for (const [payload, contentType] of [['null', 'application/json'], ['{}', 'multipart/form-data']]) {
+    assert.equal((await f.app.inject({ method: 'POST', url: graphql, payload, headers: { 'content-type': contentType } })).statusCode, 400);
+  }
+  const large = await f.app.inject({ method: 'POST', url: graphql, payload: { query: 'x'.repeat(MAX_REQUEST_BODY_SIZE) } });
+  assert.equal(large.statusCode, 400);
+  assert.doesNotMatch(large.body, /xxx/);
+  assert.equal(f.calls.length, 0);
+});
+
+test('arbitrary raw queries and all graph semantics are forwarded for upstream validation', async t => {
+  const upstream = { errors: [{ message: 'Wealthsimple schema hint', locations: [{ line: 1, column: 3 }], extensions: { code: 'GRAPHQL_VALIDATION_FAILED', detail: 'preserved' } }] };
+  const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, upstream, 400) });
+  await f.login();
+  const payloads = [
+    { query: '{ unknownField(unknownArgument: true) }' },
+    { query: 'query Custom($bad: Int!) { alias: unknownField(value: $bad) }', operationName: 'Custom', variables: { bad: 'not an int' } },
+    { query: '{ anything { ...MissingFragment } }' },
+    { query: 'query A { anything } query B { otherThing }' },
+    { query: 'query A { anything }', operationName: 'NotPresent' },
+    { query: '{ anything { ... @defer { otherThing } } }' },
+    { query: '{ anything @stream(initialCount: 1) }' },
+    { query: 'fragment OnlyFragment on UnknownType { field }' },
+    { query: 'query Aliases { one: anything { ...Fields } two: anything { ...Fields } } fragment Fields on UnknownType { field }' },
+    { query: '# mutation subscription\n{ anything(value: "mutation subscription") }', variables: null, operationName: null },
   ];
-  const f = await fixture(t, { '/graphql': (call, _req, res) => respond(res,
-    call.body.variables.after === null ? page(firstNodes, true, 'next') : page([{ id: 'c' }])) });
-  await f.login();
-  const first = (await f.query()).json();
-  assert.deepEqual(first, { data: { accounts: {
-    edges: [
-      { node: { id: 'b', nickname: null, status: 'closed', unifiedAccountType: 'future-type', currency: null } },
-      { node: { id: 'a', nickname: null, status: 'archived', unifiedAccountType: null, currency: null } },
-      { node: { id: 'b', nickname: 'Duplicate', status: null, unifiedAccountType: null, currency: null } },
-    ], pageInfo: { hasNextPage: true, endCursor: 'next' },
-  } } });
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 1);
-  const second = (await f.query({ first: 10, after: first.data.accounts.pageInfo.endCursor })).json();
-  assert.deepEqual(second.data.accounts.edges.map((edge: any) => edge.node.id), ['c']);
-  assert.deepEqual(second.data.accounts.pageInfo, { hasNextPage: false, endCursor: null });
-  assert.deepEqual(f.calls.filter(c => c.path === '/graphql').map(c => [c.body.variables.first, c.body.variables.after]), [[25, null], [10, 'next']]);
-});
-
-test('empty pages succeed; malformed envelopes and upstream errors fail the field safely', async t => {
-  for (const [name, body, expected] of [
-    ['empty', page([]), null],
-    ['missing identity', { data: { identity: null } }, 'INVALID_RESPONSE'],
-    ['missing edges', { data: { identity: { accounts: { pageInfo: { hasNextPage: false } } } } }, 'INVALID_RESPONSE'],
-    ['missing page info', { data: { identity: { accounts: { edges: [] } } } }, 'INVALID_RESPONSE'],
-    ['bad page flag', { data: { identity: { accounts: { edges: [], pageInfo: { hasNextPage: 'yes' } } } } }, 'INVALID_RESPONSE'],
-    ['missing cursor', page([{ id: 'a' }], true, null), 'INVALID_RESPONSE'],
-    ['empty continuation cursor', page([], true, ''), 'INVALID_RESPONSE'],
-    ['invalid cursor', page([], false, 3), 'INVALID_RESPONSE'],
-    ['partial upstream', { ...page(), errors: [{ message: 'UPSTREAM_SECRET' }] }, 'UPSTREAM_FAILURE'],
-  ] as const) {
-    await t.test(name, async t => {
-      const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, body) });
-      await f.login();
-      const response = await f.query();
-      if (expected) { code(response, expected); assert.equal(response.json().data.accounts, null); }
-      else assert.deepEqual(response.json(), { data: { accounts: page([]).data.identity.accounts } });
-      assert.doesNotMatch(response.body, secret);
-    });
+  for (const payload of payloads) {
+    const response = await f.app.inject({ method: 'POST', url: graphql, payload });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), upstream);
+    const sent = f.calls.at(-1)!;
+    assert.equal(sent.path, '/graphql');
+    assert.equal(sent.body.query, payload.query);
+    assert.equal(sent.body.operationName, payload.operationName);
+    assert.deepEqual(sent.body.variables, { ...payload.variables, identityId: 'IDENTITY_SENTINEL' });
   }
 });
 
-test('later client page failures do not invalidate earlier responses', async t => {
-  const f = await fixture(t, { '/graphql': (call, _req, res) => {
-    if (call.body.variables.after !== null) respond(res, { message: 'UPSTREAM_SECRET' }, 503);
-    else respond(res, page([{ id: 'a' }], true, 'next'));
-  } });
-  await f.login();
-  const first = await f.query();
-  const before = first.body;
-  const second = await f.query({ after: 'next' });
-  code(second, 'UPSTREAM_FAILURE');
-  assert.equal(second.json().data.accounts, null);
-  assert.equal(first.body, before);
-  assert.equal(first.json().data.accounts.edges[0].node.id, 'a');
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 2);
-});
-
-test('page sizes are bounded before upstream calls; valid cursors are passed unchanged', async t => {
+test('connected identity replaces caller identity without rewriting literals or other variables', async t => {
   const f = await fixture(t);
   await f.login();
-  const callsBefore = f.calls.length;
-  for (const first of [0, -1, 101]) code(await f.query({ first }), 'INVALID_PAGINATION');
-  for (const first of [null, 1.5]) {
-    const response = await f.query({ first });
-    assert.ok(response.json().errors.length);
-    assert.equal(response.json().data, undefined);
-  }
-  assert.equal(f.calls.length, callsBefore);
-  for (const first of [1, 100]) {
-    assert.ok((await f.query({ first, after: 'opaque +/cursor=' })).json().data.accounts);
-    const read = f.calls.at(-1)!;
-    assert.deepEqual(read.body.variables, { identityId: 'IDENTITY_SENTINEL', first, after: 'opaque +/cursor=' });
-  }
-  await f.query({ after: null });
-  assert.equal(f.calls.at(-1)!.body.variables.after, null);
+  const query = 'query Custom($identityId: ID!, $other: ID!) { identity(id: $identityId) { id } literal: identity(id: "literal") { id } another: identity(id: $other) { id } }';
+  await f.app.inject({ method: 'POST', url: graphql, payload: { query, operationName: 'Custom', variables: { identityId: 'caller', other: 'caller-other', condition: { arbitrary: true } } } });
+  assert.equal(f.calls.at(-1)!.body.query, query);
+  assert.deepEqual(f.calls.at(-1)!.body.variables, { identityId: 'IDENTITY_SENTINEL', other: 'caller-other', condition: { arbitrary: true } });
 });
 
-test('aliases, fragments and variables execute through the paginated local schema', async t => {
-  const f = await fixture(t);
+test('native partial data, errors, extensions, status and JSON bytes are preserved', async t => {
+  const body = '{ "data": { "anything": null, "nested": [1,1,2] }, "errors": [{ "message": "schema hint", "path": ["anything"], "locations": [{"line":1,"column":3}], "extensions": {"custom":true} }], "extensions": {"upstream":true} }\n';
+  const f = await fixture(t, { '/graphql': (_call, _req, res) => { res.writeHead(422, { 'content-type': 'application/json' }); res.end(body); } });
   await f.login();
-  const response = await f.app.inject({ method: 'POST', url: graphql, payload: {
-    query: `query Read($size: Int!, $cursor: String) {
-      chosen: accounts(first: $size, after: $cursor) {
-        edges { node { ...Details } }
-        continuation: pageInfo { hasNextPage endCursor }
-      }
-    } fragment Details on WealthsimpleAccount { identifier: id nickname }`,
-    variables: { size: 7, cursor: 'chosen-cursor' }, operationName: 'Read',
-  } });
-  assert.deepEqual(response.json(), { data: { chosen: {
-    edges: [{ node: { identifier: 'a', nickname: 'Savings' } }],
-    continuation: { hasNextPage: false, endCursor: null },
-  } } });
-  assert.equal(f.calls.at(-1)!.body.variables.first, 7);
-  assert.equal(f.calls.at(-1)!.body.variables.after, 'chosen-cursor');
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 1);
+  const response = await f.query();
+  assert.equal(response.statusCode, 422);
+  assert.equal(response.body, body);
+  assert.deepEqual(response.json(), JSON.parse(body));
+  assert.equal(f.calls.filter(call => call.path === '/graphql').length, 1);
 });
 
-test('cursor progress belongs to the caller, with no tracking between requests', async t => {
-  const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, page([], true, 'same')) });
-  await f.login();
-  for (let i = 0; i < 2; i++) {
-    const response = await f.query({ after: 'same' });
-    assert.deepEqual(response.json(), { data: { accounts: page([], true, 'same').data.identity.accounts } });
-  }
-  assert.equal(f.calls.filter(c => c.path === '/graphql').length, 2);
-});
-
-test('nested completion errors obey nullability without leaking upstream values', async t => {
-  for (const [name, node, fieldNullable] of [
-    ['missing id', {}, false], ['null node', null, false],
-    ['invalid id', { id: { detail: 'UPSTREAM_SECRET' } }, false],
-    ['invalid nickname', { id: 'a', nickname: { detail: 'UPSTREAM_SECRET' } }, true],
-  ] as const) await t.test(name, async t => {
-    const f = await fixture(t, { '/graphql': (_call, _req, res) => respond(res, page([node])) });
-    await f.login();
-    const response = await f.query();
-    const body = response.json();
-    assert.ok(body.errors.length);
-    assert.equal(body.errors[0].message, 'Unexpected error.');
-    if (fieldNullable) {
-      assert.equal(body.data.accounts.edges[0].node.nickname, null);
-      assert.deepEqual(body.errors[0].path, ['accounts', 'edges', 0, 'node', 'nickname']);
-    } else assert.equal(body.data.accounts, null);
-    assert.doesNotMatch(response.body, secret);
-  });
-});
-
-test('HTTP and GraphQL authentication errors refresh once and rotate both tokens', async t => {
+test('HTTP and GraphQL authentication errors rotate both tokens and retry the same request once', async t => {
   for (const kind of ['http', 'graphql', 'message']) await t.test(kind, async t => {
     let refreshes = 0;
+    let expiredAccess = tokens.access_token;
     const f = await fixture(t, {
       '/token': (call, _req, res) => {
         if (call.body.grant_type === 'password') return respond(res, tokens);
         assert.equal(call.body.refresh_token, refreshes ? 'refresh-rotated' : tokens.refresh_token);
         assert.equal(call.headers.authorization, undefined);
+        assert.equal(call.headers['x-ws-profile'], 'invest');
         refreshes++;
         respond(res, { access_token: `rotated-${refreshes}`, refresh_token: 'refresh-rotated' });
       },
       '/graphql': (call, _req, res) => {
-        if (call.headers.authorization === `Bearer rotated-${refreshes}` && refreshes) return respond(res, page());
+        if (refreshes && call.headers.authorization !== `Bearer ${expiredAccess}`) return respond(res, page());
         if (kind === 'http') respond(res, {}, 401);
-        else if (kind === 'graphql') respond(res, { errors: [{ message: 'UPSTREAM_SECRET', extensions: { code: 'UNAUTHENTICATED' } }] });
+        else if (kind === 'graphql') respond(res, { errors: [{ message: 'Expired', extensions: { code: 'UNAUTHENTICATED' } }] });
         else respond(res, { message: 'Not Authorized.' });
       },
     });
     await f.login();
-    assert.ok((await f.query({ first: 7, after: 'retry +/cursor=' })).json().data.accounts);
+    assert.deepEqual((await f.query({ first: 7, after: 'retry +/cursor=' })).json(), page());
     assert.equal(refreshes, 1);
     const reads = f.calls.filter(call => call.path === '/graphql');
     assert.equal(reads.length, 2);
-    for (const read of reads) {
-      assert.deepEqual(read.body.variables, { identityId: 'IDENTITY_SENTINEL', first: 7, after: 'retry +/cursor=' });
-    }
+    assert.deepEqual(reads[0].body, reads[1].body);
+    // A later expiry must refresh with the rotated refresh token, not the original.
+    expiredAccess = 'rotated-1';
+    assert.deepEqual((await f.query()).json(), page());
+    assert.equal(refreshes, 2);
+    assert.equal(f.calls.filter(call => call.path === '/graphql').length, 4);
+    assert.equal(f.calls.at(-1)!.headers.authorization, 'Bearer rotated-2');
   });
 });
 
-test('concurrent expired reads share one refresh rotation', async t => {
+test('concurrent expired reads share one token rotation', async t => {
   let stale = 0; let refreshes = 0;
   const ready = deferred();
   const f = await fixture(t, {
@@ -306,11 +272,34 @@ test('concurrent expired reads share one refresh rotation', async t => {
   });
   await f.login();
   const results = await Promise.all(Array.from({ length: 4 }, () => f.query()));
-  for (const response of results) assert.ok(response.json().data.accounts);
+  for (const response of results) assert.deepEqual(response.json(), page());
   assert.equal(refreshes, 1);
 });
 
-test('refresh rejection or a second unauthorized read requires reconnect and no further calls', async t => {
+test('a late stale authentication response reuses the token another reader refreshed', async t => {
+  const slow = deferred(); const release = deferred();
+  let reads = 0; let refreshes = 0;
+  const f = await fixture(t, {
+    '/token': (call, _req, res) => {
+      if (call.body.grant_type === 'password') return respond(res, tokens);
+      refreshes++; respond(res, { access_token: 'rotated', refresh_token: 'rotated-refresh' });
+    },
+    '/graphql': async (call, _req, res) => {
+      if (call.headers.authorization !== `Bearer ${tokens.access_token}`) return respond(res, page());
+      if (++reads === 1) { slow.resolve(); await release.promise; }
+      respond(res, {}, 401);
+    },
+  });
+  await f.login();
+  const first = f.query();
+  await slow.promise;
+  assert.deepEqual((await f.query()).json(), page());
+  release.resolve();
+  assert.deepEqual((await first).json(), page());
+  assert.equal(refreshes, 1);
+});
+
+test('refresh rejection or second unauthorized response clears authentication and bounds retries', async t => {
   for (const rejected of [true, false]) await t.test(String(rejected), async t => {
     let refreshes = 0; let reads = 0;
     const f = await fixture(t, {
@@ -323,55 +312,89 @@ test('refresh rejection or a second unauthorized read requires reconnect and no 
       '/graphql': (_call, _req, res) => { reads++; respond(res, {}, 401); },
     });
     await f.login();
-    code(await f.query(), 'RECONNECT_REQUIRED');
-    assert.equal((await f.app.inject(endpoint)).json().status, 'reconnect_required');
+    code(await f.query(), 'NOT_CONNECTED');
+    assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
     const count = f.calls.length;
-    code(await f.query(), 'RECONNECT_REQUIRED');
+    code(await f.query(), 'NOT_CONNECTED');
     assert.equal(f.calls.length, count);
     assert.equal(refreshes, 1);
     assert.equal(reads, rejected ? 1 : 2);
   });
 });
 
-test('non-authentication failures never trigger refresh and preserve safe errors', async t => {
+test('a rejected refresh requires login even when its response is not JSON', async t => {
+  const f = await fixture(t, {
+    '/token': (call, _req, res) => {
+      if (call.body.grant_type === 'password') return respond(res, tokens);
+      res.writeHead(401); res.end('Authentication rejected');
+    },
+    '/graphql': (_call, _req, res) => respond(res, {}, 401),
+  });
+  await f.login();
+  const response = await f.query();
+  assert.equal(response.statusCode, 401);
+  code(response, 'NOT_CONNECTED');
+  assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
+});
+
+test('connection remains unavailable until identity lookup completes', async t => {
+  const started = deferred(); const release = deferred();
+  const f = await fixture(t, {
+    '/info': async (_call, _req, res) => {
+      started.resolve(); await release.promise;
+      respond(res, { identity_canonical_id: 'IDENTITY_SENTINEL' });
+    },
+  });
+  const login = f.login();
+  await started.promise;
+  assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
+  code(await f.query(), 'NOT_CONNECTED');
+  release.resolve();
+  assert.deepEqual((await login).json(), { status: 'connected' });
+  assert.equal(f.calls.filter(call => call.path === '/info').length, 1);
+  assert.equal(f.calls.filter(call => call.path === '/token').length, 1);
+});
+
+test('non-GraphQL upstream failures are safe and never cause refresh', async t => {
   for (const [status, body, expected] of [
-    [403, '{}', 'UPSTREAM_FAILURE'], [429, '<html>Cloudflare UPSTREAM_SECRET</html>', 'RATE_LIMITED'],
-    [503, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'], [200, '<html>UPSTREAM_SECRET</html>', 'INVALID_RESPONSE'],
-    [200, '{invalid UPSTREAM_SECRET', 'INVALID_RESPONSE'],
-  ] as const) await t.test(String(status) + body.slice(0, 8), async t => {
+    [403, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'], [429, '<html>UPSTREAM_SECRET</html>', 'UPSTREAM_FAILURE'],
+    [503, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'], [200, '{invalid UPSTREAM_SECRET', 'UPSTREAM_FAILURE'],
+  ] as const) await t.test(`${status} ${expected}`, async t => {
     const f = await fixture(t, { '/graphql': (_call, _req, res) => { res.writeHead(status); res.end(body); } });
     await f.login();
     const response = await f.query();
     code(response, expected);
     assert.doesNotMatch(response.body, secret);
-    assert.equal(f.calls.filter(c => c.path === '/token').length, 1);
+    assert.equal(f.calls.filter(call => call.path === '/token').length, 1);
+    assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
   });
 });
 
-test('login operation deadlines cancel upstream and clear state', { timeout: 5000 }, async t => {
-  const cancelled = deferred();
-  const f = await fixture(t, { '/token': (_call, _req, res) => { res.once('close', () => cancelled.resolve()); } }, { operationTimeoutMs: 40 });
-  const response = await f.login();
-  code(response, 'TIMEOUT');
-  await cancelled.promise;
-  assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
+test('non-authentication refresh failures preserve the session without recursive retries', async t => {
+  for (const [status, body, expected] of [
+    [429, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'], [503, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'],
+    [200, '{}', 'UPSTREAM_FAILURE'],
+  ] as const) await t.test(`${status} ${expected}`, async t => {
+    let expired = true;
+    const f = await fixture(t, {
+      '/token': (call, _req, res) => {
+        if (call.body.grant_type === 'password') respond(res, tokens);
+        else { res.writeHead(status); res.end(body); }
+      },
+      '/graphql': (_call, _req, res) => expired ? respond(res, {}, 401) : respond(res, page()),
+    });
+    await f.login();
+    const response = await f.query();
+    code(response, expected);
+    assert.doesNotMatch(response.body, secret);
+    assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
+    assert.equal(f.calls.filter(call => call.path === '/token').length, 2);
+    expired = false;
+    assert.deepEqual((await f.query()).json(), page());
+  });
 });
 
-test('overlapping login is rejected and disconnect prevents stale login completion', async t => {
-  const started = deferred(); const release = deferred();
-  const f = await fixture(t, { '/token': async (_call, _req, res) => { started.resolve(); await release.promise; respond(res, tokens); } });
-  const pending = f.login();
-  const running = pending.then(x => x);
-  await started.promise;
-  assert.equal((await f.app.inject(endpoint)).json().status, 'connecting');
-  code(await f.login(), 'CONNECTION_CONFLICT');
-  await f.app.inject({ method: 'DELETE', url: endpoint });
-  release.resolve();
-  code(await running, 'CONNECTION_CONFLICT');
-  assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
-});
-
-test('real client disconnect aborts login and account requests', { timeout: 5000 }, async t => {
+test('HTTP caller abort cancels login and GraphQL requests', { timeout: 5000 }, async t => {
   for (const login of [true, false]) await t.test(String(login), async t => {
     const started = deferred(); const cancelled = deferred();
     const f = await fixture(t, { [login ? '/token' : '/graphql']: (_call, _req, res) => {
@@ -388,36 +411,11 @@ test('real client disconnect aborts login and account requests', { timeout: 5000
     controller.abort();
     await request;
     await cancelled.promise;
-    if (login) assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
-    assert.equal(f.calls.filter(c => c.path === '/graphql').length, login ? 0 : 1);
+    assert.equal((await f.app.inject(endpoint)).json().status, login ? 'disconnected' : 'connected');
   });
 });
 
-test('shutdown cancels pending provider work before waiting for requests', { timeout: 5000 }, async t => {
-  const started = deferred(); const cancelled = deferred();
-  const f = await fixture(t, { '/graphql': (_call, _req, res) => { res.once('close', () => cancelled.resolve()); started.resolve(); } });
-  await f.login();
-  const request = f.query().then(response => response);
-  await started.promise;
-  await f.app.close();
-  await cancelled.promise;
-  assert.equal((await request).json().data.accounts, null);
-});
-
-test('connections are isolated across app instances and unrelated providers stay independent', async t => {
-  const first = await fixture(t); const second = await fixture(t);
-  await first.login();
-  code(await second.query(), 'NOT_CONNECTED');
-  assert.equal(second.calls.length, 0);
-  const app = createApp([wealthsimpleProvider(), libraryProvider().provider]);
-  t.after(() => app.close());
-  const catalog = (await app.inject('/providers')).json().providers;
-  assert.equal(catalog[0].connectionEndpoint, undefined);
-  assert.equal((await app.inject('/providers/library/connection')).statusCode, 404);
-  assert.equal((await app.inject('/graphql')).statusCode, 404);
-});
-
-test('cancelling one reader does not cancel a refresh needed by another', { timeout: 5000 }, async t => {
+test('cancelling one reader leaves the shared refresh available to another', { timeout: 5000 }, async t => {
   const refreshStarted = deferred(); const secondStale = deferred(); const release = deferred();
   let stale = 0; let refreshes = 0;
   const f = await fixture(t, {
@@ -439,74 +437,80 @@ test('cancelling one reader does not cancel a refresh needed by another', { time
   const first = fetch(address + graphql, { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ query: accountQuery }), signal: controller.signal }).catch(error => error);
   await refreshStarted.promise;
-  const second = f.query().then(response => response);
+  const second = f.query();
   await secondStale.promise;
   controller.abort();
   await first;
   release.resolve();
-  assert.ok((await second).json().data.accounts);
+  assert.deepEqual((await second).json(), page());
   assert.equal(refreshes, 1);
-  assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
 });
 
-test('disconnect and shutdown abort refresh and cannot revive an old session', { timeout: 5000 }, async t => {
-  for (const shutdown of [false, true]) await t.test(String(shutdown), async t => {
-    const started = deferred(); const cancelled = deferred();
-    let refreshed = false;
-    const f = await fixture(t, {
-      '/token': (call, _req, res) => {
-        if (call.body.grant_type === 'password') return respond(res, tokens);
-        res.once('close', () => cancelled.resolve()); started.resolve();
-      },
-      '/graphql': (_call, _req, res) => { if (refreshed) respond(res, page()); else respond(res, {}, 401); },
-    });
-    await f.login();
-    const read = f.query().then(response => response);
-    await started.promise;
-    if (shutdown) await f.app.close();
-    else await f.app.inject({ method: 'DELETE', url: endpoint });
-    await cancelled.promise;
-    assert.equal((await read).json().data.accounts, null);
-    if (!shutdown) {
-      refreshed = true;
-      await f.login();
-      assert.ok((await f.query()).json().data.accounts);
+test('caller abort settles before shared refresh completes and leaves another reader running', { timeout: 2000 }, async t => {
+  const started = deferred(); const release = deferred();
+  let refreshes = 0;
+  let refreshSignal: AbortSignal | undefined;
+  let retries = 0;
+  const client = new WealthsimpleClient({ fetch: async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path === '/app/login') {
+      const response = new Response('<script src="/assets/app-test.js"></script>', {
+        headers: { 'set-cookie': 'wssdi=device; Secure; Path=/' },
+      });
+      Object.defineProperty(response, 'url', { value: String(url) });
+      return response;
     }
-  });
+    if (path === '/assets/app-test.js') return new Response('config={environment:"production",clientId:"fixture"}');
+    if (path.endsWith('/token/info')) return Response.json({ identity_canonical_id: 'identity' });
+    if (path.endsWith('/token')) {
+      if (JSON.parse(String(init?.body)).grant_type === 'password') return Response.json(tokens);
+      refreshes++;
+      refreshSignal = init?.signal ?? undefined;
+      started.resolve(); await release.promise;
+      return Response.json({ access_token: 'rotated', refresh_token: 'rotated-refresh' });
+    }
+    if (new Headers(init?.headers).get('authorization') === 'Bearer rotated') {
+      retries++;
+      return Response.json(page());
+    }
+    return Response.json({}, { status: 401 });
+  } });
+  t.after(() => { release.resolve(); client.disconnect(); });
+  await client.login(credentials, new AbortController().signal);
+  const controller = new AbortController();
+  const request = client.graphql({ query: '{ anything }' }, controller.signal);
+  const rejected = assert.rejects(request, { name: 'AbortError' });
+  await started.promise;
+  const otherController = new AbortController();
+  const other = client.graphql({ query: '{ anything }' }, otherController.signal);
+  // Let the in-memory 401 response join the pending refresh.
+  await setImmediate();
+  controller.abort();
+  // Keep refresh blocked: cancellation must settle without releasing it.
+  await rejected;
+  assert.equal(refreshSignal?.aborted, false);
+  assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+  assert.equal(client.getStatus(), 'connected');
+  release.resolve();
+  assert.equal((await other).status, 200);
+  assert.equal(getEventListeners(otherController.signal, 'abort').length, 0);
+  assert.equal(refreshes, 1);
+  assert.equal(retries, 1);
 });
 
-test('read and upstream request timeouts preserve the established connection', { timeout: 5000 }, async t => {
-  for (const options of [{ requestTimeoutMs: 40 }, { operationTimeoutMs: 40 }]) await t.test(JSON.stringify(options), async t => {
-    let stall = true;
-    const f = await fixture(t, { '/graphql': (_call, _req, res) => { if (!stall) respond(res, page()); } }, options);
-    await f.login();
-    code(await f.query(), 'TIMEOUT');
-    assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
-    stall = false;
-    assert.ok((await f.query()).json().data.accounts);
-  });
+test('app instances and unrelated providers remain independent', async t => {
+  const first = await fixture(t); const second = await fixture(t);
+  await first.login();
+  code(await second.query(), 'NOT_CONNECTED');
+  assert.equal(second.calls.length, 0);
+  const app = createApp([wealthsimpleProvider(), libraryProvider().provider]);
+  t.after(() => app.close());
+  assert.equal((await app.inject('/providers/library/books')).statusCode, 200);
+  assert.equal((await app.inject(endpoint)).json().status, 'disconnected');
+  assert.equal((await app.inject('/providers/library/connection')).statusCode, 404);
 });
 
-test('bootstrap and token failures are safe, and token requests are never retried', async t => {
-  for (const [path, status, body, expected] of [
-    ['/login', 429, 'Cloudflare error 1015 UPSTREAM_SECRET', 'RATE_LIMITED'],
-    ['/login', 200, '<html>UPSTREAM_SECRET</html>', 'INVALID_RESPONSE'],
-    ['/token', 403, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'],
-    ['/token', 429, 'UPSTREAM_SECRET', 'RATE_LIMITED'],
-    ['/token', 503, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'],
-    ['/token', 200, '{}', 'INVALID_RESPONSE'],
-    ['/token', 400, '{"error":"invalid_client","error_description":"UPSTREAM_SECRET"}', 'LOGIN_FAILED'],
-  ] as const) await t.test(`${path} ${status} ${expected}`, async t => {
-    const f = await fixture(t, { [path]: (_call, _req, res) => { res.writeHead(status); res.end(body); } });
-    const response = await f.login();
-    code(response, expected);
-    assert.doesNotMatch(response.body, secret);
-    assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
-    assert.ok(f.calls.filter(c => c.path === '/token').length <= 1);
-  });
-});
-
-test('unknown provider exceptions and submitted secrets are absent from real process logs', async () => {
+test('unknown errors, malformed input and credentials stay out of real process logs', async () => {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const { stdout, stderr } = await promisify(execFile)(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
@@ -518,208 +522,11 @@ test('unknown provider exceptions and submitted secrets are absent from real pro
       const response = await fetch(address + '${endpoint}', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
       console.log(await response.text());
     }
-    const response = await fetch(address + '${graphql}?query=' + encodeURIComponent('{ UPSTREAM_SECRET }'));
-    await response.text();
+    await fetch(address + '${graphql}?query=' + encodeURIComponent('{ UPSTREAM_SECRET }'));
+    console.log(await (await fetch(address + '${graphql}', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"query":"UPSTREAM_SECRET"' })).text());
     await app.close();
   `], { timeout: 5000 });
   assert.doesNotMatch(stdout + stderr, secret);
   assert.match(stdout, /WEALTHSIMPLE_UPSTREAM_FAILURE/);
   assert.match(stdout, /WEALTHSIMPLE_INVALID_REQUEST/);
-});
-
-test('a rejected shared refresh remains visible after its only reader cancels', { timeout: 5000 }, async t => {
-  const started = deferred(); const release = deferred();
-  const f = await fixture(t, {
-    '/token': async (call, _req, res) => {
-      if (call.body.grant_type === 'password') return respond(res, tokens);
-      started.resolve(); await release.promise; respond(res, { error: 'invalid_grant' }, 400);
-    },
-    '/graphql': (_call, _req, res) => respond(res, {}, 401),
-  });
-  await f.login();
-  const address = await f.app.listen({ host: '127.0.0.1', port: 0 });
-  const controller = new AbortController();
-  const read = fetch(address + graphql, { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query: accountQuery }), signal: controller.signal }).catch(error => error);
-  await started.promise;
-  controller.abort();
-  await read;
-  release.resolve();
-  const { setTimeout: delay } = await import('node:timers/promises');
-  let status = 'connected';
-  for (let i = 0; i < 100 && status === 'connected'; i++) {
-    status = (await f.app.inject(endpoint)).json().status;
-    if (status === 'connected') await delay(5);
-  }
-  assert.equal(status, 'reconnect_required');
-  code(await f.query(), 'RECONNECT_REQUIRED');
-});
-
-test('delayed old-session responses cannot change a replacement connection', { timeout: 5000 }, async t => {
-  for (const operation of ['login', 'refresh', 'read']) await t.test(operation, async t => {
-    const started = deferred(); const release = deferred();
-    t.after(() => release.resolve());
-    let held = false;
-    let logins = 0;
-    const f = await fixture(t, {
-      '/token': (call, _req, res) => {
-        if (call.body.grant_type === 'password') {
-          logins++;
-          respond(res, { access_token: `access-${logins}`, refresh_token: `refresh-${logins}` });
-        } else respond(res, { access_token: 'stale-rotation', refresh_token: 'stale-refresh' });
-      },
-      '/graphql': (call, _req, res) => {
-        if (operation === 'refresh' && call.headers.authorization === 'Bearer access-1') {
-          respond(res, {}, 401);
-        } else respond(res, page([{ id: call.headers.authorization }]));
-      },
-    }, {
-      fetch: async (input, init) => {
-        const response = await fetch(input, init);
-        const path = new URL(String(input)).pathname;
-        const grant = init?.body ? JSON.parse(String(init.body)).grant_type : undefined;
-        const hold = operation === 'read' ? path === '/graphql' :
-          path === '/token' && grant === (operation === 'login' ? 'password' : 'refresh_token');
-        if (held || !hold) return response;
-        held = true;
-        // Deliver a completed upstream response late, even though its signal was aborted.
-        const body = await response.text();
-        started.resolve();
-        await release.promise;
-        return new Response(body, { status: response.status, headers: response.headers });
-      },
-    });
-    if (operation !== 'login') await f.login();
-    const oldRequest = (operation === 'login' ? f.login() : f.query()).then(response => response);
-    await started.promise;
-    await f.app.inject({ method: 'DELETE', url: endpoint });
-    assert.equal((await f.login()).json().status, 'connected');
-    release.resolve();
-    code(await oldRequest, operation === 'login' ? 'CONNECTION_CONFLICT' : 'CANCELLED');
-    const accounts = (await f.query()).json().data.accounts;
-    assert.equal(accounts.edges[0].node.id, 'Bearer access-2');
-    assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
-  });
-});
-
-test('identity lookup preserves one refresh and retry before connecting', async t => {
-  for (const outcome of ['http', 'message', 'refresh rejected', 'retry rejected']) await t.test(outcome, async t => {
-    let refreshes = 0;
-    let identityReads = 0;
-    const f = await fixture(t, {
-      '/token': (call, _req, res) => {
-        if (call.body.grant_type === 'password') return respond(res, tokens);
-        refreshes++;
-        assert.equal(call.headers.authorization, undefined);
-        assert.equal(call.body.refresh_token, tokens.refresh_token);
-        if (outcome === 'refresh rejected') return respond(res, { error: 'invalid_grant' }, 400);
-        respond(res, { access_token: 'identity-rotated', refresh_token: 'identity-refresh' });
-      },
-      '/info': (call, _req, res) => {
-        identityReads++;
-        if (call.headers.authorization === `Bearer ${tokens.access_token}` || outcome === 'retry rejected') {
-          if (outcome === 'message') respond(res, { message: 'Not Authorized.' });
-          else respond(res, {}, 401);
-        } else {
-          assert.equal(call.headers.authorization, 'Bearer identity-rotated');
-          respond(res, { identity_canonical_id: 'IDENTITY_SENTINEL' });
-        }
-      },
-    });
-    const response = await f.login();
-    if (outcome.endsWith('rejected')) {
-      code(response, 'RECONNECT_REQUIRED');
-      assert.equal(response.statusCode, 401);
-      assert.equal((await f.app.inject(endpoint)).json().status, 'disconnected');
-      code(await f.query(), 'NOT_CONNECTED');
-    } else {
-      assert.equal(response.json().status, 'connected');
-      assert.ok((await f.query()).json().data.accounts);
-      const read = f.calls.find(call => call.path === '/graphql');
-      assert.equal(read?.headers.authorization, 'Bearer identity-rotated');
-      assert.equal(read?.body.variables.identityId, 'IDENTITY_SENTINEL');
-    }
-    assert.equal(refreshes, 1);
-    assert.equal(identityReads, outcome === 'refresh rejected' ? 1 : 2);
-    assert.equal(f.calls.filter(call => call.body.grant_type === 'password').length, 1);
-  });
-});
-
-test('a late authentication rejection reuses the token another reader already refreshed', { timeout: 5000 }, async t => {
-  const delayed = deferred(); const release = deferred();
-  t.after(() => release.resolve());
-  let staleReads = 0;
-  let refreshes = 0;
-  const f = await fixture(t, {
-    '/token': (call, _req, res) => {
-      if (call.body.grant_type === 'password') return respond(res, tokens);
-      refreshes++;
-      respond(res, { access_token: 'rotated', refresh_token: 'rotated-refresh' });
-    },
-    '/graphql': async (call, _req, res) => {
-      if (call.headers.authorization === `Bearer ${tokens.access_token}`) {
-        if (++staleReads === 1) { delayed.resolve(); await release.promise; }
-        respond(res, {}, 401);
-      } else {
-        assert.equal(call.headers.authorization, 'Bearer rotated');
-        respond(res, page());
-      }
-    },
-  });
-  await f.login();
-  const first = f.query({ first: 3, after: 'delayed-page' }).then(response => response);
-  await delayed.promise;
-  assert.ok((await f.query({ first: 7, after: 'other-page' })).json().data.accounts);
-  release.resolve();
-  assert.ok((await first).json().data.accounts);
-  assert.equal(refreshes, 1);
-  const reads = f.calls.filter(call => call.path === '/graphql');
-  assert.equal(reads.length, 4);
-  for (const [cursor, size] of [['delayed-page', 3], ['other-page', 7]] as const) {
-    const attempts = reads.filter(call => call.body.variables.after === cursor);
-    assert.equal(attempts.length, 2);
-    for (const attempt of attempts) assert.equal(attempt.body.variables.first, size);
-  }
-});
-
-test('non-authentication refresh failures preserve the session without recursive retries', async t => {
-  for (const [status, body, expected] of [
-    [403, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'],
-    [429, '<html>UPSTREAM_SECRET</html>', 'RATE_LIMITED'],
-    [503, 'UPSTREAM_SECRET', 'UPSTREAM_FAILURE'],
-    [200, '<html>UPSTREAM_SECRET</html>', 'INVALID_RESPONSE'],
-    [200, '{invalid UPSTREAM_SECRET', 'INVALID_RESPONSE'],
-    [200, '{"access_token":"incomplete-rotation"}', 'INVALID_RESPONSE'],
-  ] as const) await t.test(`${status} ${expected} ${body.slice(0, 16)}`, async t => {
-    let recover = false;
-    let refreshes = 0;
-    const f = await fixture(t, {
-      '/token': (call, _req, res) => {
-        if (call.body.grant_type === 'password') return respond(res, tokens);
-        refreshes++;
-        assert.equal(call.body.refresh_token, tokens.refresh_token);
-        assert.equal(call.headers.authorization, undefined);
-        if (recover) respond(res, { access_token: 'rotated', refresh_token: 'rotated-refresh' });
-        else { res.writeHead(status); res.end(body); }
-      },
-      '/graphql': (call, _req, res) => {
-        if (call.headers.authorization === 'Bearer rotated') respond(res, page());
-        else {
-          assert.equal(call.headers.authorization, `Bearer ${tokens.access_token}`);
-          respond(res, {}, 401);
-        }
-      },
-    });
-    await f.login();
-    const response = await f.query();
-    code(response, expected);
-    assert.doesNotMatch(response.body, secret);
-    assert.equal(refreshes, 1);
-    assert.equal(f.calls.filter(call => call.path === '/graphql').length, 1);
-    assert.equal((await f.app.inject(endpoint)).json().status, 'connected');
-    recover = true;
-    assert.ok((await f.query()).json().data.accounts);
-    assert.equal(refreshes, 2);
-    assert.equal(f.calls.filter(call => call.body.grant_type === 'password').length, 1);
-  });
 });

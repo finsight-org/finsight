@@ -1,0 +1,38 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Supply securityId from search or a holding. Live coverage used an equity/ETF.
+# Fundamentals and quotes can be null; the inline fragment applies to EquityQuote only.
+# quotedAsOf is the quote timestamp. Values are returned as decimal strings.
+query SecurityResearch($securityId: ID!) {
+  security(id: $securityId) {
+    id
+    currency
+    securityType
+    stock { symbol name primaryExchange dividendFrequency }
+    managementExpenseRatio
+    fundamentals {
+      description
+      marketCap
+      peRatio
+      yield
+      high52Week
+      low52Week
+    }
+    quoteV2 {
+      __typename
+      price
+      bid
+      ask
+      currency
+      quotedAsOf
+      previousBaseline
+      ... on EquityQuote {
+        marketStatus
+        open
+        high
+        low
+        close
+        vol
+      }
+    }
+  }
+}

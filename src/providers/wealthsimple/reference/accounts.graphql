@@ -1,0 +1,28 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Account inventory and balances. FinSight supplies identityId; no variables needed.
+# Continue with after = pageInfo.endCursor while hasNextPage is true.
+query AccountInventory($identityId: ID!, $first: Int = 20, $after: String) {
+  identity(id: $identityId) {
+    accounts(filter: {}, first: $first, after: $after) {
+      edges {
+        node {
+          id
+          nickname
+          unifiedAccountType
+          status
+          currency
+          supportedCurrencies
+          financials {
+            currentCombined {
+              netLiquidationValue { amount currency }
+              netDeposits { amount currency }
+              totalDeposits { amount currency }
+              totalWithdrawals { amount currency }
+            }
+          }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}

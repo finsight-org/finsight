@@ -1,0 +1,16 @@
+# Independently reconstructed and live tested through FinSight on 2026-10-04.
+# Variables example: {"term":"VFV"}. Pass a returned id to SecurityResearch.
+# This result list has no pagination in this example; stock can be null for other assets.
+query FindSecurities($term: String!) {
+  securitySearch(input: {query: $term}) {
+    results {
+      id
+      securityType
+      currency
+      active
+      wsTradeEligible
+      buyable
+      stock { symbol name primaryExchange }
+    }
+  }
+}
