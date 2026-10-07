@@ -218,7 +218,7 @@ export class WealthsimpleClient {
         });
         this.#refreshing = refreshing;
       }
-      await this.#refreshing;
+      await waitForRefresh(this.#refreshing, signal);
     }
     this.#assertCurrent(session);
     signal.throwIfAborted();
@@ -302,6 +302,20 @@ export class WealthsimpleClient {
     if (session !== this.#session) {
       throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple connection changed. Submit a new request.');
     }
+  }
+}
+
+async function waitForRefresh(refresh: Promise<void>, signal: AbortSignal) {
+  let abort!: () => void;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      abort = () => reject(signal.reason);
+      refresh.then(resolve, reject);
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+    });
+  } finally {
+    signal.removeEventListener('abort', abort);
   }
 }
 

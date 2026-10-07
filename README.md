@@ -148,8 +148,9 @@ Valid upstream GraphQL responses pass through unchanged.
 Requests have a 1 MiB body limit, with 16 KiB for connection POSTs. Upstream
 responses are limited to 8 MiB. Individual upstream requests time out after
 30 seconds. Each request also observes its caller's abort signal. Shared refresh
-uses its own request timeout; an aborted reader is not retried when refresh
-finishes. Cookie storage, sending, and public redirects are handled by
+uses its own request timeout; an aborted reader stops waiting immediately without
+canceling refresh for other readers and is not retried. Cookie storage, sending,
+and public redirects are handled by
 [fetch-cookie](https://github.com/valeriangalliat/fetch-cookie) wrapping native
 Node fetch.
 Every request and redirect destination must use HTTPS on a Wealthsimple subdomain

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { getEventListeners } from 'node:events';
+import { setImmediate } from 'node:timers/promises';
 import { Kind, parse } from 'graphql';
 import { createApp, MAX_REQUEST_BODY_SIZE } from '../src/app.js';
 import { wealthsimpleProvider } from '../src/providers/wealthsimple/index.js';
@@ -444,8 +446,11 @@ test('cancelling one reader leaves the shared refresh available to another', { t
   assert.equal(refreshes, 1);
 });
 
-test('an aborted caller is not retried after a shared refresh completes', async t => {
+test('caller abort settles before shared refresh completes and leaves another reader running', { timeout: 2000 }, async t => {
   const started = deferred(); const release = deferred();
+  let refreshes = 0;
+  let refreshSignal: AbortSignal | undefined;
+  let retries = 0;
   const client = new WealthsimpleClient({ fetch: async (url, init) => {
     const path = new URL(String(url)).pathname;
     if (path === '/app/login') {
@@ -459,8 +464,14 @@ test('an aborted caller is not retried after a shared refresh completes', async 
     if (path.endsWith('/token/info')) return Response.json({ identity_canonical_id: 'identity' });
     if (path.endsWith('/token')) {
       if (JSON.parse(String(init?.body)).grant_type === 'password') return Response.json(tokens);
+      refreshes++;
+      refreshSignal = init?.signal ?? undefined;
       started.resolve(); await release.promise;
       return Response.json({ access_token: 'rotated', refresh_token: 'rotated-refresh' });
+    }
+    if (new Headers(init?.headers).get('authorization') === 'Bearer rotated') {
+      retries++;
+      return Response.json(page());
     }
     return Response.json({}, { status: 401 });
   } });
@@ -470,10 +481,21 @@ test('an aborted caller is not retried after a shared refresh completes', async 
   const request = client.graphql({ query: '{ anything }' }, controller.signal);
   const rejected = assert.rejects(request, { name: 'AbortError' });
   await started.promise;
+  const otherController = new AbortController();
+  const other = client.graphql({ query: '{ anything }' }, otherController.signal);
+  // Let the in-memory 401 response join the pending refresh.
+  await setImmediate();
   controller.abort();
-  release.resolve();
+  // Keep refresh blocked: cancellation must settle without releasing it.
   await rejected;
+  assert.equal(refreshSignal?.aborted, false);
+  assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
   assert.equal(client.getStatus(), 'connected');
+  release.resolve();
+  assert.equal((await other).status, 200);
+  assert.equal(getEventListeners(otherController.signal, 'abort').length, 0);
+  assert.equal(refreshes, 1);
+  assert.equal(retries, 1);
 });
 
 test('app instances and unrelated providers remain independent', async t => {
