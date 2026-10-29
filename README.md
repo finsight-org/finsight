@@ -30,11 +30,12 @@ are mounted; it does not promise that the provider is connected or healthy.
 ## Docker and ChatGPT
 
 See [the local deployment guide](docs/local-deployment.md) for Docker Compose,
-manual connection, OpenAI's private MCP tunnel, and end-to-end verification.
+interactive login, OpenAI's private MCP tunnel, and end-to-end verification.
 The default Compose service needs no OpenAI key:
 
 ```sh
 docker compose up -d --build --wait finsight
+docker compose exec finsight node dist/cli/wealthsimple.js login
 ```
 
 Stateless Streamable HTTP at `/mcp` exposes exactly three provider-agnostic tools:
@@ -83,6 +84,21 @@ account-and-holdings performance query.
 GET always returns documentation, including when a `query` URL parameter is present.
 
 ## Connect to Wealthsimple
+
+For interactive host development:
+
+```sh
+npm run wealthsimple -- login
+npm run wealthsimple -- status
+npm run wealthsimple -- disconnect
+# Override the server origin for another local port:
+npm run wealthsimple -- login --url http://127.0.0.1:4001
+```
+
+Login requires a terminal, hides passwords and OTPs, and completes at most one
+MFA challenge. Secret arguments are not accepted. Use the compiled helper through
+`docker compose exec` when running containers. The HTTP interface below remains
+available for other local clients.
 
 ```sh
 curl http://127.0.0.1:4000/providers/wealthsimple/connection

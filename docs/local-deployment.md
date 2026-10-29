@@ -13,6 +13,7 @@ exposes Compose as `docker-compose`, substitute it for `docker compose` below.
 ```sh
 docker compose up -d --build --wait finsight
 curl --fail http://127.0.0.1:4000/healthz
+docker compose exec finsight node dist/cli/wealthsimple.js status
 ```
 
 Only `127.0.0.1:4000` is published. The dedicated bridge network permits outbound
@@ -23,13 +24,35 @@ dependencies, compiled code, and all nine GraphQL reference documents.
 
 ## Connect manually
 
-Use the [Wealthsimple connection HTTP interface](../README.md#connect-to-wealthsimple)
-from a trusted local client to log in and complete MFA. Credentials and OTPs must
-stay outside ChatGPT. Provider tokens and cookies exist only in Finsight's
-memory. Restarting/rebuilding Finsight requires another login; restarting just
-the tunnel client does not.
+```sh
+docker compose exec finsight node dist/cli/wealthsimple.js login
+docker compose exec finsight node dist/cli/wealthsimple.js status
+docker compose exec finsight node dist/cli/wealthsimple.js disconnect
+```
 
-For host development, run `npm ci` and `npm run dev` with Node.js 24.
+Keep the default interactive TTY for login; do not use `exec -T` for that command.
+The helper prompts for email and a hidden password. If necessary, it prompts
+once for a hidden OTP and completes login sequentially. Failures exit nonzero
+without retrying or printing provider diagnostics. Ctrl-C cancels and restores
+the terminal. Passwords and OTPs cannot be provided as arguments.
+
+For host development:
+
+```sh
+npm ci
+npm run dev
+# In another terminal:
+npm run wealthsimple -- login
+npm run wealthsimple -- status
+# Any helper command accepts --url with a trusted HTTP(S) server origin:
+npm run wealthsimple -- login --url http://127.0.0.1:4001
+```
+
+The helper defaults to `http://127.0.0.1:4000`, including inside the container.
+If you change the server's port outside Compose, pass `--url`. Never paste
+credentials or OTPs into ChatGPT. Provider tokens and cookies exist only in
+Finsight's memory. Restarting/rebuilding Finsight requires another login;
+restarting just the tunnel client does not.
 
 ## Configure the private tunnel
 
@@ -101,7 +124,7 @@ Before login, use ChatGPT to:
 3. Construct a small query using the references and call
    `query_provider_graphql`. Expect a tool error with HTTP status 401.
 
-Complete login locally, then repeat the small query. Compare the result
+Complete login in your terminal, then repeat the small query. Compare the result
 with the same request sent directly to Finsight. Use native operation names,
 variables, and cursors. Reference filenames are not executable operation IDs.
 There are no MCP login, status, disconnect, arbitrary HTTP, or trading tools.
@@ -142,7 +165,7 @@ docker compose build finsight
 
 Tests use SDK clients, two synthetic providers, and synthetic Wealthsimple
 responses. They cover discovery, route parity, bounds, cancellation, shared
-refresh, and shutdown without real account access.
+refresh, shutdown, and terminal-helper flows without real account access.
 Live ChatGPT/tunnel/account validation is separate and requires your runtime
 key, account permissions, and interactive login. Do not commit account data
 or turn real responses into test fixtures.
