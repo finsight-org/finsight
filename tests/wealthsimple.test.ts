@@ -524,6 +524,12 @@ test('unknown errors, malformed input and credentials stay out of real process l
     }
     await fetch(address + '${graphql}?query=' + encodeURIComponent('{ UPSTREAM_SECRET }'));
     console.log(await (await fetch(address + '${graphql}', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"query":"UPSTREAM_SECRET"' })).text());
+    for (const body of [
+      '{"query":"PASSWORD_SENTINEL"',
+      JSON.stringify({jsonrpc:'2.0', id:1, method:'tools/call', params:{name:'query_provider_graphql', arguments:{providerId:'wealthsimple', query:'{ UPSTREAM_SECRET }', variables:{password:'PASSWORD_SENTINEL'}}}}),
+    ]) {
+      await (await fetch(address + '/mcp', { method:'POST', headers:{'content-type':'application/json', accept:'application/json, text/event-stream'}, body })).text();
+    }
     await app.close();
   `], { timeout: 5000 });
   assert.doesNotMatch(stdout + stderr, secret);

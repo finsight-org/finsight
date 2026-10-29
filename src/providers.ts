@@ -25,6 +25,11 @@ export function createProviderRegistry(definitions: readonly Provider[]): readon
     if (!name.trim() || !description.trim()) {
       throw new Error(`Provider ${id} requires a name and description.`);
     }
+    const endpoint = metadata.graphqlEndpoint;
+    if (!endpoint.startsWith(`/providers/${id}/`) || /[\\?#%\s]/.test(endpoint) ||
+        new URL(endpoint, 'http://localhost').pathname !== endpoint) {
+      throw new Error(`Provider ${id} requires an unescaped GraphQL path inside /providers/${id}/.`);
+    }
     ids.add(id);
     return Object.freeze({ metadata: Object.freeze({ ...metadata }), routes });
   });
