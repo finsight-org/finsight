@@ -27,7 +27,15 @@ curl http://127.0.0.1:4000/providers
 The catalog is sorted by provider ID. Registration means a provider's routes
 are mounted; it does not promise that the provider is connected or healthy.
 
-## MCP
+## Docker and ChatGPT
+
+See [the local deployment guide](docs/local-deployment.md) for Docker Compose,
+manual connection, OpenAI's private MCP tunnel, and end-to-end verification.
+The default Compose service needs no OpenAI key:
+
+```sh
+docker compose up -d --build --wait finsight
+```
 
 Stateless Streamable HTTP at `/mcp` exposes exactly three provider-agnostic tools:
 
@@ -46,8 +54,9 @@ No caller-selected URLs or connection-management tools are exposed.
 
 `GET /healthz` reports readiness without contacting a provider. The server
 validates Host headers and rejects all Origin headers; no browser interface is
-supported. There is no incoming REST token or multi-user isolation: trust local
-processes and the dedicated network.
+supported. `HOST` defaults to `127.0.0.1`; Compose sets `0.0.0.0` inside the
+container but publishes only on host loopback. There is no incoming REST token
+or multi-user isolation: trust local processes and the dedicated Compose network.
 
 ## Discover Wealthsimple GraphQL
 

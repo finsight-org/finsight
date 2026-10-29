@@ -1,0 +1,55 @@
+services:
+  finsight:
+    build: .
+    init: true
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4000"
+    ports:
+      - "127.0.0.1:4000:4000"
+    networks: [finsight]
+    restart: unless-stopped
+    stop_grace_period: 10s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tunnel-client:
+    # Official multi-architecture v0.0.17 release, pinned to its OCI index digest.
+    image: ghcr.io/openai/tunnel-client:v0.0.17@sha256:67b473b4bc23bc984e4a381752e9a2fa75649746edc06e46b27025611835c5c0
+    profiles: [tunnel]
+    command: ["--control-plane.api-key=file:/run/secrets/openai_tunnel_key"]
+    environment:
+      CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID:-}
+      MCP_SERVER_URL: http://finsight:4000/mcp
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    secrets: [openai_tunnel_key]
+    depends_on:
+      finsight:
+        condition: service_healthy
+    networks: [finsight]
+    restart: unless-stopped
+    stop_grace_period: 10s
+    cap_drop: [ALL]
+    # Read a mode-0600 secret owned by the host user on native Linux too.
+    cap_add: [DAC_READ_SEARCH]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  finsight:
+    driver: bridge
+
+secrets:
+  openai_tunnel_key:
+    file: ./.secrets/openai_tunnel_key
