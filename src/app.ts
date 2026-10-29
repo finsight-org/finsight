@@ -1,5 +1,4 @@
 import Fastify, { LogController } from 'fastify';
-import type { Socket } from 'node:net';
 import { hostHeaderValidation } from '@modelcontextprotocol/fastify';
 import { createProviderRegistry, type Provider } from './providers.js';
 import { registerMcp } from './mcp.js';
@@ -13,22 +12,6 @@ export function createApp(providers: readonly Provider[] = []) {
     // Provider requests can contain sensitive credentials and query variables.
     logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: MAX_REQUEST_BODY_SIZE,
-  });
-
-  // Aborted fetches may preconnect a replacement TCP socket. Node's HTTP
-  // close() does not reap sockets still awaiting their first request.
-  const unstarted = new Set<Socket>();
-  let closing = false;
-  app.server.on('connection', socket => {
-    if (closing) { socket.destroy(); return; }
-    unstarted.add(socket);
-    socket.once('close', () => unstarted.delete(socket));
-  });
-  app.server.prependListener('request', request => { unstarted.delete(request.socket); });
-  app.addHook('preClose', async () => {
-    closing = true;
-    for (const socket of unstarted) socket.destroy();
-    unstarted.clear();
   });
 
   app.addHook('onRequest', hostHeaderValidation(['127.0.0.1', 'localhost', '[::1]', 'finsight']));

@@ -133,14 +133,21 @@ Provider routes remain responsible for rejecting mutations and subscriptions.
 Tool text is JSON with `statusCode` and `body`; body is the exact provider
 response text, so parse it separately when it is JSON. HTTP-200 partial GraphQL
 errors remain successful transport responses. Other HTTP statuses set
-`isError: true`. Requests are capped at 1 MiB including the MCP envelope;
-provider response bodies at 8 MiB; bridge calls at 95 seconds total.
+`isError: true`. Redirects are returned as tool errors and are never followed.
+Requests are capped at 1 MiB including the MCP envelope. MCP dispatch uses
+Fastify `inject()` to run the registered provider route without an internal HTTP
+connection. Responses above 8 MiB are rejected after injection has buffered them;
+this check is not a streaming memory bound. Wealthsimple independently bounds
+its upstream responses at 8 MiB. Other providers must bound their own upstream
+reads and execution time.
 
-Cancellation closes the active loopback request. Modern MCP clients cancel their
-HTTP exchange automatically. Legacy stateless clients must close the outstanding
-HTTP exchange as well: a separate cancellation notification cannot identify an
-exchange across fresh stateless instances. No global request-ID map or MCP
-session store is maintained.
+Cancelling an MCP call or closing its transport does not cancel provider work
+after injection has consumed the request body. That work may continue until
+completion, an upstream timeout, or provider shutdown. Direct provider HTTP
+cancellation remains unchanged. There is no separate MCP execution deadline:
+Wealthsimple retains its 30-second timeout per upstream request, and token
+refresh plus retry can extend the total duration. Fastify and the SDK handle
+transport cleanup; existing provider shutdown hooks abort upstream work.
 
 After disconnecting, queries must return 401. After reconnecting, restart only
 `tunnel-client` and confirm reads still work. Restart Finsight and confirm reads
@@ -164,8 +171,9 @@ docker compose build finsight
 ```
 
 Tests use SDK clients, two synthetic providers, and synthetic Wealthsimple
-responses. They cover discovery, route parity, bounds, cancellation, shared
-refresh, shutdown, and terminal-helper flows without real account access.
+responses. MCP tests cover discovery, route parity, request/response limits, and
+shutdown. CLI tests cover connection, MFA, safe failure, and interruption.
+Existing provider tests retain cancellation and shared-refresh coverage.
 Live ChatGPT/tunnel/account validation is separate and requires your runtime
 key, account permissions, and interactive login. Do not commit account data
 or turn real responses into test fixtures.

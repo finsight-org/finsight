@@ -36,23 +36,7 @@ export async function runWealthsimple(args: string[], io: ConnectionIO): Promise
         throw new Error('Connection request failed');
       }
       if (method === 'DELETE') { await response.body?.cancel(); return 'disconnected'; }
-      // A connection response is tiny. Do not buffer an unbounded diagnostic body.
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Missing response');
-      let text = '';
-      let size = 0;
-      try {
-        const chunks: Uint8Array[] = [];
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > 16 * 1024) { await reader.cancel(); throw new Error('Invalid response'); }
-          chunks.push(value);
-        }
-        text = Buffer.concat(chunks).toString('utf8');
-      } finally { reader.releaseLock(); }
-      const status: unknown = JSON.parse(text).status;
+      const status: unknown = (await response.json()).status;
       if (!['connected', 'disconnected', 'mfa_required'].includes(String(status))) throw new Error('Invalid status');
       return status;
     }

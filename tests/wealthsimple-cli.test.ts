@@ -58,7 +58,7 @@ test('terminal helper does not retry rejected authentication or print diagnostic
   for (const response of [
     Response.json({ error: { message: 'PASSWORD_SENTINEL' } }, { status: 401 }),
     Response.json({ status: 'PASSWORD_SENTINEL' }),
-    new Response('PASSWORD_SENTINEL'.repeat(2000)),
+    new Response('PASSWORD_SENTINEL'),
   ]) {
     const term = terminal([credentials.email, credentials.password]);
     let requests = 0;

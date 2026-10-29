@@ -49,9 +49,15 @@ Stateless Streamable HTTP at `/mcp` exposes exactly three provider-agnostic tool
 Discover providers, read the selected provider's documentation, then construct
 native queries. MCP text contains `{statusCode, body}`; body is the unchanged
 provider response text. Non-2xx responses are tool errors. HTTP-200 GraphQL errors
-and partial data pass through without interpretation. Loopback HTTP dispatch
-preserves provider route validation, session handling, cancellation, and errors.
+and partial data pass through without interpretation. Fastify `inject()` dispatches
+through the existing provider routes without an internal network connection,
+preserving validation, session handling, and errors.
 No caller-selected URLs or connection-management tools are exposed.
+
+Cancelling an MCP call may leave provider work running until completion, an
+upstream timeout, or server shutdown. Direct provider HTTP cancellation is
+unchanged. There is no separate MCP execution deadline. See the deployment guide
+for response-buffering limits and the complete local workflow.
 
 `GET /healthz` reports readiness without contacting a provider. The server
 validates Host headers and rejects all Origin headers; no browser interface is

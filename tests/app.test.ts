@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createApp, MAX_REQUEST_BODY_SIZE } from '../src/app.js';
 import { libraryProvider, weatherProvider } from './fixtures.js';
-import { createConnection } from 'node:net';
-import { once } from 'node:events';
 
 test('default app has an empty catalog and no financial or fixture endpoints', async t => {
   const app = createApp();
@@ -12,20 +10,6 @@ test('default app has an empty catalog and no financial or fixture endpoints', a
   for (const url of ['/graphql', '/accounts', '/providers/library/graphql', '/providers/wealthsimple/connection']) {
     assert.equal((await app.inject(url)).statusCode, 404);
   }
-});
-
-test('shutdown closes TCP preconnections that have not sent an HTTP request', { timeout: 2000 }, async t => {
-  const app = createApp();
-  t.after(() => app.close());
-  await app.listen({ host: '127.0.0.1', port: 0 });
-  const address = app.server.address();
-  assert.ok(address && typeof address !== 'string');
-  const socket = createConnection({ host: '127.0.0.1', port: address.port });
-  t.after(() => socket.destroy());
-  await once(socket, 'connect');
-  const closed = once(socket, 'close');
-  await app.close();
-  await closed;
 });
 
 test('core mounts isolated provider-owned routes and publishes only metadata', async t => {

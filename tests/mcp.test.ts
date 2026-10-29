@@ -5,7 +5,7 @@ import { Client, StreamableHTTPClientTransport, type CallToolResult } from '@mod
 import { createApp } from '../src/app.js';
 import { MCP_MAX_RESPONSE_BYTES } from '../src/mcp.js';
 import { libraryProvider, weatherProvider } from './fixtures.js';
-import { accountQuery, deferred, fixture, page, respond, tokens } from './wealthsimple-fixtures.js';
+import { accountQuery, deferred, fixture } from './wealthsimple-fixtures.js';
 
 async function connect(t: TestContext, app: FastifyInstance, modern = false) {
   const address = await app.listen({ host: '127.0.0.1', port: 0 });
@@ -95,86 +95,19 @@ test('MCP bounds incoming bodies and provider responses, and never follows redir
   const app = createApp([{ ...provider, routes: async routes => {
     routes.get('/graphql', (_req, reply) => reply.redirect('/providers/library/forbidden'));
     routes.get('/forbidden', () => { touched = true; return {}; });
-    routes.post('/graphql', () => 'x'.repeat(MCP_MAX_RESPONSE_BYTES + 1));
+    routes.post('/graphql', () => 'é'.repeat(MCP_MAX_RESPONSE_BYTES / 2 + 1));
   } }]);
   t.after(() => app.close());
   const { client, address } = await connect(t, app);
-  const redirect = envelope(await client.callTool({ name: 'describe_provider_graphql', arguments: { providerId: 'library' } }));
-  assert.equal(redirect.statusCode, 502);
+  const redirect = await client.callTool({ name: 'describe_provider_graphql', arguments: { providerId: 'library' } });
+  assert.equal(redirect.isError, true);
+  assert.equal(envelope(redirect).statusCode, 302);
   assert.equal(touched, false);
   const oversized = await client.callTool({ name: 'query_provider_graphql', arguments: { providerId: 'library', query: '{x}' } });
   assert.equal(oversized.isError, true);
   assert.match(envelope(oversized).body, /8 MiB/);
   const incoming = await fetch(address + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ input: 'x'.repeat(1024 * 1024) }) });
   assert.equal(incoming.status, 413);
-});
-
-test('MCP cancellation and HTTP transport closure cancel provider work', { timeout: 15000 }, async t => {
-  for (const modern of [false, true]) await t.test(modern ? 'modern' : 'legacy', async t => {
-    const started = deferred();
-    const aborted = deferred();
-    const f = await fixture(t, {}, { fetch: async (input, init) => {
-      if (new URL(String(input)).pathname !== '/graphql') return fetch(input, init);
-      return new Promise<Response>((_resolve, reject) => {
-        init!.signal!.addEventListener('abort', () => { aborted.resolve(); reject(init!.signal!.reason); }, { once: true });
-        started.resolve();
-      });
-    } });
-    await f.login();
-    const { client, address } = await connect(t, f.app, modern);
-    const controller = new AbortController();
-    const params = { name: 'query_provider_graphql', arguments: { providerId: 'wealthsimple', query: accountQuery } };
-    // Modern clients cancel their per-request HTTP stream. Legacy stateless
-    // cancellation must close that stream; a separate notification has no session.
-    const pending = modern ? client.callTool(params, { signal: controller.signal }) : fetch(address + '/mcp', {
-      method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/call', params }),
-      signal: controller.signal,
-    }).then(response => response.text());
-    const rejection = assert.rejects(pending);
-    await started.promise;
-    controller.abort();
-    await Promise.all([aborted.promise, rejection]);
-    await client.close();
-  });
-});
-
-test('MCP readers share refresh; cancelling one leaves refresh and another reader alive', { timeout: 5000 }, async t => {
-  const refreshing = deferred();
-  const secondReading = deferred();
-  const release = deferred();
-  let rotations = 0;
-  let staleReads = 0;
-  const f = await fixture(t, {
-    '/graphql': (call, _req, res) => {
-      if (call.headers.authorization === 'Bearer rotated') return respond(res, page());
-      if (++staleReads === 2) secondReading.resolve();
-      respond(res, {}, 401);
-    },
-    '/token': async (call, _req, res) => {
-      if (call.body.grant_type !== 'refresh_token') return respond(res, tokens);
-      rotations++;
-      refreshing.resolve();
-      await release.promise;
-      respond(res, { access_token: 'rotated', refresh_token: 'rotated-refresh' });
-    },
-  });
-  t.after(() => release.resolve());
-  await f.login();
-  const { client } = await connect(t, f.app, true);
-  const args = { name: 'query_provider_graphql', arguments: { providerId: 'wealthsimple', query: accountQuery } };
-  const controller = new AbortController();
-  const first = client.callTool(args, { signal: controller.signal });
-  const rejected = assert.rejects(first);
-  await refreshing.promise;
-  const second = client.callTool(args);
-  await secondReading.promise;
-  controller.abort();
-  await rejected;
-  release.resolve();
-  assert.equal(envelope(await second).statusCode, 200);
-  assert.equal(rotations, 1);
-  await client.close();
 });
 
 test('shutdown aborts a pending MCP call before draining', { timeout: 5000 }, async t => {
