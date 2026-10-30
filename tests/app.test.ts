@@ -33,10 +33,28 @@ test('provider routes are never cached, do not enable CORS, and respect the body
   const { provider, state } = libraryProvider();
   const app = createApp([provider]);
   t.after(() => app.close());
-  const response = await app.inject({ url: '/providers/library/books', headers: { origin: 'https://example.test' } });
+  const response = await app.inject({ url: '/providers/library/books' });
   assert.equal(response.headers['cache-control'], 'no-store');
   assert.equal(response.headers['access-control-allow-origin'], undefined);
   const oversized = await app.inject({ method: 'POST', url: '/providers/library/graphql', payload: { value: 'x'.repeat(MAX_REQUEST_BODY_SIZE) } });
   assert.equal(oversized.statusCode, 413);
+  assert.equal(state.calls, 0);
+});
+
+test('local boundary checks Host and rejects every browser Origin before provider work', async t => {
+  const { provider, state } = libraryProvider();
+  const app = createApp([provider]);
+  t.after(() => app.close());
+  for (const host of ['127.0.0.1:4000', 'localhost', '[::1]:4000', 'finsight:4000']) {
+    assert.equal((await app.inject({ url: '/healthz', headers: { host } })).statusCode, 200);
+  }
+  for (const host of ['evil.test', '127.0.0.1.evil.test', 'finsight.evil.test']) {
+    assert.equal((await app.inject({ url: '/providers', headers: { host } })).statusCode, 403);
+  }
+  for (const origin of ['https://evil.test', 'http://localhost:4000', 'null', '']) {
+    const response = await app.inject({ method: 'POST', url: '/providers/library/graphql', headers: { origin }, payload: {} });
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.headers['access-control-allow-origin'], undefined);
+  }
   assert.equal(state.calls, 0);
 });

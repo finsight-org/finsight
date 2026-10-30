@@ -27,6 +27,44 @@ curl http://127.0.0.1:4000/providers
 The catalog is sorted by provider ID. Registration means a provider's routes
 are mounted; it does not promise that the provider is connected or healthy.
 
+## Docker and ChatGPT
+
+See [the local deployment guide](docs/local-deployment.md) for Docker Compose,
+interactive login, OpenAI's private MCP tunnel, and end-to-end verification.
+The default Compose service needs no OpenAI key:
+
+```sh
+docker compose up -d --build --wait finsight
+docker compose exec finsight node dist/cli/wealthsimple.js login
+```
+
+Stateless Streamable HTTP at `/mcp` exposes exactly three provider-agnostic tools:
+
+| Tool | Inputs | Behavior |
+| --- | --- | --- |
+| `list_providers` | None | Same catalog as `GET /providers` |
+| `describe_provider_graphql` | `providerId` | GET the registered GraphQL endpoint |
+| `query_provider_graphql` | `providerId`, `query`, optional nullable `variables`, `operationName` | POST to that endpoint |
+
+Discover providers, read the selected provider's documentation, then construct
+native queries. MCP text contains `{statusCode, body}`; body is the unchanged
+provider response text. Non-2xx responses are tool errors. HTTP-200 GraphQL errors
+and partial data pass through without interpretation. Fastify `inject()` dispatches
+through the existing provider routes without an internal network connection,
+preserving validation, session handling, and errors.
+No caller-selected URLs or connection-management tools are exposed.
+
+Cancelling an MCP call may leave provider work running until completion, an
+upstream timeout, or server shutdown. Direct provider HTTP cancellation is
+unchanged. There is no separate MCP execution deadline. See the deployment guide
+for response-buffering limits and the complete local workflow.
+
+`GET /healthz` reports readiness without contacting a provider. The server
+validates Host headers and rejects all Origin headers; no browser interface is
+supported. `HOST` defaults to `127.0.0.1`; Compose sets `0.0.0.0` inside the
+container but publishes only on host loopback. There is no incoming REST token
+or multi-user isolation: trust local processes and the dedicated Compose network.
+
 ## Discover Wealthsimple GraphQL
 
 ```sh
@@ -52,6 +90,21 @@ account-and-holdings performance query.
 GET always returns documentation, including when a `query` URL parameter is present.
 
 ## Connect to Wealthsimple
+
+For interactive host development:
+
+```sh
+npm run wealthsimple -- login
+npm run wealthsimple -- status
+npm run wealthsimple -- disconnect
+# Override the server origin for another local port:
+npm run wealthsimple -- login --url http://127.0.0.1:4001
+```
+
+Login requires a terminal, hides passwords and OTPs, and completes at most one
+MFA challenge. Secret arguments are not accepted. Use the compiled helper through
+`docker compose exec` when running containers. The HTTP interface below remains
+available for other local clients.
 
 ```sh
 curl http://127.0.0.1:4000/providers/wealthsimple/connection
@@ -172,6 +225,9 @@ interface Provider {
 Supply metadata with `id`, `name`, `description`, `graphqlEndpoint`, and an
 optional `connectionEndpoint`. IDs use lowercase alphanumeric segments separated
 by single hyphens. Names and descriptions must not be blank; IDs must be unique.
+GraphQL endpoints must be unescaped paths inside `/providers/{id}/`, without
+traversal, backslashes, query strings, or fragments. Providers used through MCP
+must enforce read-only queries in their own routes.
 
 The Fastify plugin owns its routes, request shapes, errors, and lifecycle hooks.
 Core mounts it beneath `/providers/{id}`; register `/graphql`, `/connection`,
@@ -202,7 +258,8 @@ Wealthsimple's implementation is contained in `index.ts` (HTTP routes,
 documentation, and query-only guard) and `client.ts` (mutable session,
 authentication, cookies, refresh, and requests), plus `reference/*.graphql`.
 Core consists of startup in `main.ts`, mounting/discovery in `app.ts`, and the
-provider contract/registry in `providers.ts`.
+provider contract/registry in `providers.ts`. `mcp.ts` adapts the same registry
+and HTTP routes without importing providers.
 
 Breaking interface changes: connection POSTs use an optional OTP without
 `attemptId` or `expiresAt`; GraphQL GET returns documentation; POST uses native

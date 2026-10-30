@@ -34,9 +34,22 @@ test('registry rejects invalid identities, duplicate IDs and blank descriptions'
   for (const id of ['', 'Library', 'a/b', '-a', 'a-', 'a--b', 'a_b', 'a.b', 'a b']) {
     assert.throws(() => createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, id } }]), /Provider IDs/);
   }
-  assert.equal(createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, id: 'library-2' } }]).length, 1);
+  assert.equal(createProviderRegistry([{ ...provider, metadata: {
+    ...provider.metadata, id: 'library-2', graphqlEndpoint: '/providers/library-2/graphql',
+  } }]).length, 1);
   for (const fields of [{ name: '' }, { name: '  ' }, { description: '' }, { description: '\n' }]) {
     assert.throws(() => createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, ...fields } }]), /name and description/);
   }
   assert.throws(() => createProviderRegistry([provider, provider]), /Duplicate provider ID/);
+});
+
+test('registry rejects GraphQL endpoints that can escape the provider namespace', () => {
+  const provider = libraryProvider().provider;
+  for (const graphqlEndpoint of [
+    'https://evil.test/graphql', '//evil.test/graphql', '/mcp', '/providers/weather/graphql',
+    '/providers/library/../weather/graphql', '/providers/library/./graphql',
+    '/providers/library/%2e%2e/weather/graphql', '/providers/library/%252e%252e/graphql',
+    '/providers/library/graphql?query=x', '/providers/library/graphql#fragment',
+    '/providers/library/\\weather/graphql', '/providers/library/graph ql',
+  ]) assert.throws(() => createProviderRegistry([{ ...provider, metadata: { ...provider.metadata, graphqlEndpoint } }]), /GraphQL path/);
 });
