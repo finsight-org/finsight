@@ -16,8 +16,24 @@ npm run dev
 ```
 
 The server listens at `http://127.0.0.1:4000`. Use `PORT=4001 npm run dev` to
-choose another port. This is a trusted local, single-user service. Credentials,
-cookies, and tokens stay in memory; restart or disconnect to discard the session.
+choose another port. The provider/MCP workflow is a trusted local, single-user service. Provider
+credentials, cookies, and tokens stay in memory; restart or disconnect to discard the session.
+
+## Web application and local Supabase Auth
+
+The independent React application lives in `web/`, with its own package manifest,
+lockfile, development server, and build. It supports registration, confirmation
+email, sign-in, restored sessions, and local sign-out. The backend independently
+verifies the current user at `GET /api/me`; users are managed by Supabase Auth.
+
+Follow [local Auth development](docs/local-auth-development.md) to start the
+pinned local Supabase stack, configure the public environment values, and run
+the two projects. The optional Compose `web` profile serves the built frontend
+from its own container. Fastify serves only the API and MCP.
+
+Provider connections and ChatGPT OAuth remain follow-up work. Web login does not
+grant access to the existing shared Wealthsimple session. The private provider
+and MCP endpoints retain their trusted local deployment boundary.
 
 ```sh
 curl http://127.0.0.1:4000/providers
@@ -60,8 +76,9 @@ unchanged. There is no separate MCP execution deadline. See the deployment guide
 for response-buffering limits and the complete local workflow.
 
 `GET /healthz` reports readiness without contacting a provider. The server
-validates Host headers and rejects all Origin headers; no browser interface is
-supported. `HOST` defaults to `127.0.0.1`; Compose sets `0.0.0.0` inside the
+validates Host headers and rejects Origin headers on provider and MCP routes.
+Only the new `/api/me` application endpoint allows configured browser origins.
+`HOST` defaults to `127.0.0.1`; Compose sets `0.0.0.0` inside the
 container but publishes only on host loopback. There is no incoming REST token
 or multi-user isolation: trust local processes and the dedicated Compose network.
 
@@ -260,6 +277,11 @@ authentication, cookies, refresh, and requests), plus `reference/*.graphql`.
 Core consists of startup in `main.ts`, mounting/discovery in `app.ts`, and the
 provider contract/registry in `providers.ts`. `mcp.ts` adapts the same registry
 and HTTP routes without importing providers.
+
+`auth.ts`, `web-api.ts`, and `browser-access.ts` implement the separate web
+identity boundary. The frontend's build and tests are independent of the root
+TypeScript project. Local Supabase configuration is in `supabase/config.toml`;
+PR 1 adds no application schema or provider-session persistence.
 
 Breaking interface changes: connection POSTs use an optional OTP without
 `attemptId` or `expiresAt`; GraphQL GET returns documentation; POST uses native

@@ -4,6 +4,12 @@ Run one Finsight process and an optional OpenAI tunnel client. Provider sessions
 stay in memory. This setup is for one trusted user on a trusted computer.
 It does not publish an internet-facing Finsight endpoint.
 
+The optional standalone React frontend and local Supabase Auth setup are covered
+in [local identity development](local-auth-development.md). Enable Compose's
+`web` profile only after filling its public build inputs. Authentication applies
+to `/api/me`, not the existing provider or MCP endpoints. The backend-only and
+private tunnel workflow below does not require Supabase.
+
 ## Start Finsight
 
 Install and start a Docker runtime with Docker Compose v2. Node.js 24 and npm

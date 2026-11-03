@@ -5,3 +5,6 @@ dist/
 .env.*
 !.env.example
 .secrets/
+
+output/playwright/
+.playwright-cli/

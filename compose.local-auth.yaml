@@ -1,0 +1,11 @@
+# Optional local-Auth override. Backend-only/hosted-Auth Compose does not need it.
+services:
+  finsight:
+    environment:
+      SUPABASE_URL: http://supabase_kong_finsight:8000
+    networks: [finsight, local-auth]
+
+networks:
+  local-auth:
+    external: true
+    name: finsight-supabase-local
