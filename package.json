@@ -9,17 +9,21 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/main.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "build": "tsc",
-    "start": "node dist/main.js",
-    "wealthsimple": "tsx src/cli/wealthsimple.ts"
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "wealthsimple": "tsx src/cli/wealthsimple.ts",
+    "supabase:start": "tsx scripts/start-supabase.ts",
+    "supabase:status": "supabase status",
+    "supabase:stop": "supabase stop --project-id finsight"
   },
   "dependencies": {
     "@modelcontextprotocol/fastify": "2.0.1",
     "@modelcontextprotocol/node": "2.1.1",
     "@modelcontextprotocol/server": "2.3.1",
+    "@supabase/supabase-js": "2.118.0",
     "fastify": "5.12.7",
     "fetch-cookie": "3.2.0",
     "graphql": "17.0.2",
@@ -29,6 +33,7 @@
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.1",
     "@types/node": "24.19.0",
+    "supabase": "3.0.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
   },

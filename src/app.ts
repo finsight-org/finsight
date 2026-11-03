@@ -2,10 +2,12 @@ import Fastify, { LogController } from 'fastify';
 import { hostHeaderValidation } from '@modelcontextprotocol/fastify';
 import { createProviderRegistry, type Provider } from './providers.js';
 import { registerMcp } from './mcp.js';
+import { registerWebApi, type WebApiOptions } from './web-api.js';
+import { registerBrowserAccess } from './browser-access.js';
 
 export const MAX_REQUEST_BODY_SIZE = 1024 * 1024;
 
-export function createApp(providers: readonly Provider[] = []) {
+export function createApp(providers: readonly Provider[] = [], options: WebApiOptions = {}) {
   const registry = createProviderRegistry(providers);
   const app = Fastify({
     logger: true,
@@ -15,9 +17,7 @@ export function createApp(providers: readonly Provider[] = []) {
   });
 
   app.addHook('onRequest', hostHeaderValidation(['127.0.0.1', 'localhost', '[::1]', 'finsight']));
-  app.addHook('onRequest', async (request, reply) => {
-    if (request.headers.origin !== undefined) await reply.code(403).send({ error: 'Browser requests are not supported.' });
-  });
+  registerBrowserAccess(app, options.auth?.webOrigins ?? []);
   app.setErrorHandler((error, _req, reply) => {
     const code = error && typeof error === 'object' && 'statusCode' in error ? error.statusCode : undefined;
     const status = typeof code === 'number' && code >= 400 && code < 500 ? code : 500;
@@ -25,6 +25,7 @@ export function createApp(providers: readonly Provider[] = []) {
   });
 
   app.get('/healthz', async () => ({ status: 'ok' }));
+  registerWebApi(app, options);
 
   app.get('/providers', async () => ({
     providers: registry.map(({ metadata }) => metadata),

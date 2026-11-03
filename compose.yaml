@@ -5,14 +5,45 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: "4000"
+      SUPABASE_URL: ${SUPABASE_DOCKER_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      WEB_ORIGINS: ${WEB_ORIGINS:-}
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:${FINSIGHT_PORT:-4000}:4000"
+    extra_hosts: ["host.docker.internal:host-gateway"]
     networks: [finsight]
     restart: unless-stopped
     stop_grace_period: 10s
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    profiles: [web]
+    build:
+      context: ./web
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+        VITE_FINSIGHT_API_URL: ${VITE_FINSIGHT_API_URL:-}
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [finsight]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
     logging:
       driver: json-file
       options:
