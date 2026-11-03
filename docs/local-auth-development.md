@@ -1,8 +1,9 @@
 # Local identity development
 
 PR 1 uses one Supabase Auth project for the React application and the Fastify
-backend. Users live in Supabase's built-in `auth.users`; there are no application
-tables or migrations. Provider connections and ChatGPT OAuth come later.
+backend. Users live in Supabase's built-in `auth.users`. PR 2 adds the
+`public.provider_connections` table and its ownership policies through a tracked
+migration. Live provider sessions and ChatGPT OAuth come later.
 
 ## Start local Supabase
 
@@ -230,3 +231,59 @@ the SDK to consume the code; recovery of a previously signed-in account does not
 count as confirmation. If local sign-out succeeds but the remote logout fails,
 the UI reports both facts. A production asset regression also checks that
 unrelated `VITE_` environment values never enter the browser bundle.
+
+## Connection record integration tests
+
+After `npm run supabase:start`, apply the additive migration with the pinned CLI:
+
+```sh
+npx supabase migration up --help
+npx supabase migration up
+npx supabase migration list
+npx supabase db advisors --type security
+```
+
+CLI 3 targets the local project by default. Do not reset an existing database or
+remove its volumes. Migration application preserves existing Auth identities.
+No application startup migration or privileged application key is required.
+
+Backend tests remain independent of external services. For actual database tests,
+set `FINSIGHT_TEST_SUPABASE_URL`, `FINSIGHT_TEST_SUPABASE_PUBLISHABLE_KEY`, and
+`FINSIGHT_TEST_SUPABASE_SECRET_KEY` from the ignored local status JSON. The secret
+key is used only to create/clean up disposable test identities and seed ordering
+fixtures. The fixture refuses hosted URLs; application requests always use user
+JWTs and the publishable key. Never print keys or put them in shell arguments.
+
+```sh
+npm run build
+npm run test:connections:integration
+# Full acceptance also stops/starts this local project, preserving its volumes:
+FINSIGHT_TEST_RESTART_SUPABASE=1 npm run test:connections:integration
+```
+
+Without the restart flag the restart subtest is skipped and full acceptance is
+incomplete. The suite creates two confirmed disposable users, checks direct Data
+API restrictions and compiled-backend CRUD, restores sessions, restarts its own
+backend, and optionally restarts local Supabase. It deletes only its own users.
+Existing services using the local Supabase project briefly lose Auth/database
+access during the opt-in stop/start test.
+
+For manual calls, save the user access token in a mode-0600 ignored file such as
+`.secrets/user-token` using interactive input. This example reads it without
+putting its value in command arguments or output:
+
+```sh
+node --input-type=module <<'JS'
+import { readFileSync } from 'node:fs';
+const token = readFileSync('.secrets/user-token', 'utf8').trim();
+const response = await fetch('http://127.0.0.1:4000/api/connections', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ providerId: 'wealthsimple', label: 'Personal' }),
+});
+console.log(response.status, await response.json());
+JS
+```
+
+Only connection metadata is returned. This does not log in to Wealthsimple;
+provider authentication, the web flow, and agent authorization belong to PRs 3–5.
