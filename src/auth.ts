@@ -54,3 +54,22 @@ export function createSupabaseVerifier(config: AuthConfig, options: { fetch?: ty
     } catch { return { status: 'unavailable' }; }
   };
 }
+
+export interface RequestIdentity { user: VerifiedUser; accessToken: string }
+export interface AuthOptions { auth?: AuthConfig; verifyAccessToken?: VerifyAccessToken }
+export type AuthenticateRequest = (request: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => Promise<RequestIdentity | undefined>;
+export function createRequestAuthenticator(options: AuthOptions): AuthenticateRequest {
+  const verify = options.auth ? options.verifyAccessToken ?? createSupabaseVerifier(options.auth) : undefined;
+  return async (request, reply) => {
+    const fail = (status: number, code: string, message: string) => { reply.code(status).send({ error: { code, message } }); return undefined; };
+    if (!verify) return fail(503, 'AUTH_NOT_CONFIGURED', 'Authentication is not configured.');
+    const header = request.headers.authorization;
+    const token = typeof header === 'string' ? /^Bearer ([^\s,]+)$/i.exec(header)?.[1] : undefined;
+    if (!token) return fail(401, 'UNAUTHENTICATED', 'Authentication required.');
+    let result: AuthVerification;
+    try { result = await verify(token); } catch { result = { status: 'unavailable' }; }
+    if (result.status === 'unauthenticated') return fail(401, 'UNAUTHENTICATED', 'Authentication required.');
+    if (result.status === 'unavailable') return fail(503, 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+    return { user: result.user, accessToken: token };
+  };
+}

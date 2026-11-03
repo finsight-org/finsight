@@ -2,12 +2,14 @@ import Fastify, { LogController } from 'fastify';
 import { hostHeaderValidation } from '@modelcontextprotocol/fastify';
 import { createProviderRegistry, type Provider } from './providers.js';
 import { registerMcp } from './mcp.js';
-import { registerWebApi, type WebApiOptions } from './web-api.js';
+import { registerWebApi } from './web-api.js';
+import { createRequestAuthenticator, type AuthOptions } from './auth.js';
+export interface AppOptions extends AuthOptions {}
 import { registerBrowserAccess } from './browser-access.js';
 
 export const MAX_REQUEST_BODY_SIZE = 1024 * 1024;
 
-export function createApp(providers: readonly Provider[] = [], options: WebApiOptions = {}) {
+export function createApp(providers: readonly Provider[] = [], options: AppOptions = {}) {
   const registry = createProviderRegistry(providers);
   const app = Fastify({
     logger: true,
@@ -25,7 +27,7 @@ export function createApp(providers: readonly Provider[] = [], options: WebApiOp
   });
 
   app.get('/healthz', async () => ({ status: 'ok' }));
-  registerWebApi(app, options);
+  registerWebApi(app, createRequestAuthenticator(options));
 
   app.get('/providers', async () => ({
     providers: registry.map(({ metadata }) => metadata),

@@ -56,3 +56,12 @@ test('frontend origins never unlock legacy routes or unknown API paths', async t
   assert.equal(state.calls, 0);
   assert.equal((await app.inject('/providers/library/graphql')).statusCode, 200);
 });
+
+test('application resources can opt into POST preflight without expanding me or legacy access',async t=>{
+ const app=createApp([],{auth:authConfig});t.after(()=>app.close());
+ app.options('/api/policy-fixture',{config:{browserApi:true,browserMethods:['GET','POST'],browserHeaders:['Authorization','Content-Type']}},async(_req,reply)=>reply.code(204).send());
+ const headers={origin:authConfig.webOrigins[0],'access-control-request-method':'POST','access-control-request-headers':'Authorization, Content-Type'};
+ const r=await app.inject({method:'OPTIONS',url:'/api/policy-fixture',headers});assert.equal(r.statusCode,204);assert.match(String(r.headers['access-control-allow-methods']),/POST/);
+ assert.equal((await app.inject({method:'OPTIONS',url:'/api/me',headers})).statusCode,403);
+ assert.equal((await app.inject({method:'OPTIONS',url:'/api/policy-fixture',headers:{...headers,'access-control-request-method':'DELETE'}})).statusCode,403);
+});
