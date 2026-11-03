@@ -2,9 +2,8 @@
 
 Date: 2026-11-03
 
-Status: Draft for approval. The user selected approach 1; the remaining technical
-choices below are Codex proposals, not additional user decisions. Product
-implementation starts after design approval.
+Status: Approved by the user on 2026-11-03. The user selected approach 1 and then
+approved this design, including the technical details proposed by Codex.
 
 ## Intent and roadmap
 
