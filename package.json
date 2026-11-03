@@ -17,7 +17,8 @@
     "wealthsimple": "tsx src/cli/wealthsimple.ts",
     "supabase:start": "tsx scripts/start-supabase.ts",
     "supabase:status": "supabase status",
-    "supabase:stop": "supabase stop --project-id finsight"
+    "supabase:stop": "supabase stop --project-id finsight",
+    "test:connections:integration": "node --import tsx --test --test-concurrency=1 tests/integration/provider-connections.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/fastify": "2.0.1",
