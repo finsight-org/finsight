@@ -4,7 +4,9 @@ import { createProviderRegistry, type Provider } from './providers.js';
 import { registerMcp } from './mcp.js';
 import { registerWebApi } from './web-api.js';
 import { createRequestAuthenticator, type AuthOptions } from './auth.js';
-export interface AppOptions extends AuthOptions {}
+import { createSupabaseConnectionStoreFactory, type ConnectionStoreFactory } from './connections/store.js';
+import { registerConnectionRoutes } from './connections/routes.js';
+export interface AppOptions extends AuthOptions { createConnectionStore?: ConnectionStoreFactory }
 import { registerBrowserAccess } from './browser-access.js';
 
 export const MAX_REQUEST_BODY_SIZE = 1024 * 1024;
@@ -27,7 +29,9 @@ export function createApp(providers: readonly Provider[] = [], options: AppOptio
   });
 
   app.get('/healthz', async () => ({ status: 'ok' }));
-  registerWebApi(app, createRequestAuthenticator(options));
+  const authenticate = createRequestAuthenticator(options);
+  registerWebApi(app, authenticate);
+  registerConnectionRoutes(app, { authenticate, registry, createStore: options.createConnectionStore ?? (options.auth ? createSupabaseConnectionStoreFactory(options.auth) : undefined) });
 
   app.get('/providers', async () => ({
     providers: registry.map(({ metadata }) => metadata),
