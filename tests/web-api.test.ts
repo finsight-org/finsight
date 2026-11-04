@@ -35,3 +35,8 @@ test('protected endpoint only accepts a single bearer credential and keeps ident
     assert.equal(r.headers['cache-control'], 'no-store');
   }
 });
+
+test('a thrown verifier fails safely without exposing diagnostics',async t=>{
+ const app=createApp([],{auth:authConfig,verifyAccessToken:async()=>{throw new Error('PRIVATE_DIAGNOSTIC');}});t.after(()=>app.close());
+ const r=await app.inject({url:'/api/me',headers:{authorization:'Bearer ok'}});assert.equal(r.statusCode,503);assert.equal(r.json().error.code,'AUTH_UNAVAILABLE');assert.ok(!r.body.includes('PRIVATE_DIAGNOSTIC'));
+});

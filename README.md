@@ -31,7 +31,8 @@ pinned local Supabase stack, configure the public environment values, and run
 the two projects. The optional Compose `web` profile serves the built frontend
 from its own container. Fastify serves only the API and MCP.
 
-Provider connections and ChatGPT OAuth remain follow-up work. Web login does not
+User-owned provider connection records are available through the application API.
+Live provider sessions and ChatGPT OAuth remain follow-up work. Web login does not
 grant access to the existing shared Wealthsimple session. The private provider
 and MCP endpoints retain their trusted local deployment boundary.
 
@@ -281,8 +282,49 @@ and HTTP routes without importing providers.
 `auth.ts`, `web-api.ts`, and `browser-access.ts` implement the separate web
 identity boundary. The frontend's build and tests are independent of the root
 TypeScript project. Local Supabase configuration is in `supabase/config.toml`;
-PR 1 adds no application schema or provider-session persistence.
+Provider connection metadata is stored in PostgreSQL; live provider-session persistence
+remains follow-up work.
 
 Breaking interface changes: connection POSTs use an optional OTP without
 `attemptId` or `expiresAt`; GraphQL GET returns documentation; POST uses native
 Wealthsimple roots rather than the former local `accounts` root.
+
+## User-owned connection records
+
+Apply the tracked migration explicitly after starting local Supabase:
+
+```sh
+npx supabase migration up
+```
+
+The pinned CLI targets local Supabase by default. The application never applies
+migrations at startup. Use a verified FinSight user bearer token for these routes:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| POST | `/api/connections` | Create from `{ "providerId": "wealthsimple", "label": "Personal" }` |
+| GET | `/api/connections` | List owned records; optional `limit` (1–100, default 50) and opaque `cursor` |
+| GET | `/api/connections/:id` | Retrieve an owned record |
+| PATCH | `/api/connections/:id` | Rename using `{ "label": "Savings" }`; null clears it |
+| DELETE | `/api/connections/:id` | Permanently remove an owned record; returns 204 |
+
+Create returns 201 and `{ connection }` with a Location header; retrieve/rename
+return `{ connection }`. List returns `{ connections, nextCursor }`. Records have
+`id`, `providerId`, `label`, `createdAt`, and `updatedAt`. Labels are optional,
+trimmed, and limited to 100 Unicode characters. Provider IDs and ownership cannot
+be changed. Several records may use the same provider or label. Unknown providers
+cannot be used for creation; historical records remain manageable.
+
+Missing/invalid authentication returns 401; invisible or missing records return
+404; invalid input returns 400 (oversized bodies 413, unsupported media 415).
+Auth/storage outages return safe 503 errors. Responses are never cached. Store
+failures are not automatically retried: after an uncertain create, list existing
+records before trying again.
+
+Records contain metadata only. They cannot retrieve financial data or authenticate
+Wealthsimple. PR 3 adds isolated live sessions, PR 4 adds browser connection
+management, and PR 5 adds per-user agent authorization. The existing private
+provider and MCP endpoints retain their trusted-local boundary.
+
+See [local development](docs/local-auth-development.md#connection-record-integration-tests)
+for real database ownership and restart acceptance tests.
