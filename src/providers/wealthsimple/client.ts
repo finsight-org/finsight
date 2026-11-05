@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import fetchCookie from 'fetch-cookie';
 import { CookieJar } from 'tough-cookie';
+import { parseWealthsimpleSnapshot, type WealthsimpleSnapshot } from './snapshot.js';
 
 export const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -55,7 +56,7 @@ export class WealthsimpleError extends Error {
   }
 }
 
-/** One mutable, memory-only session with a private cookie jar. */
+/** One mutable session with a private cookie jar and explicit snapshot persistence. */
 export class WealthsimpleClient {
   #session: Session = {};
   #jar = new CookieJar();
@@ -80,6 +81,60 @@ export class WealthsimpleClient {
   getStatus(): 'connected' | 'mfa_required' | 'disconnected' {
     if (this.#session.accessToken && this.#session.identityId) return 'connected';
     return this.#mfaRequired ? 'mfa_required' : 'disconnected';
+  }
+
+  exportSnapshot(): WealthsimpleSnapshot | null {
+    if (this.getStatus() !== 'connected' ||
+        Object.values(this.#session).some(value => !value) ||
+        Object.keys(this.#session).length !== 6) return null;
+    return parseWealthsimpleSnapshot({ version: 1, session: this.#session, cookies: this.#jar.serializeSync() });
+  }
+
+  restoreSnapshot(value: unknown): void {
+    const snapshot = parseWealthsimpleSnapshot(value);
+    const jar = CookieJar.deserializeSync(snapshot.cookies!);
+    this.#session = snapshot.session;
+    this.#jar = jar;
+    this.#refreshing = undefined;
+    this.#mfaRequired = false;
+  }
+
+  async validateSession(signal: AbortSignal): Promise<'connected' | 'expired'> {
+    if (this.getStatus() !== 'connected') return 'expired';
+    const session = this.#session;
+    const accessToken = session.accessToken;
+    const send = () => this.#request(this.#endpoints.tokenInfo, {
+      signal,
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'x-wealthsimple-client': '@wealthsimple/wealthsimple',
+      },
+    });
+    let response = await send();
+    this.#assertCurrent(session);
+    if (response.status >= 500) throw new WealthsimpleError('UPSTREAM_FAILURE');
+    if (authenticationFailure(response)) {
+      try { await this.#refreshIfNeeded(session, accessToken, signal); }
+      catch (error) {
+        if (error instanceof WealthsimpleError && error.code === 'WEALTHSIMPLE_NOT_CONNECTED' &&
+            this.getStatus() === 'disconnected') return 'expired';
+        throw error;
+      }
+      response = await send();
+      this.#assertCurrent(session);
+      if (response.status >= 500) throw new WealthsimpleError('UPSTREAM_FAILURE');
+      if (authenticationFailure(response)) {
+        this.disconnect();
+        return 'expired';
+      }
+    }
+    if (response.status !== 200) throw new WealthsimpleError('UPSTREAM_FAILURE');
+    const identityId = requiredString(json(response.text).identity_canonical_id);
+    if (identityId !== session.identityId) {
+      this.disconnect();
+      return 'expired';
+    }
+    return 'connected';
   }
 
   async #bootstrap(session: Session, signal: AbortSignal) {
@@ -128,6 +183,7 @@ export class WealthsimpleClient {
         },
       });
       this.#assertCurrent(session);
+      if (response.status >= 500) throw new WealthsimpleError('UPSTREAM_FAILURE');
       const body = json(response.text);
       if (!input.otp && ['invalid_grant', 'otp_required', 'mfa_required'].includes(String(body.error))) {
         this.#mfaRequired = true;
@@ -146,6 +202,7 @@ export class WealthsimpleClient {
         },
       });
       this.#assertCurrent(session);
+      if (info.status >= 500) throw new WealthsimpleError('UPSTREAM_FAILURE');
       if (info.status !== 200) throw new WealthsimpleError('LOGIN_FAILED');
       session.identityId = requiredString(json(info.text).identity_canonical_id);
       return { status: 'connected' as const };
@@ -210,6 +267,17 @@ export class WealthsimpleClient {
     this.#assertCurrent(session);
     if (!authenticationFailure(response)) return response;
 
+    await this.#refreshIfNeeded(session, accessToken, signal);
+    response = await send();
+    this.#assertCurrent(session);
+    if (authenticationFailure(response)) {
+      this.disconnect();
+      throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple session expired. Connect again.');
+    }
+    return response;
+  }
+
+  async #refreshIfNeeded(session: Session, accessToken: string | undefined, signal: AbortSignal) {
     // Another request may already have refreshed the token while this response was pending.
     if (session.accessToken === accessToken) {
       if (!this.#refreshing) {
@@ -222,13 +290,6 @@ export class WealthsimpleClient {
     }
     this.#assertCurrent(session);
     signal.throwIfAborted();
-    response = await send();
-    this.#assertCurrent(session);
-    if (authenticationFailure(response)) {
-      this.disconnect();
-      throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple session expired. Connect again.');
-    }
-    return response;
   }
 
   async #request(address: string, { signal, body, headers = {} }: {
@@ -293,8 +354,12 @@ export class WealthsimpleClient {
     this.#mfaRequired = false;
   }
 
-  close() {
+  abortUpstream(): void {
     this.#shutdown.abort();
+  }
+
+  close() {
+    this.abortUpstream();
     this.disconnect();
   }
 
