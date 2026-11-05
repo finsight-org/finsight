@@ -80,10 +80,13 @@ for response-buffering limits and the complete local workflow.
 
 `GET /healthz` reports readiness without contacting a provider. The server
 validates Host headers and rejects Origin headers on provider and MCP routes.
-Only the new `/api/me` application endpoint allows configured browser origins.
+The bearer-protected `/api/me` and `/api/connections` routes, including scoped
+session and GraphQL endpoints, allow configured browser origins.
 `HOST` defaults to `127.0.0.1`; Compose sets `0.0.0.0` inside the
-container but publishes only on host loopback. There is no incoming REST token
-or multi-user isolation: trust local processes and the dedicated Compose network.
+container but publishes only on host loopback. The private provider and MCP
+endpoints have no incoming authentication or multi-user isolation: trust local
+processes and the dedicated Compose network. Owned connection routes verify the
+FinSight bearer token and enforce per-user record and session isolation.
 
 ## Discover Wealthsimple GraphQL
 
@@ -271,6 +274,10 @@ plain `tsc`.
 Tests use Node's built-in runner, synthetic providers, and a local synthetic
 upstream. No real credentials or external services are needed. A real-account
 smoke test can separately verify login, OTP, native queries, and disconnect.
+
+Deployment configuration checks run separately with `npm run test:deployment`.
+They require the Docker Compose CLI, without a running daemon; `npm test` requires
+only the Node development dependencies.
 
 ## Architecture and compatibility
 

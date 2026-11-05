@@ -15,9 +15,9 @@ export async function ownedSessionAccess(
   const record = await createStore(identity, signal).get(connectionId);
   if (!record) throw new ConnectionError('CONNECTION_NOT_FOUND');
   return {
-    binding: { userId: identity.user.id, connectionId, providerId: record.providerId },
+    binding: { userId: identity.user.id, connectionId: record.id, providerId: record.providerId },
     async checkOwnership(operationSignal) {
-      const current = await createStore(identity, operationSignal).get(connectionId);
+      const current = await createStore(identity, operationSignal).get(record.id);
       if (!current || current.providerId !== record.providerId) throw new ConnectionError('CONNECTION_NOT_FOUND');
     },
   };

@@ -123,6 +123,7 @@ FinSight browser session and does not instantly revoke already issued tokens.
 
 ```sh
 npm test
+npm run test:deployment # Docker Compose CLI required; no daemon needed
 npm run typecheck
 npm run build
 npm --prefix web test
@@ -354,18 +355,16 @@ import { readFileSync, existsSync } from 'node:fs';
 const read = name => readFileSync(`.secrets/${name}`, 'utf8').replace(/\r?\n$/, '');
 const base = 'http://127.0.0.1:4000';
 const id = read('connection-id'); // UUID of a record you own
-const headers = { Authorization: `Bearer ${read('user-token')}`, 'Content-Type': 'application/json' };
+const headers = { Authorization: `Bearer ${read('user-token')}` };
 async function call(path, method = 'GET', body) {
-  return fetch(`${base}/api/connections/${id}${path}`, { method, headers,
+  return fetch(`${base}/api/connections/${id}${path}`, { method,
+    headers: { ...headers, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     redirect: 'error', body: body === undefined ? undefined : JSON.stringify(body) });
 }
-const input = { email: read('ws-email'), password: read('ws-password') };
-let response = await call('/session', 'POST', input);
-let state = await response.json();
-if (state.status === 'mfa_required' && existsSync('.secrets/ws-otp')) {
-  response = await call('/session', 'POST', { ...input, otp: read('ws-otp') });
-  state = await response.json();
-}
+const input = { email: read('ws-email'), password: read('ws-password'),
+  ...(existsSync('.secrets/ws-otp') ? { otp: read('ws-otp') } : {}) };
+const response = await call('/session', 'POST', input);
+const state = await response.json();
 console.log('Login HTTP', response.status, 'state', state.status ?? state.error?.code);
 if (state.status === 'connected') {
   const query = 'query Accounts($identityId: ID!) { identity(id: $identityId) { id } }';

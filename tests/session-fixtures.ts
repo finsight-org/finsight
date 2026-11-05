@@ -19,6 +19,7 @@ export function barrier() {
     async wait() { entered.resolve(); await release.promise; } };
 }
 
+// PostgreSQL UUID lookup and mutation accept either letter case.
 class MemoryStore implements SessionStore {
   rows = new Map<string, DurableSession>();
   loads = 0;
@@ -33,7 +34,7 @@ class MemoryStore implements SessionStore {
   async load(id: string, signal: AbortSignal) {
     this.loads++;
     signal.throwIfAborted();
-    return structuredClone(this.rows.get(id) ?? null);
+    return structuredClone(this.rows.get(id.toLowerCase()) ?? null);
   }
   async save(id: string, row: DurableSession, signal: AbortSignal) {
     this.saves++;
@@ -41,7 +42,7 @@ class MemoryStore implements SessionStore {
     await this.saveBarrier?.wait();
     signal.throwIfAborted();
     if (this.saveMode === 'fail') throw Error('synthetic storage failure');
-    this.rows.set(id, structuredClone(row));
+    this.rows.set(id.toLowerCase(), structuredClone(row));
     if (this.saveMode === 'commit-then-fail') throw Error('synthetic lost response');
   }
   async remove(id: string, signal: AbortSignal) {
@@ -49,7 +50,7 @@ class MemoryStore implements SessionStore {
     await this.removeBarrier?.wait();
     signal.throwIfAborted();
     if (this.failRemove) throw Error('synthetic storage failure');
-    this.rows.delete(id);
+    this.rows.delete(id.toLowerCase());
   }
 }
 
@@ -61,7 +62,7 @@ export function sessionFixture(t: TestContext) {
   const a1 = access(), a2 = access(a1.binding.userId), b1 = access();
   const signal = new AbortController().signal;
   const controls = {
-    now: 1, clients: 0, infoOutage: false, malformedInfo: false, requireOtp: false, rejectRefresh: false,
+    now: 1, clients: 0, infoOutage: false, malformedInfo: false, infoIdentity: undefined as string | undefined, requireOtp: false, rejectRefresh: false,
     refreshResponse: undefined as { body: unknown; status: number } | undefined,
     rejectAccess: new Set<string>(), queryCookie: '', queryStatus: 200, malformed: false,
     beforeResponse: async (_call: Call, _signal: AbortSignal) => {},
@@ -107,7 +108,7 @@ export function sessionFixture(t: TestContext) {
         if (controls.infoOutage) return reply('outage', 503);
         if (controls.malformedInfo) return reply('null');
         if (controls.rejectAccess.has(call.bearer)) return reply({}, 401);
-        return reply({ identity_canonical_id: tokenOwners.get(call.bearer) });
+        return reply({ identity_canonical_id: controls.infoIdentity ?? tokenOwners.get(call.bearer) });
       case '/graphql':
         if (controls.rejectAccess.has(call.bearer)) return reply({}, 401);
         return reply(controls.malformed ? 'invalid JSON' :

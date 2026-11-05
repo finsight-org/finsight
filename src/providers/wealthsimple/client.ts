@@ -388,7 +388,7 @@ function json(text: string): Record<string, unknown> {
 }
 
 function requiredString(value: unknown): string {
-  if (typeof value !== 'string' || !value) throw new WealthsimpleError('UPSTREAM_FAILURE');
+  if (typeof value !== 'string' || !value.trim()) throw new WealthsimpleError('UPSTREAM_FAILURE');
   return value;
 }
 

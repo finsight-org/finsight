@@ -18,10 +18,10 @@ function fixture(t: TestContext, enabled = true) {
   let afterLookup = (_id: string) => {};
   const factory: ConnectionStoreFactory = (identity, signal) => {
     storeCreations++;
-    const owned = (id: string) => { signal.throwIfAborted(); const row = records.get(id); return row?.owner === identity.user.id ? row.record : null; };
+    const owned = (id: string) => { signal.throwIfAborted(); const row = records.get(id.toLowerCase()); return row?.owner === identity.user.id ? row.record : null; };
     return {
       async get(id) { recordLookups++; const result = owned(id); afterLookup(id); return result; },
-      async remove(id) { removed++; return owned(id) !== null && records.delete(id); },
+      async remove(id) { removed++; return owned(id) !== null && records.delete(id.toLowerCase()); },
       async list() { return { connections: [], nextCursor: null }; },
       async rename() { return null; }, async create() { throw Error('unused'); },
     };
@@ -192,3 +192,77 @@ test('app preClose aborts active session work before waiting for the HTTP drain'
   assert.equal((await pending).status, 503);
   assert.equal(f.store.saves, 0);
 });
+
+
+test('mixed-case login uses canonical storage and AAD when the client is restored', async t => {
+  const f = fixture(t);
+  const upper = `/api/connections/${f.a1.binding.connectionId.toUpperCase()}`;
+  assert.notEqual(upper, f.url);
+  assert.equal((await f.app.inject({ method: 'POST', url: upper + '/session', headers: f.headers, payload: credentials() })).statusCode, 200);
+  // Sweep the original client so a canonical request must decrypt the saved row.
+  f.controls.now += 16 * 60 * 1000;
+  assert.equal((await f.app.inject({ url: `/api/connections/${f.a2.binding.connectionId}/session`, headers: f.headers })).statusCode, 200);
+  const restored = await f.app.inject({ method: 'POST', url: f.url + '/graphql', headers: f.headers, payload: query });
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.json().data.identityId, 'a1@example.test');
+});
+
+test('mixed-case disconnect evicts the canonical cached session and prevents later saves', async t => {
+  const f = fixture(t);
+  assert.equal((await f.app.inject({ method: 'POST', url: f.url + '/session', headers: f.headers, payload: credentials() })).statusCode, 200);
+  const upper = `/api/connections/${f.a1.binding.connectionId.toUpperCase()}`;
+  assert.equal((await f.app.inject({ method: 'DELETE', url: upper + '/session', headers: f.headers })).statusCode, 204);
+  f.controls.queryCookie = 'auth=late; Path=/';
+  const result = await f.app.inject({ method: 'POST', url: f.url + '/graphql', headers: f.headers, payload: query });
+  assert.equal(result.statusCode, 401);
+  assert.equal(f.store.rows.size, 0);
+  assert.equal(f.calls.filter(call => call.path === '/graphql').length, 0);
+});
+
+test('mixed-case metadata DELETE waits for a canonical in-flight operation', { timeout: 5000 }, async t => {
+  const f = fixture(t), gate = barrier();
+  t.after(() => gate.release());
+  f.controls.beforeResponse = async call => { if (call.path === '/token') await gate.wait(); };
+  const active = f.app.inject({ method: 'POST', url: f.url + '/session', headers: f.headers, payload: credentials() });
+  await gate.entered;
+  let completed = false;
+  const deletion = f.app.inject({ method: 'DELETE', url: `/api/connections/${f.a1.binding.connectionId.toUpperCase()}`, headers: f.headers })
+    .then(response => { completed = true; return response; });
+  await new Promise(resolve => setImmediate(resolve));
+  const queuedBeforeRelease = f.counters()[0];
+  const finishedBeforeRelease = completed;
+  const removalsBeforeRelease = f.recordCounters()[2];
+  gate.release();
+  assert.equal(queuedBeforeRelease, 2);
+  assert.equal(finishedBeforeRelease, false);
+  assert.equal(removalsBeforeRelease, 0);
+  assert.equal((await active).statusCode, 200);
+  assert.equal((await deletion).statusCode, 204);
+  assert.equal((await f.app.inject({ method: 'POST', url: f.url + '/graphql', headers: f.headers, payload: query })).statusCode, 404);
+});
+
+for (const field of ['identity', 'access_token', 'refresh_token'] as const) {
+  test('blank provider ' + field + ' returns safe 502 while preserving the connected ciphertext', async t => {
+    const f = fixture(t);
+    assert.equal((await f.app.inject({ method: 'POST', url: f.url + '/session', headers: f.headers, payload: credentials() })).statusCode, 200);
+    const saved = structuredClone(f.store.rows.get(f.a1.binding.connectionId));
+    const old = f.snapshot().session;
+    if (field === 'identity') f.controls.infoIdentity = ' \t\r\n ';
+    else {
+      f.controls.rejectAccess.add(old.accessToken);
+      f.controls.refreshResponse = { status: 200, body: { access_token: 'NEW_ACCESS_SENTINEL', refresh_token: 'NEW_REFRESH_SENTINEL', [field]: ' \t\r\n ' } };
+    }
+    const result = await f.app.inject({ url: f.url + '/session', headers: f.headers });
+    assert.equal(result.statusCode, 502);
+    assert.deepEqual(result.json(), { error: { code: 'WEALTHSIMPLE_UPSTREAM_FAILURE', message: 'Wealthsimple could not complete the request.' } });
+    assert.deepEqual(f.store.rows.get(f.a1.binding.connectionId), saved);
+    f.controls.infoIdentity = undefined;
+    f.controls.refreshResponse = undefined;
+    f.controls.rejectAccess.clear();
+    assert.deepEqual((await f.app.inject({ url: f.url + '/session', headers: f.headers })).json(), { status: 'connected' });
+    assert.deepEqual(f.snapshot().session, old);
+    f.controls.now += 16 * 60 * 1000;
+    await f.app.inject({ url: `/api/connections/${f.a2.binding.connectionId}/session`, headers: f.headers });
+    assert.equal((await f.app.inject({ method: 'POST', url: f.url + '/graphql', headers: f.headers, payload: query })).statusCode, 200);
+  });
+}

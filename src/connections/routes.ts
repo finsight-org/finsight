@@ -123,11 +123,14 @@ export function registerConnectionRoutes(
       async (req, reply) =>
         handle(req, reply, async (store, identity, signal) => {
           const key = id(req);
-          const removed = options.sessions
-            ? await options.sessions.removeRecord(
-                await ownedSessionAccess(key, identity, options.createStore, signal),
-                () => store().remove(key), signal)
-            : await store().remove(key);
+          let removed: boolean;
+          if (options.sessions) {
+            const access = await ownedSessionAccess(key, identity, options.createStore, signal);
+            removed = await options.sessions.removeRecord(access,
+              () => store().remove(access.binding.connectionId), signal);
+          } else {
+            removed = await store().remove(key);
+          }
           if (!removed)
             throw new ConnectionError("CONNECTION_NOT_FOUND");
           return reply.code(204).send();

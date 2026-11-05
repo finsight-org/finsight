@@ -198,7 +198,7 @@ test('owned A1/A2/B1 sessions survive child restarts, refresh, sign-in, expirati
   const a1 = await h.connection(f.a), a2 = await h.connection(f.a), b1 = await h.connection(f.b);
   const records = [[f.a, a1, 'a1@example.test'], [f.a, a2, 'a2@example.test'], [f.b, b1, 'b1@example.test']] as const;
   for (const [user, id, owner] of records) {
-    await h.login(user, id, owner);
+    await h.login(user, id.toUpperCase(), owner);
     await h.check(user, id, owner);
     const row = JSON.stringify(await f.readSessionRow(id));
     for (const plaintext of ['PASSWORD_SENTINEL', '123456', 'ACCESS_SENTINEL', 'REFRESH_SENTINEL', 'COOKIE_SENTINEL', owner, `ACCOUNT-${owner}`]) assert.ok(!row.includes(plaintext));
@@ -235,7 +235,11 @@ test('owned A1/A2/B1 sessions survive child restarts, refresh, sign-in, expirati
   h.rejectedRefresh.delete('a1@example.test');
   await h.login(f.a, a1, 'a1@example.test');
   await h.check(f.a, a1, 'a1@example.test');
-  assert.equal((await h.api(f.a, a1, '', 'DELETE')).status, 204);
+  assert.equal((await h.api(f.a, a1.toUpperCase(), '/session', 'DELETE')).status, 204);
+  assert.equal((await h.query(f.a, a1)).status, 401);
+  assert.equal(await f.sessionStore.load(a1, signal()), null);
+  await h.login(f.a, a1, 'a1@example.test');
+  assert.equal((await h.api(f.a, a1.toUpperCase(), '', 'DELETE')).status, 204);
   assert.equal(await f.sessionStore.load(a1, signal()), null);
   await h.check(f.b, b1, 'b1@example.test');
   await f.deleteOwnedTestUser(f.a.id);
@@ -243,13 +247,22 @@ test('owned A1/A2/B1 sessions survive child restarts, refresh, sign-in, expirati
   await h.check(f.b, b1, 'b1@example.test');
 });
 
+async function waitForBarrier(promise: Promise<void>, label: string): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([promise, new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 5000);
+    })]);
+  } finally { clearTimeout(timeout); }
+}
+
 test('SIGTERM during blocked provider request preserves saved sessions', async t => {
   const h = await acceptanceFixture(t), { f, backend } = h;
   const a1Id = await h.connection(f.a);
   await h.login(f.a, a1Id, 'a1@example.test');
   h.block();
   const pending = h.query(f.a, a1Id).catch(() => undefined);
-  await h.blocked;
+  await waitForBarrier(h.blocked, 'provider request admission');
   const started = performance.now();
   await backend.stop(); // Helper requires the child's IPC SIGTERM barrier before exit.
   const elapsedMs = performance.now() - started;
@@ -257,7 +270,7 @@ test('SIGTERM during blocked provider request preserves saved sessions', async t
   t.diagnostic(`SIGTERM exit ${childExitCode}; graceful shutdown ${Math.round(elapsedMs)}ms`);
   assert.equal(childExitCode, 0);
   assert.ok(elapsedMs < 10_000);
-  await h.aborted;
+  await waitForBarrier(h.aborted, 'provider request cancellation');
   await pending;
   assert.notEqual(await f.sessionStore.load(a1Id, signal()), null);
   h.unblock();
