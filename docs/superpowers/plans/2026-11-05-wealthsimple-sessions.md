@@ -96,7 +96,7 @@ Export contracts from the named files; `SessionError` in `model.ts` exposes safe
 `SESSION_STORAGE_UNAVAILABLE`, `SESSION_STATE_UNAVAILABLE`, `SESSION_SERVICE_CLOSED`
 and 409 codes `CONNECTION_ALREADY_CONNECTED`, `CONNECTION_PROVIDER_UNSUPPORTED`.
 
-- [ ] **Step 1: Write crypto/configuration tests.** Use deterministic sentinel plaintext and temporary key files. Assertions include:
+- [x] **Step 1: Write crypto/configuration tests.** Use deterministic sentinel plaintext and temporary key files. Assertions include:
 
 ```ts
 assert.equal(cipher.decrypt(binding, cipher.encrypt(binding, plaintext)), plaintext);
@@ -119,10 +119,10 @@ without Auth, and a file containing a valid key followed by one newline. Ensure
 errors do not include supplied secret strings. Test the 256 KiB boundary in bytes,
 including multibyte text. Reject before decoding/decrypting excessive envelopes.
 
-- [ ] **Step 2: Run the failing tests.** `node --import tsx --test tests/session-crypto.test.ts tests/session-config.test.ts`; expect missing-module/export failures before implementation.
-- [ ] **Step 3: Implement the contracts, cipher and config loader.** AAD is the UTF-8 JSON encoding of `['finsight.provider-session', 1, userId, connectionId, providerId]`. Envelope binary fields use canonical standard base64. Only expose decrypted text after GCM final/authentication succeeds. Trim surrounding whitespace for key-file/environment input, then validate canonical base64 decoding to exactly 32 bytes. Accept exactly one of `FINSIGHT_SESSION_ENCRYPTION_KEY` / `_FILE` together with `SUPABASE_SECRET_KEY` (`sb_secret_…`), and require existing Auth configuration. Missing all session values disables the feature; partial values throw a sanitized startup error. Keep reads local; never fetch a key from the database.
-- [ ] **Step 4: Verify.** Repeat Step 2 and `npm run typecheck`; expect all tests passing and exit 0.
-- [ ] **Step 5: Commit.** Stage only this task's files; `git commit -m "feat: add portable encrypted session contracts"`.
+- [x] **Step 2: Run the failing tests.** `node --import tsx --test tests/session-crypto.test.ts tests/session-config.test.ts`; expect missing-module/export failures before implementation.
+- [x] **Step 3: Implement the contracts, cipher and config loader.** AAD is the UTF-8 JSON encoding of `['finsight.provider-session', 1, userId, connectionId, providerId]`. Envelope binary fields use canonical standard base64. Only expose decrypted text after GCM final/authentication succeeds. Trim surrounding whitespace for key-file/environment input, then validate canonical base64 decoding to exactly 32 bytes. Accept exactly one of `FINSIGHT_SESSION_ENCRYPTION_KEY` / `_FILE` together with `SUPABASE_SECRET_KEY` (`sb_secret_…`), and require existing Auth configuration. Missing all session values disables the feature; partial values throw a sanitized startup error. Keep reads local; never fetch a key from the database.
+- [x] **Step 4: Verify.** Repeat Step 2 and `npm run typecheck`; expect all tests passing and exit 0.
+- [x] **Step 5: Commit.** Stage only this task's files; `git commit -m "feat: add portable encrypted session contracts"`.
 
 ### Task 2: Restorable Wealthsimple Snapshots and Session Validation
 
@@ -154,7 +154,7 @@ uses `abortUpstream()` followed by persistence and only then `close()`. The
 fixture additionally returns `clientOptions: WealthsimpleOptions` to construct
 clients against its existing synthetic server.
 
-- [ ] **Step 1: Write snapshot and validity tests.** Login client A, export, restore client B, query and inspect the existing upstream call log:
+- [x] **Step 1: Write snapshot and validity tests.** Login client A, export, restore client B, query and inspect the existing upstream call log:
 
 ```ts
 assert.equal(snapshot.version, 1);
@@ -178,10 +178,10 @@ mismatch expires`, `abortUpstream preserves completed session material`, and
 still reject a mixed document when operationName selects a query. Do not change
 the legacy route's repeated-login behavior; the scoped service enforces 409.
 
-- [ ] **Step 2: Run red.** `node --import tsx --test tests/wealthsimple-snapshot.test.ts`; expect missing methods/exports.
-- [ ] **Step 3: Implement the interfaces.** Validate strict snapshot shape, nonempty fields, version and a cookie jar restorable through `CookieJar.deserializeSync`; export a detached snapshot only when completely connected. Token-info validation compares canonical identity, shares existing refresh logic, retries once on recognized auth rejection and clears terminally invalid sessions. Temporary failures preserve state. Extract request/document validation into the shared file without broad provider refactoring. Keep endpoint origins application-controlled. Do not put snapshots into route responses or errors.
-- [ ] **Step 4: Verify.** `node --import tsx --test tests/wealthsimple*.test.ts` and `npm run typecheck`; expect new tests and existing transport/session/shutdown/CLI behavior passing.
-- [ ] **Step 5: Commit.** Stage this task's files; `git commit -m "feat: restore and validate Wealthsimple session snapshots"`.
+- [x] **Step 2: Run red.** `node --import tsx --test tests/wealthsimple-snapshot.test.ts`; expect missing methods/exports.
+- [x] **Step 3: Implement the interfaces.** Validate strict snapshot shape, nonempty fields, version and a cookie jar restorable through `CookieJar.deserializeSync`; export a detached snapshot only when completely connected. Token-info validation compares canonical identity, shares existing refresh logic, retries once on recognized auth rejection and clears terminally invalid sessions. Temporary failures preserve state. Extract request/document validation into the shared file without broad provider refactoring. Keep endpoint origins application-controlled. Do not put snapshots into route responses or errors.
+- [x] **Step 4: Verify.** `node --import tsx --test tests/wealthsimple*.test.ts` and `npm run typecheck`; expect new tests and existing transport/session/shutdown/CLI behavior passing.
+- [x] **Step 5: Commit.** Stage this task's files; `git commit -m "feat: restore and validate Wealthsimple session snapshots"`.
 
 ### Task 3: Backend-Only Durable Storage and Additive Migration
 
@@ -200,7 +200,7 @@ These helpers use the already validated local URL and test secret, operate only
 on fixture-owned records/users, and never print credentials. `readSessionRow`
 uses the fixture's privileged client solely for acceptance assertions.
 
-- [ ] **Step 1: Write adapter and database-permission tests.** Cover load/missing/save/replace/remove, malformed rows, timeout/abort, sanitized failures and no mutation retries. Capture fetch requests and assert only encrypted data is sent, with no user JWT override. Add integration assertions:
+- [x] **Step 1: Write adapter and database-permission tests.** Cover load/missing/save/replace/remove, malformed rows, timeout/abort, sanitized failures and no mutation retries. Capture fetch requests and assert only encrypted data is sent, with no user JWT override. Add integration assertions:
 
 ```ts
 await f.sessionStore.save(id, connectedState, signal);
@@ -219,13 +219,13 @@ connected/null and expired/non-null rows, and the auth-user deletion cascade.
 Use synthetic encrypted envelopes, not real tokens. Existing metadata RLS tests
 must remain unchanged and passing.
 
-- [ ] **Step 2: Run red.** `node --import tsx --test tests/session-store.test.ts`; expect missing adapter. After local setup, the integration test must fail because `provider_sessions` is absent, not because keys are missing.
-- [ ] **Step 3: Implement the adapter.** Use a dedicated secret-key Supabase client with no user auth, session persistence or auto-refresh. Set `db.retry: false`, `redirect: 'error'`, a 5,000 ms default timeout combined with the operation signal, explicit selected columns and `connection_id` filters. Validate returned state/envelope rows. Bound fetched envelopes and map every store error, including secret-key rejection, to sanitized storage 503. `save` upserts one row; `remove` is idempotent. No plaintext or provider-specific types cross this interface.
-- [ ] **Step 4: Inspect the local database and installed CLI.** Follow the existing local development guide for stack setup and private test environment loading. Read existing schema and run `npx supabase --help`, `npx supabase db query --help`, `npx supabase migration new --help`, `npx supabase db pull --help`, `npx supabase db advisors --help`. Flag forms must come from installed 3.0.0 help rather than older documentation. Never reset the shared database or target a hosted project.
-- [ ] **Step 5: Exercise the additive DDL locally without history writes.** Use the documented query command. Define `provider_sessions(connection_id uuid primary key references public.provider_connections(id) on delete cascade, state text not null, encrypted_session jsonb, updated_at timestamptz not null default now())`, constrain states and envelope nullability, enable RLS, revoke all from PUBLIC/anon/authenticated, and grant only SELECT/INSERT/UPDATE/DELETE to service_role. Use a SECURITY INVOKER update-timestamp trigger with fixed empty search_path and revoked public execution. Run the direct permission/cascade cases against this schema; expect Task 3 Step 1 assertions to pass.
-- [ ] **Step 6: Record the final additive migration.** Run local security advisors and fix issues introduced here. Follow the Supabase skill's final migration workflow using installed CLI help; keep only one nonempty provider-sessions migration, use its actual generated timestamp/path and verify history/grants. Do not use `apply_migration` for iteration. The migration must reproduce all DDL and privileges from Step 5, without unrelated schema changes. Add `test:sessions:integration` as `node --import tsx --test --test-concurrency=1 tests/integration/provider-sessions.test.ts`.
-- [ ] **Step 7: Verify.** Repeat adapter tests; run `npm run build`, `npm run test:connections:integration`, `npm run test:sessions:integration`, `npm run typecheck`. With the three existing `FINSIGHT_TEST_SUPABASE_*` variables loaded privately, expect all cases passing and no permission bypass. Fixture setup failures are not acceptance evidence.
-- [ ] **Step 8: Commit.** Stage the adapter/tests/fixture/script and actual generated migration; `git commit -m "feat: persist encrypted sessions in backend-only storage"`.
+- [x] **Step 2: Run red.** `node --import tsx --test tests/session-store.test.ts`; expect missing adapter. After local setup, the integration test must fail because `provider_sessions` is absent, not because keys are missing.
+- [x] **Step 3: Implement the adapter.** Use a dedicated secret-key Supabase client with no user auth, session persistence or auto-refresh. Set `db.retry: false`, `redirect: 'error'`, a 5,000 ms default timeout combined with the operation signal, explicit selected columns and `connection_id` filters. Validate returned state/envelope rows. Bound fetched envelopes and map every store error, including secret-key rejection, to sanitized storage 503. `save` upserts one row; `remove` is idempotent. No plaintext or provider-specific types cross this interface.
+- [x] **Step 4: Inspect the local database and installed CLI.** Follow the existing local development guide for stack setup and private test environment loading. Read existing schema and run `npx supabase --help`, `npx supabase db query --help`, `npx supabase migration new --help`, `npx supabase db pull --help`, `npx supabase db advisors --help`. Flag forms must come from installed 3.0.0 help rather than older documentation. Never reset the shared database or target a hosted project.
+- [x] **Step 5: Exercise the additive DDL locally without history writes.** Use the documented query command. Define `provider_sessions(connection_id uuid primary key references public.provider_connections(id) on delete cascade, state text not null, encrypted_session jsonb, updated_at timestamptz not null default now())`, constrain states and envelope nullability, enable RLS, revoke all from PUBLIC/anon/authenticated, and grant only SELECT/INSERT/UPDATE/DELETE to service_role. Use a SECURITY INVOKER update-timestamp trigger with fixed empty search_path and revoked public execution. Run the direct permission/cascade cases against this schema; expect Task 3 Step 1 assertions to pass.
+- [x] **Step 6: Record the final additive migration.** Run local security advisors and fix issues introduced here. Follow the Supabase skill's final migration workflow using installed CLI help; keep only one nonempty provider-sessions migration, use its actual generated timestamp/path and verify history/grants. Do not use `apply_migration` for iteration. The migration must reproduce all DDL and privileges from Step 5, without unrelated schema changes. Add `test:sessions:integration` as `node --import tsx --test --test-concurrency=1 tests/integration/provider-sessions.test.ts`.
+- [x] **Step 7: Verify.** Repeat adapter tests; run `npm run build`, `npm run test:connections:integration`, `npm run test:sessions:integration`, `npm run typecheck`. With the three existing `FINSIGHT_TEST_SUPABASE_*` variables loaded privately, expect all cases passing and no permission bypass. Fixture setup failures are not acceptance evidence.
+- [x] **Step 8: Commit.** Stage the adapter/tests/fixture/script and actual generated migration; `git commit -m "feat: persist encrypted sessions in backend-only storage"`.
 
 ### Task 4: Per-Connection Execution Queue
 
@@ -244,7 +244,7 @@ class ConnectionQueue {
 for active work and releases queue state. It does not abort provider calls; the
 owning service does that first. Empty-key entries are removed after settlement.
 
-- [ ] **Step 1: Write barrier-controlled queue tests.** Use the existing `deferred` helper; no timing-based sleeps:
+- [x] **Step 1: Write barrier-controlled queue tests.** Use the existing `deferred` helper; no timing-based sleeps:
 
 ```ts
 assert.deepEqual(started, ['a-first', 'b-first']); // a-second waits, B runs
@@ -261,10 +261,10 @@ Add `rejected jobs release the next slot`, `closing rejects waiting work but
 waits for active work`, `already aborted jobs never run`, and repeated same-key
 reuse after completion without blocked/leaked queue state.
 
-- [ ] **Step 2: Run red.** `node --import tsx --test tests/session-queue.test.ts`; expect missing class.
-- [ ] **Step 3: Implement `ConnectionQueue`.** FIFO per key, independent keys, abortable queued admission, rejection-safe cleanup and a bounded ownership of job closures. Never retain resolved credential-capturing work functions in a history array or tail chain after settlement.
-- [ ] **Step 4: Verify.** Repeat Step 2 and `npm run typecheck`; expect passing tests and no unhandled rejections.
-- [ ] **Step 5: Commit.** Stage the two files; `git commit -m "feat: serialize session work per connection"`.
+- [x] **Step 2: Run red.** `node --import tsx --test tests/session-queue.test.ts`; expect missing class.
+- [x] **Step 3: Implement `ConnectionQueue`.** FIFO per key, independent keys, abortable queued admission, rejection-safe cleanup and a bounded ownership of job closures. Never retain resolved credential-capturing work functions in a history array or tail chain after settlement.
+- [x] **Step 4: Verify.** Repeat Step 2 and `npm run typecheck`; expect passing tests and no unhandled rejections.
+- [x] **Step 5: Commit.** Stage the two files; `git commit -m "feat: serialize session work per connection"`.
 
 ### Task 5: Isolated Live Session Lifecycle and Failure Handling
 
@@ -308,7 +308,7 @@ the submitted login. Expose store fail-before-save and commit-then-fail modes,
 plus upstream barriers and token rejection flags for lifecycle tests. Never add
 test-only upstream URLs or credential logging to production startup.
 
-- [ ] **Step 1: Write service behavior tests.** Assertions include:
+- [x] **Step 1: Write service behavior tests.** Assertions include:
 
 ```ts
 assert.deepEqual(await f.service.status(f.a1, f.signal), { status: 'disconnected' });
@@ -331,7 +331,7 @@ unknown-version snapshots returning 503 without save, and explicit disconnect
 success on unreadable state. Assert unknown snapshot payload versions also fail
 safely after envelope decryption, and preserve native financial fields.
 
-- [ ] **Step 2: Write lifecycle failure/race tests.** Named tests and core assertions:
+- [x] **Step 2: Write lifecycle failure/race tests.** Named tests and core assertions:
 
 ```ts
 // caller abort after refresh response: release the save barrier after abort
@@ -356,10 +356,10 @@ or cookies changed on an upstream error (503, evicted), failed durable remove
 late save), cancellation while queued (zero upstream calls), close during a
 bounded save (await save, keep row), and transient cache eviction/reload.
 
-- [ ] **Step 3: Run red.** `node --import tsx --test tests/session-service.test.ts tests/session-lifecycle.test.ts`; expect missing service.
-- [ ] **Step 4: Implement the lifecycle.** Lazily decrypt/parse/restore and validate a client after ownership checks. Reject cached binding mismatch. Use one private client/queue per record; validate existing connected sessions before refusing login. Persist only completed snapshots; retain prior expired markers during MFA/failed login. After each operation, including caught upstream errors/abort, finalize meaningful token/cookie changes before releasing the slot. Compare detached snapshots while ignoring cookie `lastAccessed` only; preserve expiry/creation/value/security fields. Use a service-owned 5,000 ms persistence signal, independent of caller cancellation. Save terminal failures as expired with no envelope; do not mark expiry merely because of an abort, shutdown or temporary failure. Storage/decryption errors take precedence over returning success; evict after uncertain writes. Disconnect bypasses decryption and deletes durable state; record removal relies on FK cascade. Shutdown marks closing, aborts clients without clearing exportable material, rejects queued work, drains finalization, then clears clients. Cap inactive cache entries at 256 and evict after 15 minutes idle, sweeping on operation boundaries with the injectable clock; never evict active entries. MFA evicted by age/pressure must restart authentication. The queue map releases empty entries independently.
-- [ ] **Step 5: Verify.** Repeat Step 3, Task 4 tests, `node --import tsx --test tests/wealthsimple-session.test.ts tests/wealthsimple-shutdown.test.ts` and `npm run typecheck`; all must pass without real services or credentials.
-- [ ] **Step 6: Commit.** Stage this task's files; `git commit -m "feat: manage isolated persistent Wealthsimple sessions"`.
+- [x] **Step 3: Run red.** `node --import tsx --test tests/session-service.test.ts tests/session-lifecycle.test.ts`; expect missing service.
+- [x] **Step 4: Implement the lifecycle.** Lazily decrypt/parse/restore and validate a client after ownership checks. Reject cached binding mismatch. Use one private client/queue per record; validate existing connected sessions before refusing login. Persist only completed snapshots; retain prior expired markers during MFA/failed login. After each operation, including caught upstream errors/abort, finalize meaningful token/cookie changes before releasing the slot. Compare detached snapshots while ignoring cookie `lastAccessed` only; preserve expiry/creation/value/security fields. Use a service-owned 5,000 ms persistence signal, independent of caller cancellation. Save terminal failures as expired with no envelope; do not mark expiry merely because of an abort, shutdown or temporary failure. Storage/decryption errors take precedence over returning success; evict after uncertain writes. Disconnect bypasses decryption and deletes durable state; record removal relies on FK cascade. Shutdown marks closing, aborts clients without clearing exportable material, rejects queued work, drains finalization, then clears clients. Cap inactive cache entries at 256 and evict after 15 minutes idle, sweeping on operation boundaries with the injectable clock; never evict active entries. MFA evicted by age/pressure must restart authentication. The queue map releases empty entries independently.
+- [x] **Step 5: Verify.** Repeat Step 3, Task 4 tests, `node --import tsx --test tests/wealthsimple-session.test.ts tests/wealthsimple-shutdown.test.ts` and `npm run typecheck`; all must pass without real services or credentials.
+- [x] **Step 6: Commit.** Stage this task's files; `git commit -m "feat: manage isolated persistent Wealthsimple sessions"`.
 
 ### Task 6: Authenticated Routes, Record Deletion and Startup Wiring
 
@@ -383,7 +383,7 @@ work. `createApp` passes one service to both route registrations and owns its
 `preClose` hook. `main.ts` loads config, creates cipher/store/service and passes
 the service; it never creates per-user clients inside the legacy provider factory.
 
-- [ ] **Step 1: Write HTTP boundary tests using injected stores/verifier/service.** Assert exact routes and outcomes:
+- [x] **Step 1: Write HTTP boundary tests using injected stores/verifier/service.** Assert exact routes and outcomes:
 
 ```ts
 assert.equal((await requestWithoutAuth()).statusCode, 401);
@@ -410,10 +410,10 @@ ownership removal after the first lookup and ensure the second lookup rejects.
 Capture logger output and assert submitted password/OTP/token/key sentinels never
 appear. Do not forbid those field names inside authorized native financial JSON.
 
-- [ ] **Step 2: Run red.** `node --import tsx --test tests/session-api.test.ts`; expect scoped route 404s before wiring.
-- [ ] **Step 3: Implement routes and app wiring.** Expose GET/POST/DELETE `/api/connections/:connectionId/session` and POST `/api/connections/:connectionId/graphql`. Reuse auth, ID/body validation, cancellation cleanup and browser metadata. Construct trusted access only after retrieving owned metadata; revalidation callbacks use the current user-scoped connection store. Keep error handling scoped to these routes, preserving 413/415 and existing legacy behavior. For metadata DELETE, precheck ownership then call `sessions.removeRecord` when configured; no live service means the old remove path. Never decrypt to remove a record. Load full session configuration before listen, add early service shutdown, and keep Auth-disabled/private workflows operational. Update the old integration assertion that `/api/connections/:id/graphql` does not exist: with owned record but disabled session service it now returns 503, while unknown/foreign records remain 404. Do not change MCP tools or CLI parameters.
-- [ ] **Step 4: Verify.** Run `npm test`, `npm run typecheck`, `npm run build`; expect full existing and new suites passing. Run local connection/session integration suites if the stack is available; report missing prerequisites distinctly.
-- [ ] **Step 5: Commit.** Stage this task's files; `git commit -m "feat: expose authenticated connection session endpoints"`.
+- [x] **Step 2: Run red.** `node --import tsx --test tests/session-api.test.ts`; expect scoped route 404s before wiring.
+- [x] **Step 3: Implement routes and app wiring.** Expose GET/POST/DELETE `/api/connections/:connectionId/session` and POST `/api/connections/:connectionId/graphql`. Reuse auth, ID/body validation, cancellation cleanup and browser metadata. Construct trusted access only after retrieving owned metadata; revalidation callbacks use the current user-scoped connection store. Keep error handling scoped to these routes, preserving 413/415 and existing legacy behavior. For metadata DELETE, precheck ownership then call `sessions.removeRecord` when configured; no live service means the old remove path. Never decrypt to remove a record. Load full session configuration before listen, add early service shutdown, and keep Auth-disabled/private workflows operational. Update the old integration assertion that `/api/connections/:id/graphql` does not exist: with owned record but disabled session service it now returns 503, while unknown/foreign records remain 404. Do not change MCP tools or CLI parameters.
+- [x] **Step 4: Verify.** Run `npm test`, `npm run typecheck`, `npm run build`; expect full existing and new suites passing. Run local connection/session integration suites if the stack is available; report missing prerequisites distinctly.
+- [x] **Step 5: Commit.** Stage this task's files; `git commit -m "feat: expose authenticated connection session endpoints"`.
 
 ### Task 7: Deployment, Child-Process Restarts and Acceptance
 
@@ -437,7 +437,7 @@ vars. Keep synthetic provider state alive in the parent across child restarts.
 Document `npm run build` as the integration command's explicit prerequisite,
 consistent with the existing connection integration script.
 
-- [ ] **Step 1: Write full acceptance cases.** Authenticate A1/A2/B1 with distinct synthetic logins through real HTTP, including OTP; assert each native result identity/account/cookie matches its selected owned record, and all cross-user requests are 404. Inspect actual stored rows for plaintext absence. Restart the child, query again, force refresh/cookie change, restart again and query successfully. Assert app sign-out/sign-in preserves provider state, expiration/reconnection works and deleting A leaves B queryable. For `FINSIGHT_TEST_RESTART_SUPABASE=1`, stop/start the local stack preserving volumes, sign test users in again, restart the child with the same key and verify saved provider sessions. Cover privileged table denial and cascades from Task 3.
+- [x] **Step 1: Write full acceptance cases.** Authenticate A1/A2/B1 with distinct synthetic logins through real HTTP, including OTP; assert each native result identity/account/cookie matches its selected owned record, and all cross-user requests are 404. Inspect actual stored rows for plaintext absence. Restart the child, query again, force refresh/cookie change, restart again and query successfully. Assert app sign-out/sign-in preserves provider state, expiration/reconnection works and deleting A leaves B queryable. For `FINSIGHT_TEST_RESTART_SUPABASE=1`, stop/start the local stack preserving volumes, sign test users in again, restart the child with the same key and verify saved provider sessions. Cover privileged table denial and cascades from Task 3.
 
 Add `SIGTERM during blocked provider request preserves saved sessions` with these
 assertions using an abort-aware synthetic endpoint and an IPC signal barrier:
@@ -454,11 +454,11 @@ base Compose working without key files, read-only key mounting in the opt-in
 override, unchanged frontend build arguments, and no secret image COPY paths.
 Use synthetic environment values and never print interpolated real configuration.
 
-- [ ] **Step 2: Run red.** `node --import tsx --test tests/session-deployment.test.ts`, then `npm run test:sessions:integration` with local credentials loaded privately; expect missing override/helper or unimplemented acceptance cases, not unexplained setup errors.
-- [ ] **Step 3: Implement child-process acceptance support.** Implement `startSessionBackend` and its IPC child entrypoint as specified above. Preserve the same database, deployment key and synthetic provider state through child restart; use `SIGTERM` for the shutdown test, not a test-only close shortcut.
-- [ ] **Step 4: Add the opt-in deployment override.** Set `SUPABASE_SECRET_KEY` from the backend runtime environment and mount `./.secrets/finsight_session_key` as `/run/secrets/finsight_session_key`, read-only; set `FINSIGHT_SESSION_ENCRYPTION_KEY_FILE` to that path. Preserve base Compose loopback publishing/read-only filesystem/non-root user and the existing 10-second grace. Keep the key out of build context via the existing allowlist. Add blank runtime secret placeholders to `.env.example` without frontend exposure.
-- [ ] **Step 5: Write operator and API documentation.** Document correct host permissions so the container's node user can read only its intended key. Provide Node-based interactive login/OTP/API examples that read secret files or prompt rather than passing credentials in shell arguments. Explain 15-minute/cache-pressure MFA restart, persistence guarantees, independent local/MCP sessions, expired vs temporarily unavailable status, key backup/recovery and the provider-rotation crash window. Remove outdated claims that all sessions are memory-only or privileged application keys are never required; distinguish the metadata and session adapters. Document integration build/secret-loading prerequisites and deployment commands using the explicit opt-in override.
-- [ ] **Step 6: Run final verification.** From the isolated checkout:
+- [x] **Step 2: Run red.** `node --import tsx --test tests/session-deployment.test.ts`, then `npm run test:sessions:integration` with local credentials loaded privately; expect missing override/helper or unimplemented acceptance cases, not unexplained setup errors.
+- [x] **Step 3: Implement child-process acceptance support.** Implement `startSessionBackend` and its IPC child entrypoint as specified above. Preserve the same database, deployment key and synthetic provider state through child restart; use `SIGTERM` for the shutdown test, not a test-only close shortcut.
+- [x] **Step 4: Add the opt-in deployment override.** Set `SUPABASE_SECRET_KEY` from the backend runtime environment and mount `./.secrets/finsight_session_key` as `/run/secrets/finsight_session_key`, read-only; set `FINSIGHT_SESSION_ENCRYPTION_KEY_FILE` to that path. Preserve base Compose loopback publishing/read-only filesystem/non-root user and the existing 10-second grace. Keep the key out of build context via the existing allowlist. Add blank runtime secret placeholders to `.env.example` without frontend exposure.
+- [x] **Step 5: Write operator and API documentation.** Document correct host permissions so the container's node user can read only its intended key. Provide Node-based interactive login/OTP/API examples that read secret files or prompt rather than passing credentials in shell arguments. Explain 15-minute/cache-pressure MFA restart, persistence guarantees, independent local/MCP sessions, expired vs temporarily unavailable status, key backup/recovery and the provider-rotation crash window. Remove outdated claims that all sessions are memory-only or privileged application keys are never required; distinguish the metadata and session adapters. Document integration build/secret-loading prerequisites and deployment commands using the explicit opt-in override.
+- [x] **Step 6: Run final verification.** From the isolated checkout:
 
 ```sh
 npm test
@@ -480,7 +480,7 @@ the full acceptance report. If Docker/local Supabase is unavailable, document
 which checks remain unrun and do not claim complete acceptance. A real-account
 smoke test is separate and only performed with an available authorized login.
 
-- [ ] **Step 7: Commit.** Stage this task's files; `git commit -m "test: verify isolated sessions across restarts and deployment"`.
+- [x] **Step 7: Commit.** Stage this task's files; `git commit -m "test: verify isolated sessions across restarts and deployment"`.
 
 ## Self-Review and Handoff
 
@@ -496,10 +496,39 @@ smoke test is separate and only performed with an available authorized login.
 - The five Review Focus cases have named/asserted tests in their owning tasks.
 - The migration timestamp is generated by the installed CLI during execution;
   every other new source/test path is fixed above.
-- Save task checkboxes as execution proceeds. Do not begin implementation until
-  the user has reviewed this plan and selected an execution method.
+- Save task checkboxes as execution proceeds. The user selected subagent-driven execution; all seven tasks are complete.
 
 Recommended execution: **subagent-driven**, because the seven tasks cross
 encryption, ownership and concurrent session boundaries where an independent
 check before integration is useful. Native execution remains the option with
-less coordination overhead. No execution method has been chosen yet.
+less coordination overhead. The user selected subagent-driven execution.
+
+
+## Execution Results
+
+All seven tasks completed using fresh implementers and independent task reviews.
+The whole-branch review found two Important issues, both fixed in `2785700` and
+confirmed by scoped re-review: canonical UUID bindings across queues/cache/AAD,
+and nonblank provider identifiers/tokens preserving sessions on malformed replies.
+The earlier ambiguous-refresh classification issue was fixed in `6bac6c3`.
+
+Final verification on the fixed code:
+
+- `npm test`: 242 pass, zero failures/skips.
+- `npm run typecheck` and `npm run build`: pass.
+- `npm run test:deployment`: one pass; default Node tests also pass without Docker on PATH.
+- Real metadata integration: two pass; its optional legacy restart subcase skipped.
+- `FINSIGHT_TEST_RESTART_SUPABASE=1 npm run test:sessions:integration`: five pass, zero skips, retained volumes.
+- Blocked-provider SIGTERM exits cleanly; saved session works after restart.
+- Base/opt-in Compose configuration and non-root mounted key readability verified.
+
+No real Wealthsimple login/OTP smoke or separate native Linux host run was
+performed. Provider traffic in tests was synthetic. A private Pino stream symbol
+used by a log-sanitization test remains a nonblocking maintenance item.
+
+### Rulings made during execution
+
+- schema migration workflow may use a clean additive CLI-generated manual migration applied once after local checks — installed CLI and existing repository workflow decide flags; no destructive resets or hosted writes; cost if wrong: local migration history may need a corrective additive migration.
+- Task 5 uses a service-owned provider-operation signal while caller cancellation invokes client.abortUpstream(), awaits refresh/finalization inside the queue slot, then evicts the aborted client — the existing client caller-cancellable refresh waiter otherwise could release a slot before shared refresh settles; cost if wrong: cancellation may require a service/client lifecycle correction, covered by rotation-abort tests.
+- Task 5 may include the minimal provider-boundary correction discovered by HTTP200/null token-info regression — malformed provider responses must be safe 502s with retained sessions under the approved lifecycle spec; cost if wrong: small provider hunk may need revision, reviewed with Task5.
+- Task 5 fix round may minimally change provider refresh classification outside its listed files — independent review proved malformed HTTP400/unrecognized HTTP200 errors can destructively persist expired, violating binding spec; cost if wrong: legacy refresh behavior needs a narrow compatibility correction, covered by provider regressions.
