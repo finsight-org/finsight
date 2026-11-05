@@ -1,7 +1,7 @@
 # Working, isolated Wealthsimple sessions
 
 - Date: 2026-11-05
-- Status: Draft for approval
+- Status: Approved for implementation planning
 - Issue: [#26 — PR 3](https://github.com/finsight-org/finsight/issues/26)
 
 ## Intent and scope
@@ -439,5 +439,5 @@ from the existing provider behavior: session/local-error responses are sanitized
 and native GraphQL JSON retains its upstream fields and HTTP status, including
 5xx responses, except when recognized authentication failures require handling.
 
-Pending user review. Implementation and implementation planning begin only after
-this document is approved.
+The user requested implementation planning on 2026-11-05 after reviewing this
+design. Implementation execution is a separate handoff after the plan is written.
