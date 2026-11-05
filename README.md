@@ -16,8 +16,9 @@ npm run dev
 ```
 
 The server listens at `http://127.0.0.1:4000`. Use `PORT=4001 npm run dev` to
-choose another port. The provider/MCP workflow is a trusted local, single-user service. Provider
-credentials, cookies, and tokens stay in memory; restart or disconnect to discard the session.
+choose another port. The provider/MCP workflow is a trusted local, single-user
+service. Its shared session stays in memory; restart or disconnect to discard it. Optional user-owned API sessions persist encrypted in PostgreSQL, configured
+separately as described below. Passwords and OTPs are never stored.
 
 ## Web application and local Supabase Auth
 
@@ -32,8 +33,9 @@ the two projects. The optional Compose `web` profile serves the built frontend
 from its own container. Fastify serves only the API and MCP.
 
 User-owned provider connection records are available through the application API.
-Live provider sessions and ChatGPT OAuth remain follow-up work. Web login does not
-grant access to the existing shared Wealthsimple session. The private provider
+Each owned record can hold an independent encrypted Wealthsimple session through
+the scoped API. ChatGPT OAuth remains follow-up work. Web login does not grant
+access to the existing shared Wealthsimple session. The private provider
 and MCP endpoints retain their trusted local deployment boundary.
 
 ```sh
@@ -282,8 +284,9 @@ and HTTP routes without importing providers.
 `auth.ts`, `web-api.ts`, and `browser-access.ts` implement the separate web
 identity boundary. The frontend's build and tests are independent of the root
 TypeScript project. Local Supabase configuration is in `supabase/config.toml`;
-Provider connection metadata is stored in PostgreSQL; live provider-session persistence
-remains follow-up work.
+provider connection metadata and encrypted user-owned provider sessions are stored
+in PostgreSQL. Metadata uses user JWTs and RLS; session storage uses a separate
+backend-only privileged adapter.
 
 Breaking interface changes: connection POSTs use an optional OTP without
 `attemptId` or `expiresAt`; GraphQL GET returns documentation; POST uses native
@@ -321,10 +324,51 @@ Auth/storage outages return safe 503 errors. Responses are never cached. Store
 failures are not automatically retried: after an uncertain create, list existing
 records before trying again.
 
-Records contain metadata only. They cannot retrieve financial data or authenticate
-Wealthsimple. PR 3 adds isolated live sessions, PR 4 adds browser connection
-management, and PR 5 adds per-user agent authorization. The existing private
+Records contain metadata only; the scoped session routes below authenticate
+Wealthsimple and query its native API. Browser connection management and per-user
+agent authorization remain separate follow-up work. The existing private
 provider and MCP endpoints retain their trusted-local boundary.
 
 See [local development](docs/local-auth-development.md#connection-record-integration-tests)
 for real database ownership and restart acceptance tests.
+
+## User-owned Wealthsimple sessions
+
+Configure backend Auth plus `SUPABASE_SECRET_KEY` and exactly one of
+`FINSIGHT_SESSION_ENCRYPTION_KEY` (canonical base64 for 32 random bytes) or
+`FINSIGHT_SESSION_ENCRYPTION_KEY_FILE`. Leave all session settings blank to disable
+this feature; partial configuration prevents startup. The privileged key and
+session encryption key are backend runtime secrets and must never be `VITE_`
+values. Use [the opt-in deployment override](docs/local-deployment.md#durable-user-owned-sessions)
+for read-only file mounting, permissions and key backup instructions.
+
+Every call requires a verified FinSight bearer token and an owned record.
+Foreign and missing IDs return 404; responses use `Cache-Control: no-store`.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/connections/:id/session` | `disconnected`, `mfa_required`, `connected` or `expired` |
+| POST | `/api/connections/:id/session` | `{ email, password, otp? }`; resubmit all credentials with OTP if requested |
+| DELETE | `/api/connections/:id/session` | Delete saved provider session, retaining the record; returns 204 |
+| POST | `/api/connections/:id/graphql` | Native `{ query, operationName?, variables? }`; query operations only |
+
+FinSight supplies `variables.identityId` from the selected provider session.
+Native result identity/account fields are preserved. A working-session login
+returns 409 `CONNECTION_ALREADY_CONNECTED`; disconnect first to change accounts.
+Deleting a record also deletes its provider session. Deleting a FinSight user
+cascades through their records and sessions.
+
+A successful connected response follows encrypted persistence. Backend and database
+restarts retain saved sessions when the database volumes and the same deployment
+key remain available. Token rotations and cookie changes are saved after provider
+operations. App sign-out/sign-in preserves saved provider sessions. The shared
+local provider/MCP session is independent and remains memory-only.
+
+MFA challenges are memory-only: process restart, 15 minutes idle or cache pressure
+(over 256 idle sessions) can require starting login again. Passwords and OTPs are
+never persisted. Confirmed provider authentication rejection marks a session
+`expired`; reconnect with credentials/OTP. Temporary Auth, provider, database or
+key/decryption failures return sanitized errors (including
+`SESSION_STORAGE_UNAVAILABLE` / `SESSION_STATE_UNAVAILABLE`) without declaring
+expiration or discarding saved state. See the [Node API example](docs/local-auth-development.md#scoped-provider-session-api)
+and [restart acceptance commands](docs/local-auth-development.md#provider-session-integration-tests).

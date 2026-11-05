@@ -3,7 +3,8 @@
 PR 1 uses one Supabase Auth project for the React application and the Fastify
 backend. Users live in Supabase's built-in `auth.users`. PR 2 adds the
 `public.provider_connections` table and its ownership policies through a tracked
-migration. Live provider sessions and ChatGPT OAuth come later.
+migration. Encrypted provider sessions use `public.provider_sessions`, accessible
+only through the backend privileged adapter. ChatGPT OAuth remains follow-up work.
 
 ## Start local Supabase
 
@@ -182,7 +183,8 @@ The optional `tunnel` profile remains dedicated to the trusted private MCP
 endpoint. Keep its existing secret file/configuration separate. Neither frontend
 sign-in nor enabling the web profile turns that endpoint into a public multi-user
 service. Do not deploy this combination as public financial-account access until
-provider-session isolation and authenticated MCP work are delivered.
+authenticated per-user MCP authorization is delivered. Scoped API sessions are
+isolated; the shared MCP session remains independent.
 
 ## Hosted Auth configuration
 
@@ -245,14 +247,18 @@ npx supabase db advisors --type security
 
 CLI 3 targets the local project by default. Do not reset an existing database or
 remove its volumes. Migration application preserves existing Auth identities.
-No application startup migration or privileged application key is required.
+No application startup migration runs. Connection metadata uses user JWTs and
+the publishable key; enabling durable sessions additionally requires the backend
+Supabase secret key and a deployment encryption key.
 
 Backend tests remain independent of external services. For actual database tests,
 set `FINSIGHT_TEST_SUPABASE_URL`, `FINSIGHT_TEST_SUPABASE_PUBLISHABLE_KEY`, and
 `FINSIGHT_TEST_SUPABASE_SECRET_KEY` from the ignored local status JSON. The secret
-key is used only to create/clean up disposable test identities and seed ordering
-fixtures. The fixture refuses hosted URLs; application requests always use user
-JWTs and the publishable key. Never print keys or put them in shell arguments.
+key creates/cleans up disposable test identities, seeds ordering fixtures, and
+accesses backend-only encrypted session rows in session acceptance. The fixture
+refuses hosted URLs; metadata application requests use user JWTs and the
+publishable key, while the session adapter alone uses the privileged key.
+Never print keys or put them in shell arguments.
 
 ```sh
 npm run build
@@ -285,5 +291,96 @@ console.log(response.status, await response.json());
 JS
 ```
 
-Only connection metadata is returned. This does not log in to Wealthsimple;
-provider authentication, the web flow, and agent authorization belong to PRs 3–5.
+Only connection metadata is returned. Use the scoped session API below to log
+in to Wealthsimple; browser management and per-user agent authorization remain
+separate work.
+
+## Provider session integration tests
+
+Apply the tracked additive migrations and run `npm run build` first. Both
+integration scripts execute built backend modules; the session child runs with
+Node's existing tsx import hook and receives synthetic endpoint origins over
+private IPC. No real Wealthsimple account is used. Load the ignored local status
+file directly into the subprocess environment; do not export or print its keys:
+
+```sh
+npm run build
+node --input-type=module <<'JS'
+import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+const status = JSON.parse(readFileSync('.secrets/supabase-status.json', 'utf8'));
+const env = { ...process.env,
+  FINSIGHT_TEST_SUPABASE_URL: status.API_URL,
+  FINSIGHT_TEST_SUPABASE_PUBLISHABLE_KEY: status.PUBLISHABLE_KEY,
+  FINSIGHT_TEST_SUPABASE_SECRET_KEY: status.SECRET_KEY,
+};
+for (const script of ['test:connections:integration', 'test:sessions:integration']) {
+  const result = spawnSync('npm', ['run', script], { env, stdio: 'inherit' });
+  if (result.status !== 0) process.exit(1);
+}
+// This briefly interrupts all consumers of the local project. Keep its volumes.
+const result = spawnSync('npm', ['run', 'test:sessions:integration'], {
+  env: { ...env, FINSIGHT_TEST_RESTART_SUPABASE: '1' }, stdio: 'inherit',
+});
+process.exit(result.status ?? 1);
+JS
+```
+
+The full run must include the retained-volume Supabase restart without a skipped
+restart case. It signs fixture users in again, restarts the backend with the same
+key, and checks A1/A2/B1 isolation, refreshed tokens/cookies, encrypted rows,
+privileged-table denial, expiration/reconnection, sign-out preservation and
+cascades. A separate SIGTERM test blocks an abort-aware upstream request and
+requires an IPC signal barrier, exit code 0 within 10 seconds, preserved storage
+and a successful query after restarting. Ordinary runs skip only the optional
+database interruption. A real-account smoke test is separate and needs an
+authorized interactive login.
+
+## Scoped provider session API
+
+Use an owned connection ID and your FinSight access token (the existing browser
+login supplies that token). Store manual credentials only in mode-0600 ignored
+files under mode-0700 `.secrets`; never pass them as shell arguments. This Node
+example reads `.secrets/user-token`, `.secrets/ws-email` and `.secrets/ws-password`,
+and reads an optional OTP from `.secrets/ws-otp`. The file-based example
+resubmits all credentials when completing MFA.
+Create `.secrets/ws-otp` locally only when a current challenge requires it; remove
+it and the password file when finished. The script prints statuses, never tokens,
+credentials or financial results.
+
+```sh
+node --input-type=module <<'JS'
+import { readFileSync, existsSync } from 'node:fs';
+const read = name => readFileSync(`.secrets/${name}`, 'utf8').replace(/\r?\n$/, '');
+const base = 'http://127.0.0.1:4000';
+const id = read('connection-id'); // UUID of a record you own
+const headers = { Authorization: `Bearer ${read('user-token')}`, 'Content-Type': 'application/json' };
+async function call(path, method = 'GET', body) {
+  return fetch(`${base}/api/connections/${id}${path}`, { method, headers,
+    redirect: 'error', body: body === undefined ? undefined : JSON.stringify(body) });
+}
+const input = { email: read('ws-email'), password: read('ws-password') };
+let response = await call('/session', 'POST', input);
+let state = await response.json();
+if (state.status === 'mfa_required' && existsSync('.secrets/ws-otp')) {
+  response = await call('/session', 'POST', { ...input, otp: read('ws-otp') });
+  state = await response.json();
+}
+console.log('Login HTTP', response.status, 'state', state.status ?? state.error?.code);
+if (state.status === 'connected') {
+  const query = 'query Accounts($identityId: ID!) { identity(id: $identityId) { id } }';
+  const result = await call('/graphql', 'POST', { query });
+  console.log('GraphQL HTTP', result.status); // Read result locally; contains account data.
+  await result.body?.cancel();
+}
+// To disconnect this provider session while retaining metadata:
+// console.log('Disconnect HTTP', (await call('/session', 'DELETE')).status);
+JS
+```
+
+If the first request needs MFA and no OTP file exists, save the current OTP
+locally, then rerun while the challenge is pending. No password or OTP is retained
+server-side; always resubmit both credentials. Cache eviction after 15 minutes
+idle, cache pressure and process restart discard pending MFA and require starting
+the login again. The existing `npm run wealthsimple -- login` interactive command
+has hidden password/OTP prompts for the shared local/MCP session only.

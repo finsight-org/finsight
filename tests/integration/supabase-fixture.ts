@@ -159,3 +159,17 @@ export async function startCompiledBackend(
     },
   };
 }
+
+/** Local-only retained-volume interruption. Suppress CLI output containing keys. */
+export async function restartLocalSupabase(): Promise<void> {
+  const url = process.env.FINSIGHT_TEST_SUPABASE_URL;
+  if (!url || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname))
+    throw new Error('Supabase restart acceptance requires a loopback URL.');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  try {
+    await run('npm', ['run', 'supabase:stop'], { timeout: 60_000 });
+    await run('npm', ['run', 'supabase:start'], { timeout: 180_000 });
+  } catch { throw new Error('Local retained-volume Supabase restart failed; CLI output withheld.'); }
+}
