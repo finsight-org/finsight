@@ -143,3 +143,27 @@ test('malformed provider identity on a saved session yields safe upstream error 
   f.controls.malformedInfo = false;
   assert.deepEqual(await f.service.status(f.a1, f.signal), { status: 'connected' });
 });
+
+for (const [status, body] of [
+  [400, 'malformed upstream response'],
+  [400, { error: 'invalid_request' }],
+  [200, { error: 'temporarily_unavailable' }],
+] as const) {
+  test('ambiguous refresh failure preserves durable credentials: ' + status + ' ' + JSON.stringify(body), async t => {
+    const f = sessionFixture(t);
+    await f.service.login(f.a1, credentials(), f.signal);
+    const old = f.snapshot().session;
+    f.controls.rejectAccess.add(old.accessToken);
+    f.controls.refreshResponse = { status, body };
+    await assert.rejects(f.service.status(f.a1, f.signal), {
+      code: 'WEALTHSIMPLE_UPSTREAM_FAILURE', statusCode: 502, message: 'Wealthsimple could not complete the request.',
+    });
+    assert.equal(f.store.saves, 1);
+    assert.equal(f.snapshot().session.refreshToken, old.refreshToken);
+    await f.restart();
+    f.controls.refreshResponse = undefined;
+    assert.equal((await f.service.graphql(f.a1, query, f.signal)).status, 200);
+    assert.equal(f.calls.filter(call => call.grant === 'refresh_token').at(-1)!.refresh, old.refreshToken);
+    assert.notEqual(f.snapshot().session.refreshToken, old.refreshToken);
+  });
+}

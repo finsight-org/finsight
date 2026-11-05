@@ -226,16 +226,14 @@ export class WealthsimpleClient {
       },
     });
     this.#assertCurrent(session);
-    if (response.status === 400 || response.status === 401) {
+    // A refresh 401 is terminal even without JSON. A 400 or error payload
+    // alone does not establish that the provider rejected this refresh grant.
+    const body = response.status === 400 || response.status === 200 ? json(response.text) : undefined;
+    if (response.status === 401 || body?.error === 'invalid_grant') {
       this.disconnect();
       throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple session expired. Connect again.');
     }
-    if (response.status !== 200) throw new WealthsimpleError('UPSTREAM_FAILURE');
-    const body = json(response.text);
-    if (body.error) {
-      this.disconnect();
-      throw new WealthsimpleError('NOT_CONNECTED', 'The Wealthsimple session expired. Connect again.');
-    }
+    if (response.status !== 200 || !body || body.error) throw new WealthsimpleError('UPSTREAM_FAILURE');
     const accessToken = requiredString(body.access_token);
     const refreshToken = requiredString(body.refresh_token);
     session.accessToken = accessToken;

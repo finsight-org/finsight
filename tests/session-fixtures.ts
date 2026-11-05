@@ -62,6 +62,7 @@ export function sessionFixture(t: TestContext) {
   const signal = new AbortController().signal;
   const controls = {
     now: 1, clients: 0, infoOutage: false, malformedInfo: false, requireOtp: false, rejectRefresh: false,
+    refreshResponse: undefined as { body: unknown; status: number } | undefined,
     rejectAccess: new Set<string>(), queryCookie: '', queryStatus: 200, malformed: false,
     beforeResponse: async (_call: Call, _signal: AbortSignal) => {},
   };
@@ -91,6 +92,7 @@ export function sessionFixture(t: TestContext) {
       case '/token': {
         const refresh = call.grant === 'refresh_token';
         const owner = refresh ? tokenOwners.get(body.refresh_token) : body.username;
+        if (refresh && controls.refreshResponse) return reply(controls.refreshResponse.body, controls.refreshResponse.status);
         if (!owner || (refresh && controls.rejectRefresh)) return reply({ error: 'invalid_grant' }, 401);
         if (!refresh && body.password !== 'PASSWORD_SENTINEL') return reply({ error: 'bad_credentials' }, 401);
         if (!refresh && controls.requireOtp && !headers.has('x-wealthsimple-otp')) return reply({ error: 'otp_required' }, 400);
