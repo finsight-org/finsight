@@ -43,9 +43,10 @@ export async function fixture(t: TestContext, overrides: Record<string, Override
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const base = `http://127.0.0.1:${port}`;
-  const provider = wealthsimpleProvider({ ...options, endpoints: {
+  const clientOptions: WealthsimpleOptions = { ...options, endpoints: {
     login: `${base}/login`, token: `${base}/token`, tokenInfo: `${base}/info`, graphql: `${base}/graphql`,
-  } });
+  } };
+  const provider = wealthsimpleProvider(clientOptions);
   const app = createApp([provider]);
   t.after(async () => {
     await app.close();
@@ -53,7 +54,7 @@ export async function fixture(t: TestContext, overrides: Record<string, Override
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
   return {
-    app, calls, provider,
+    app, calls, provider, clientOptions,
     login: (payload: unknown = credentials) => app.inject({ method: 'POST', url: endpoint, payload: payload as object }),
     query: (variables?: Record<string, unknown>) => app.inject({ method: 'POST', url: graphql,
       payload: { query: accountQuery, ...(variables === undefined ? {} : { variables }) } }),

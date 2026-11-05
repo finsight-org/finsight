@@ -2,6 +2,7 @@ import { once } from "node:events";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { TestContext } from "node:test";
 import type { AuthConfig } from "../../src/auth.js";
+import { createSupabaseSessionStore } from "../../src/sessions/supabase-store.js";
 export interface LocalUser {
   id: string;
   accessToken: string;
@@ -37,6 +38,14 @@ export async function createLocalFixture(t: TestContext) {
   };
   const admin = createClient(url, secret, options);
   const ids: string[] = [];
+  const ownedConnections = new Set<string>();
+  async function requireOwnedConnection(id: string) {
+    if (ownedConnections.has(id)) return;
+    const result = await admin.from("provider_connections").select("user_id").eq("id", id).single();
+    if (result.error || !ids.includes(result.data.user_id))
+      throw new Error("Session assertions require a fixture-owned connection.");
+    ownedConnections.add(id);
+  }
   t.after(async () => {
     for (const id of ids) await admin.auth.admin.deleteUser(id);
   });
@@ -74,6 +83,19 @@ export async function createLocalFixture(t: TestContext) {
     config,
     a: await user(),
     b: await user(),
+    sessionStore: createSupabaseSessionStore({ supabaseUrl: url, secretKey: secret }),
+    async readSessionRow(id: string): Promise<unknown> {
+      await requireOwnedConnection(id);
+      const result = await admin.from("provider_sessions").select("connection_id,state,encrypted_session,updated_at").eq("connection_id", id).maybeSingle();
+      if (result.error) throw new Error("Local session row read failed.");
+      return result.data;
+    },
+    async deleteOwnedTestUser(id: string): Promise<void> {
+      if (!ids.includes(id)) throw new Error("Only fixture-owned users may be deleted.");
+      const result = await admin.auth.admin.deleteUser(id);
+      if (result.error) throw new Error("Local test user deletion failed.");
+      ids.splice(ids.indexOf(id), 1);
+    },
     async seedCreatedAt(ids: string[], timestamp: string) {
       const r = await admin
         .from("provider_connections")
@@ -84,7 +106,10 @@ export async function createLocalFixture(t: TestContext) {
   };
 }
 
-export async function startCompiledBackend(t: TestContext, config: AuthConfig) {
+export async function startCompiledBackend(
+  t: TestContext, config: AuthConfig,
+  sessionConfig?: { secretKey: string; encryptionKey: string },
+) {
   const { spawn } = await import("node:child_process");
   const { createServer } = await import("node:net");
   const reserve = createServer();
@@ -103,6 +128,9 @@ export async function startCompiledBackend(t: TestContext, config: AuthConfig) {
         SUPABASE_URL: config.supabaseUrl,
         SUPABASE_PUBLISHABLE_KEY: config.publishableKey,
         WEB_ORIGINS: config.webOrigins.join(","),
+        SUPABASE_SECRET_KEY: sessionConfig?.secretKey ?? "",
+        FINSIGHT_SESSION_ENCRYPTION_KEY: sessionConfig?.encryptionKey ?? "",
+        FINSIGHT_SESSION_ENCRYPTION_KEY_FILE: "",
       },
     });
     for (let i = 0; i < 100; i++) {
@@ -130,4 +158,18 @@ export async function startCompiledBackend(t: TestContext, config: AuthConfig) {
       await start();
     },
   };
+}
+
+/** Local-only retained-volume interruption. Suppress CLI output containing keys. */
+export async function restartLocalSupabase(): Promise<void> {
+  const url = process.env.FINSIGHT_TEST_SUPABASE_URL;
+  if (!url || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname))
+    throw new Error('Supabase restart acceptance requires a loopback URL.');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  try {
+    await run('npm', ['run', 'supabase:stop'], { timeout: 60_000 });
+    await run('npm', ['run', 'supabase:start'], { timeout: 180_000 });
+  } catch { throw new Error('Local retained-volume Supabase restart failed; CLI output withheld.'); }
 }

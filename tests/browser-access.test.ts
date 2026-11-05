@@ -65,3 +65,30 @@ test('application resources can opt into POST preflight without expanding me or 
  assert.equal((await app.inject({method:'OPTIONS',url:'/api/me',headers})).statusCode,403);
  assert.equal((await app.inject({method:'OPTIONS',url:'/api/policy-fixture',headers:{...headers,'access-control-request-method':'DELETE'}})).statusCode,403);
 });
+
+test('connection session preflights expose only their declared browser methods and headers', async t => {
+  let authCalls = 0;
+  const app = createApp([], { auth: authConfig, verifyAccessToken: async () => { authCalls++; return { status: 'unavailable' }; } });
+  t.after(() => app.close());
+  const base = `/api/connections/${crypto.randomUUID()}`;
+  const origin = authConfig.webOrigins[0]!;
+  for (const [path, methods] of [['/session', ['GET', 'POST', 'DELETE']], ['/graphql', ['POST']]] as const) {
+    for (const method of methods) {
+      const r = await app.inject({ method: 'OPTIONS', url: base + path, headers: {
+        origin, 'access-control-request-method': method, 'access-control-request-headers': 'Authorization, Content-Type',
+      } });
+      assert.equal(r.statusCode, 204);
+      assert.equal(r.headers['access-control-allow-origin'], origin);
+      assert.equal(r.headers['access-control-allow-methods'], methods.join(', '));
+      assert.equal(r.headers['access-control-allow-headers'], 'Authorization, Content-Type');
+      assert.equal(r.headers['cache-control'], 'no-store');
+    }
+    for (const [requestOrigin, method, headers] of [
+      ['https://evil.test', 'POST', 'Authorization'], [origin, 'PATCH', 'Authorization'], [origin, 'POST', 'X-User-Id'],
+    ]) assert.equal((await app.inject({ method: 'OPTIONS', url: base + path, headers: {
+      origin: requestOrigin, 'access-control-request-method': method, 'access-control-request-headers': headers,
+    } })).statusCode, 403);
+    assert.equal((await app.inject({ url: base + path, headers: { origin: 'https://evil.test' } })).statusCode, 403);
+  }
+  assert.equal(authCalls, 0);
+});
