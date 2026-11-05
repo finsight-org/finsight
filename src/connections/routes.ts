@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { AuthenticateRequest } from "../auth.js";
+import type { AuthenticateRequest, RequestIdentity } from "../auth.js";
 import type { Provider } from "../providers.js";
 import {
   ConnectionError,
@@ -9,12 +9,16 @@ import {
   parseRenameInput,
 } from "./model.js";
 import type { ConnectionStore, ConnectionStoreFactory } from "./store.js";
+import { ownedSessionAccess, withConnectionCancellation } from "./session-routes.js";
+import type { WealthsimpleSessionService } from "../sessions/wealthsimple-service.js";
+import { SessionError } from "../sessions/model.js";
 export function registerConnectionRoutes(
   app: FastifyInstance,
   options: {
     authenticate: AuthenticateRequest;
     registry: readonly Provider[];
     createStore?: ConnectionStoreFactory;
+    sessions?: WealthsimpleSessionService;
   },
 ): void {
   app.register(async (routes) => {
@@ -25,7 +29,7 @@ export function registerConnectionRoutes(
           ? Number(error.statusCode)
           : 500;
       const safe =
-        error instanceof ConnectionError
+        error instanceof ConnectionError || error instanceof SessionError
           ? error
           : new ConnectionError(
               [400, 413, 415].includes(status)
@@ -45,34 +49,18 @@ export function registerConnectionRoutes(
     async function handle(
       request: FastifyRequest,
       reply: FastifyReply,
-      work: (store: () => ConnectionStore) => Promise<unknown>,
+      work: (store: () => ConnectionStore, identity: RequestIdentity, signal: AbortSignal) => Promise<unknown>,
     ) {
-      const abort = new AbortController();
-      const cancel = () => abort.abort();
-      const close = () => {
-        if (!reply.raw.writableFinished) cancel();
-      };
-      request.raw.once("aborted", cancel);
-      reply.raw.once("close", close);
-      try {
+      return withConnectionCancellation(request, reply, async signal => {
         const identity = await options.authenticate(request, reply);
-        if (
-          !identity ||
-          abort.signal.aborted ||
-          request.raw.aborted ||
-          reply.raw.destroyed
-        )
-          return;
-        return await work(() => {
-          if (!options.createStore)
-            throw new ConnectionError("CONNECTION_STORAGE_UNAVAILABLE");
-          return options.createStore(identity, abort.signal);
-        });
-      } finally {
-        request.raw.removeListener("aborted", cancel);
-        reply.raw.removeListener("close", close);
-      }
+        if (!identity || signal.aborted || request.raw.aborted || reply.raw.destroyed) return;
+        return work(() => {
+          if (!options.createStore) throw new ConnectionError("CONNECTION_STORAGE_UNAVAILABLE");
+          return options.createStore(identity, signal);
+        }, identity, signal);
+      });
     }
+
     const id = (request: FastifyRequest) =>
       parseConnectionId(
         (request.params as { connectionId: unknown }).connectionId,
@@ -133,9 +121,14 @@ export function registerConnectionRoutes(
       "/api/connections/:connectionId",
       { config: item },
       async (req, reply) =>
-        handle(req, reply, async (store) => {
+        handle(req, reply, async (store, identity, signal) => {
           const key = id(req);
-          if (!(await store().remove(key)))
+          const removed = options.sessions
+            ? await options.sessions.removeRecord(
+                await ownedSessionAccess(key, identity, options.createStore, signal),
+                () => store().remove(key), signal)
+            : await store().remove(key);
+          if (!removed)
             throw new ConnectionError("CONNECTION_NOT_FOUND");
           return reply.code(204).send();
         }),

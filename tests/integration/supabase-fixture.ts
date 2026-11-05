@@ -106,7 +106,10 @@ export async function createLocalFixture(t: TestContext) {
   };
 }
 
-export async function startCompiledBackend(t: TestContext, config: AuthConfig) {
+export async function startCompiledBackend(
+  t: TestContext, config: AuthConfig,
+  sessionConfig?: { secretKey: string; encryptionKey: string },
+) {
   const { spawn } = await import("node:child_process");
   const { createServer } = await import("node:net");
   const reserve = createServer();
@@ -125,6 +128,9 @@ export async function startCompiledBackend(t: TestContext, config: AuthConfig) {
         SUPABASE_URL: config.supabaseUrl,
         SUPABASE_PUBLISHABLE_KEY: config.publishableKey,
         WEB_ORIGINS: config.webOrigins.join(","),
+        SUPABASE_SECRET_KEY: sessionConfig?.secretKey ?? "",
+        FINSIGHT_SESSION_ENCRYPTION_KEY: sessionConfig?.encryptionKey ?? "",
+        FINSIGHT_SESSION_ENCRYPTION_KEY_FILE: "",
       },
     });
     for (let i = 0; i < 100; i++) {

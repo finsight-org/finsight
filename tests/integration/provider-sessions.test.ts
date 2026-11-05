@@ -75,3 +75,33 @@ test("backend-only encrypted sessions enforce permissions, constraints, and both
   await assert.rejects(f.deleteOwnedTestUser(crypto.randomUUID()));
   await assert.rejects(f.readSessionRow(crypto.randomUUID()));
 });
+
+
+test("compiled backend injects configured sessions and deletes unreadable state without decryption", async t => {
+  const { randomBytes } = await import("node:crypto");
+  const { startCompiledBackend } = await import("./supabase-fixture.js");
+  const f = await createLocalFixture(t);
+  const server = await startCompiledBackend(t, f.config, {
+    secretKey: process.env.FINSIGHT_TEST_SUPABASE_SECRET_KEY!,
+    encryptionKey: randomBytes(32).toString("base64"),
+  });
+  const created = await f.a.client.from("provider_connections").insert({ provider_id: "wealthsimple" }).select("id").single();
+  assert.equal(created.error, null);
+  const id: string = created.data!.id;
+  const path = `${server.url}/api/connections/${id}`;
+  const headers = { Authorization: `Bearer ${f.a.accessToken}` };
+  const status = await fetch(path + "/session", { headers });
+  assert.equal(status.status, 200);
+  assert.equal(status.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await status.json(), { status: "disconnected" });
+  assert.equal((await fetch(path + "/session", { headers: { Authorization: `Bearer ${f.b.accessToken}` } })).status, 404);
+  // The structurally valid envelope cannot authenticate with the backend's random key.
+  await f.sessionStore.save(id, connected, signal());
+  await server.restart();
+  const unreadable = await fetch(path + "/session", { headers });
+  assert.equal(unreadable.status, 503);
+  assert.equal((await unreadable.json()).error.code, "SESSION_STATE_UNAVAILABLE");
+  assert.equal((await fetch(path, { method: "DELETE", headers })).status, 204);
+  assert.equal(await f.sessionStore.load(id, signal()), null);
+  assert.equal((await fetch(path + "/session", { headers })).status, 404);
+});
