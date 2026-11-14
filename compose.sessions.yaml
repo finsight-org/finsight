@@ -1,0 +1,13 @@
+# Opt in to encrypted user-owned sessions; base Compose needs no session secrets.
+services:
+  finsight:
+    environment:
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      FINSIGHT_SESSION_ENCRYPTION_KEY_FILE: /run/secrets/finsight_session_key
+    volumes:
+      - type: bind
+        source: ./.secrets/finsight_session_key
+        target: /run/secrets/finsight_session_key
+        read_only: true
+        bind:
+          create_host_path: false

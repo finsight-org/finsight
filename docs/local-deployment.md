@@ -1,13 +1,16 @@
 # Local deployment and private MCP
 
-Run one Finsight process and an optional OpenAI tunnel client. Provider sessions
-stay in memory. This setup is for one trusted user on a trusted computer.
+Run one Finsight process and an optional OpenAI tunnel client. The shared local
+provider/MCP session stays in memory; optional user-owned API sessions persist
+encrypted in PostgreSQL as described below. This setup is for one trusted user
+on a trusted computer.
 It does not publish an internet-facing Finsight endpoint.
 
 The optional standalone React frontend and local Supabase Auth setup are covered
 in [local identity development](local-auth-development.md). Enable Compose's
 `web` profile only after filling its public build inputs. Authentication applies
-to `/api/me`, not the existing provider or MCP endpoints. The backend-only and
+to `/api/me` and user-owned `/api/connections` routes. The existing provider
+and MCP endpoints retain the trusted shared-session model. The backend-only and
 private tunnel workflow below does not require Supabase.
 
 ## Start Finsight
@@ -56,8 +59,8 @@ npm run wealthsimple -- login --url http://127.0.0.1:4001
 
 The helper defaults to `http://127.0.0.1:4000`, including inside the container.
 If you change the server's port outside Compose, pass `--url`. Never paste
-credentials or OTPs into ChatGPT. Provider tokens and cookies exist only in
-Finsight's memory. Restarting/rebuilding Finsight requires another login;
+credentials or OTPs into ChatGPT. For this shared local/MCP workflow, provider
+tokens and cookies exist only in Finsight's memory. Restarting/rebuilding Finsight requires another login;
 restarting just the tunnel client does not.
 
 ## Configure the private tunnel
@@ -183,3 +186,86 @@ Existing provider tests retain cancellation and shared-refresh coverage.
 Live ChatGPT/tunnel/account validation is separate and requires your runtime
 key, account permissions, and interactive login. Do not commit account data
 or turn real responses into test fixtures.
+
+## Durable user-owned sessions
+
+Keep one backend process. Apply the tracked Supabase migrations explicitly;
+configure Auth as in [local identity development](local-auth-development.md).
+Session storage needs `SUPABASE_SECRET_KEY` in the backend runtime environment,
+plus a stable random 32-byte encryption key. Neither belongs in frontend values,
+build arguments, source control, image layers or logs. Metadata still uses user
+JWTs/RLS; only the session adapter uses the privileged key.
+
+Generate a new deployment key once (the exclusive create refuses replacement):
+
+```sh
+node --input-type=module <<'JS'
+import { mkdirSync, chmodSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+mkdirSync('.secrets', { recursive: true, mode: 0o700 });
+chmodSync('.secrets', 0o700);
+writeFileSync('.secrets/finsight_session_key', randomBytes(32).toString('base64') + '\n',
+  { flag: 'wx', mode: 0o444 });
+JS
+```
+
+The host's mode-0700 `.secrets` directory prevents other host users from traversing
+to the mode-0444 key. The single-file bind mount exposes only that key to the
+container, where the non-root `node` user (UID 1000) can read it without requiring
+host/container UID alignment. The mount is read-only. Do not mount the `.secrets`
+directory or move the readable key into a host directory other users can traverse.
+A mode-0600 key owned by an unrelated host UID would fail on native Linux;
+Compose file-backed secret UID/mode settings do not fix bind-mount permissions.
+Keep other secrets, including the local status JSON, mode 0600.
+
+Set `SUPABASE_SECRET_KEY` in the ignored root `.env` through a local editor or
+secret loader. Leave host `FINSIGHT_SESSION_ENCRYPTION_KEY` and
+`FINSIGHT_SESSION_ENCRYPTION_KEY_FILE` blank for Compose: the override supplies
+`/run/secrets/finsight_session_key`. Host development may use either key source
+with `npm run dev`; configure exactly one. All session settings absent disables
+sessions; partial configuration prevents startup. Base `compose.yaml` keeps
+working without this key file.
+
+For local Supabase use the explicit opt-in override:
+
+```sh
+docker compose -f compose.yaml -f compose.local-auth.yaml -f compose.sessions.yaml config --quiet
+docker compose -f compose.yaml -f compose.local-auth.yaml -f compose.sessions.yaml build finsight
+# Verify file permissions as the image's non-root runtime user without printing it:
+docker compose -f compose.yaml -f compose.local-auth.yaml -f compose.sessions.yaml run --rm --no-deps --entrypoint node finsight -e "const fs=require('node:fs'); if(process.getuid()===0 || Buffer.from(fs.readFileSync('/run/secrets/finsight_session_key','utf8').trim(),'base64').length!==32) process.exit(1)"
+docker compose -f compose.yaml -f compose.local-auth.yaml -f compose.sessions.yaml up -d --wait finsight
+```
+
+For hosted Auth omit only `compose.local-auth.yaml`, retaining the sessions
+override and the hosted project's runtime Auth values. These commands do not
+change frontend build arguments, loopback publishing, the non-root runtime,
+read-only filesystem or 10-second shutdown grace. Add `--profile web` with its
+public inputs when needed. Use the same override files for subsequent restarts.
+
+Back up the deployment encryption key securely, separately from the database,
+and retain both when restarting or rebuilding. Successful saved sessions survive
+backend restarts, retained-volume database restarts and app sign-out/sign-in.
+The backend does not persist financial query results, passwords or OTPs. MFA
+challenges are memory-only and restart after process restart, 15 minutes idle
+or pressure beyond 256 idle cached sessions.
+
+A lost/wrong encryption key makes saved sessions unreadable with
+`SESSION_STATE_UNAVAILABLE`; preserve rows and restore the matching backed-up
+key. There is no automatic key rotation service. If recovery is impossible,
+disconnect/delete affected sessions and reconnect with credentials/OTP using a
+new deployment key. Never silently replace the key during deployment.
+`expired` means the provider rejected authentication; temporary provider/Auth,
+database or decryption failures are retryable errors and do not mean expiration.
+
+FinSight persists provider token rotations and cookie changes before reporting
+success. A crash after Wealthsimple rotates a token but before PostgreSQL commits
+its encrypted replacement can still invalidate the previously saved token; that
+provider-rotation crash window may require reconnecting. Graceful SIGTERM aborts
+upstream work, drains session operations and preserves saved rows within the
+10-second grace; `SIGKILL` cannot provide the same guarantee.
+
+The scoped API and local/MCP session are independent: the CLI and private tunnel
+continue using the memory-only shared session, even with this override enabled.
+FinSight sign-out does not erase provider sessions, and disconnect removes local
+saved state without revoking the remote Wealthsimple session. See the
+[scoped API examples and real-database acceptance](local-auth-development.md#provider-session-integration-tests).

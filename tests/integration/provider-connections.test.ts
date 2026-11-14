@@ -195,7 +195,9 @@ test("real sessions retain isolated IDs through sign-in, backend restart, and da
   assert.equal((await api(f.a, `/${a2.id}`, "DELETE")).status, 204);
   assert.equal((await api(f.a, `/${a2.id}`)).status, 404);
   assert.equal((await api(f.b, `/${b1.id}`)).status, 200);
-  assert.equal((await api(f.a, `/${a1.id}/graphql`)).status, 404);
+  assert.equal((await api(f.a, `/${a1.id}/graphql`, "POST", { query: "{ accounts { id } }" })).status, 503);
+  assert.equal((await api(f.b, `/${a1.id}/graphql`, "POST", { query: "{ accounts { id } }" })).status, 404);
+  assert.equal((await api(f.a, `/${crypto.randomUUID()}/graphql`, "POST", { query: "{ accounts { id } }" })).status, 404);
   for (const path of ["/providers", "/mcp"])
     assert.equal(
       (

@@ -9,8 +9,11 @@ import {
   type ConnectionStoreFactory,
 } from "./connections/store.js";
 import { registerConnectionRoutes } from "./connections/routes.js";
+import { registerConnectionSessionRoutes } from "./connections/session-routes.js";
+import type { WealthsimpleSessionService } from "./sessions/wealthsimple-service.js";
 export interface AppOptions extends AuthOptions {
   createConnectionStore?: ConnectionStoreFactory;
+  connectionSessions?: WealthsimpleSessionService;
 }
 import { registerBrowserAccess } from "./browser-access.js";
 
@@ -48,15 +51,11 @@ export function createApp(
   app.get("/healthz", async () => ({ status: "ok" }));
   const authenticate = createRequestAuthenticator(options);
   registerWebApi(app, authenticate);
-  registerConnectionRoutes(app, {
-    authenticate,
-    registry,
-    createStore:
-      options.createConnectionStore ??
-      (options.auth
-        ? createSupabaseConnectionStoreFactory(options.auth)
-        : undefined),
-  });
+  const createStore = options.createConnectionStore ??
+    (options.auth ? createSupabaseConnectionStoreFactory(options.auth) : undefined);
+  registerConnectionRoutes(app, { authenticate, registry, createStore, sessions: options.connectionSessions });
+  registerConnectionSessionRoutes(app, { authenticate, createStore, sessions: options.connectionSessions });
+  if (options.connectionSessions) app.addHook("preClose", async () => { await options.connectionSessions!.close(); });
 
   app.get("/providers", async () => ({
     providers: registry.map(({ metadata }) => metadata),

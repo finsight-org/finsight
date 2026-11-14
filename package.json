@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/main.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:deployment": "node --import tsx --test tests/deployment/*.test.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/main.js",
@@ -18,7 +19,8 @@
     "supabase:start": "tsx scripts/start-supabase.ts",
     "supabase:status": "supabase status",
     "supabase:stop": "supabase stop --project-id finsight",
-    "test:connections:integration": "node --import tsx --test --test-concurrency=1 tests/integration/provider-connections.test.ts"
+    "test:connections:integration": "node --import tsx --test --test-concurrency=1 tests/integration/provider-connections.test.ts",
+    "test:sessions:integration": "node --import tsx --test --test-concurrency=1 tests/integration/provider-sessions.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/fastify": "2.0.1",
