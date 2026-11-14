@@ -16,16 +16,18 @@ test('registration without a session requires confirmation and keeps the home pr
   const transport = vi.fn(); vi.stubGlobal('fetch', transport);
   const f = await register();
   expect(await screen.findByText(/check your inbox/i)).toBeVisible();
-  expect(screen.queryByText('Your provider connections')).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Connections' })).not.toBeInTheDocument();
   expect(transport).not.toHaveBeenCalled();
   expect(f.signupRedirect).toBe(window.location.origin + '/auth/callback');
   await userEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
   expect(await screen.findByRole('button', { name: 'Sign in' })).toBeVisible();
 });
 test('confirmation-disabled registration still verifies its immediate session through the backend', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ user: { id: 'new-user', email: 'new@example.test' } })));
+  vi.stubGlobal('fetch', (url: string) => Promise.resolve(new URL(url).pathname === '/api/me'
+    ? Response.json({ user: { id: 'new-user', email: 'new@example.test' } })
+    : Response.json({ connections: [], nextCursor: null })));
   const f = authFixture(); f.immediateSignup = true; await register(f);
-  expect(await screen.findByText('Your provider connections')).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Connections' })).toBeVisible();
   expect(screen.getByText('new@example.test')).toBeVisible();
 });
 test('pending registration prevents repeat submits and safe errors permit retry', async () => {
@@ -48,7 +50,7 @@ test.each(['expired code', 'missing PKCE verifier', 'explicit callback error', '
   const f = authFixture(); if (issue !== 'missing code') f.initializationError = new Error('PRIVATE_DIAGNOSTIC');
   render(<App client={f.client} apiUrl="http://127.0.0.1:4001" />);
   expect(await screen.findByRole('alert')).not.toHaveTextContent('PRIVATE_DIAGNOSTIC');
-  expect(screen.queryByText('Your provider connections')).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Connections' })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Back to sign in' }));
   expect(await screen.findByRole('button', { name: 'Sign in' })).toBeVisible();
 });

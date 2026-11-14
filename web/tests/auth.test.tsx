@@ -64,7 +64,10 @@ test('a late response from user A cannot replace user B and subscriptions clean 
   view.unmount(); expect(f.unsubscribed).toBe(true);
 });
 test('a failed sign-out is visible and retryable', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(success)); const f = show(authFixture(session()));
+  vi.stubGlobal('fetch', async (url: string) => new URL(url).pathname === '/api/me'
+    ? success()
+    : Response.json({ connections: [], nextCursor: null }));
+  const f = show(authFixture(session()));
   await screen.findByText('verified@example.test'); f.failSignOut = true;
   await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   expect(await screen.findByRole('alert')).not.toHaveTextContent('PRIVATE_DIAGNOSTIC');

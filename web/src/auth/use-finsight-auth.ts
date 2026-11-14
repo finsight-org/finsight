@@ -4,7 +4,7 @@ import { isAuthApiError, isAuthRetryableFetchError, isAuthSessionMissingError } 
 import { ApiError, getCurrentUser, type VerifiedUser } from '../lib/api';
 
 export type AuthState = { phase: 'loading' } | { phase: 'signed-out' }
-  | { phase: 'authenticated'; user: VerifiedUser } | { phase: 'verification-error' }
+  | { phase: 'authenticated'; user: VerifiedUser; authorized: boolean } | { phase: 'verification-error' }
   | { phase: 'confirmation-required'; email: string } | { phase: 'callback-error' };
 export interface AuthController {
   state: AuthState; pending: boolean; error: string | null;
@@ -12,6 +12,8 @@ export interface AuthController {
   signUp(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   retry(): void;
+  getAccessToken(userId: string): string | null;
+  revalidateAccessToken(token: string): void;
 }
 function retryableAuthError(error: unknown): boolean {
   if (isAuthRetryableFetchError(error)) return true;
@@ -25,28 +27,38 @@ export function useFinSightAuth(client: SupabaseClient, apiUrl: string): AuthCon
   const generation = useRef(0);
   const mounted = useRef(false);
   const current = useRef<Session | null>(null);
+  const verified = useRef<{ sdkUserId: string; user: VerifiedUser; accessToken: string; generation: number } | null>(null);
   const callbackRejected = useRef(false);
   const request = useRef<AbortController | null>(null);
   const invalidate = useCallback(() => { generation.current++; request.current?.abort(); }, []);
   const accept = useCallback((session: Session | null) => {
     invalidate(); current.current = session;
+    const previous = session && session.user.id === verified.current?.sdkUserId ? verified.current : null;
+    verified.current = previous;
     if (!mounted.current) return;
     setError(null);
     if (!session) { setState({ phase: 'signed-out' }); return; }
     const version = generation.current;
     const abort = new AbortController(); request.current = abort;
-    setState({ phase: 'loading' });
+    setState(previous
+      ? { phase: 'authenticated', user: previous.user, authorized: false }
+      : { phase: 'loading' });
     queueMicrotask(async () => {
       if (!mounted.current || version !== generation.current) return;
       try {
         const user = await getCurrentUser(apiUrl, session.access_token, abort.signal);
-        if (mounted.current && version === generation.current) setState({ phase: 'authenticated', user });
+        if (!mounted.current || version !== generation.current) return;
+        verified.current = { sdkUserId: session.user.id, user, accessToken: session.access_token, generation: version };
+        setState({ phase: 'authenticated', user, authorized: true });
       } catch (failure) {
         if (!mounted.current || version !== generation.current || abort.signal.aborted) return;
         if (failure instanceof ApiError && failure.kind === 'unauthenticated') {
           accept(null);
           void client.auth.signOut({ scope: 'local' });
-        } else setState({ phase: 'verification-error' });
+        } else {
+          verified.current = null;
+          setState({ phase: 'verification-error' });
+        }
       }
     });
   }, [apiUrl, client, invalidate]);
@@ -72,6 +84,8 @@ export function useFinSightAuth(client: SupabaseClient, apiUrl: string): AuthCon
       // getSession owns restoration errors; INITIAL_SESSION(null) can mean an outage.
       // During a callback, SDK recovery events alone do not prove code exchange.
       if (event === 'INITIAL_SESSION' || processingCallback || callbackRejected.current) return;
+      if (event === 'SIGNED_IN' && session && session.user.id === verified.current?.sdkUserId &&
+          session.access_token === verified.current.accessToken && session.access_token === current.current?.access_token) return;
       accept(session);
     });
     void (async () => {
@@ -102,7 +116,7 @@ export function useFinSightAuth(client: SupabaseClient, apiUrl: string): AuthCon
         if (callback && mounted.current) window.history.replaceState(null, '', '/');
       }
     })();
-    return () => { mounted.current = false; invalidate(); subscription.unsubscribe(); };
+    return () => { mounted.current = false; verified.current = null; invalidate(); subscription.unsubscribe(); };
   }, [client, accept, invalidate]);
   const signIn = async (email: string, password: string) => {
     callbackRejected.current = false;
@@ -117,7 +131,7 @@ export function useFinSightAuth(client: SupabaseClient, apiUrl: string): AuthCon
     finally { if (mounted.current) setPending(false); }
   };
   const signOut = async () => {
-    invalidate(); const version = generation.current; const previous = state;
+    invalidate(); const version = generation.current;
     setPending(true); setError(null); setState({ phase: 'loading' });
     try {
       const result = await client.auth.signOut({ scope: 'local' });
@@ -128,7 +142,8 @@ export function useFinSightAuth(client: SupabaseClient, apiUrl: string): AuthCon
         setState({ phase: 'signed-out' });
         setError('Signed out on this device. We could not confirm server sign-out. You can sign in again.');
       } else if (mounted.current && generation.current === version) {
-        setState(previous); setError('Unable to sign out. Please try again.');
+        accept(current.current);
+        setError('Unable to sign out. Please try again.');
       }
     } finally { if (mounted.current) setPending(false); }
   };
@@ -148,7 +163,19 @@ export function useFinSightAuth(client: SupabaseClient, apiUrl: string): AuthCon
     } catch { if (mounted.current) setError('Unable to create your account. Please try again.'); }
     finally { if (mounted.current) setPending(false); }
   };
-  return { state, pending, error, signIn, signUp, signOut, retry: () => {
+  const getAccessToken = useCallback((userId: string) => {
+    const identity = verified.current;
+    // An auth event invalidates the token before React commits the next render.
+    return identity?.user.id === userId && identity.generation === generation.current ? identity.accessToken : null;
+  }, []);
+  const revalidateAccessToken = useCallback((token: string) => {
+    const session = current.current;
+    const identity = verified.current;
+    if (session?.access_token === token && identity?.accessToken === token && identity.generation === generation.current) {
+      accept(session);
+    }
+  }, [accept]);
+  return { state, pending, error, signIn, signUp, signOut, getAccessToken, revalidateAccessToken, retry: () => {
     if (state.phase === 'callback-error' || state.phase === 'confirmation-required') { callbackRejected.current = false; accept(null); }
     else if (current.current) accept(current.current);
     else void restore();
