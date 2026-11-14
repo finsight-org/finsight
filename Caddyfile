@@ -1,0 +1,11 @@
+{$FINSIGHT_PUBLIC_HOST} {
+	header Referrer-Policy no-referrer
+
+	@backend path /mcp /.well-known/oauth-protected-resource/mcp /api/*
+	handle @backend {
+		reverse_proxy finsight:4000
+	}
+	handle {
+		reverse_proxy web:8080
+	}
+}

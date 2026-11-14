@@ -13,6 +13,8 @@ to `/api/me` and user-owned `/api/connections` routes. The existing provider
 and MCP endpoints retain the trusted shared-session model. The backend-only and
 private tunnel workflow below does not require Supabase.
 
+For per-user ChatGPT access, see the [MCP HTTPS deployment guide](mcp-oauth-deployment.md).
+
 ## Start Finsight
 
 Install and start a Docker runtime with Docker Compose v2. Node.js 24 and npm

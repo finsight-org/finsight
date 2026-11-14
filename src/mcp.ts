@@ -6,7 +6,7 @@ import type { Provider } from './providers.js';
 
 export const MCP_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
-function result(statusCode: number, body: string): CallToolResult {
+export function result(statusCode: number, body: string): CallToolResult {
   return {
     content: [{ type: 'text', text: JSON.stringify({ statusCode, body }) }],
     ...(statusCode < 200 || statusCode >= 300 ? { isError: true } : {}),

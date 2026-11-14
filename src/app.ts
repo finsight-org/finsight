@@ -2,8 +2,9 @@ import Fastify, { LogController } from "fastify";
 import { hostHeaderValidation } from "@modelcontextprotocol/fastify";
 import { createProviderRegistry, type Provider } from "./providers.js";
 import { registerMcp } from "./mcp.js";
+import { registerMcpOAuth, type McpOAuthConfig } from "./mcp-oauth.js";
 import { registerWebApi } from "./web-api.js";
-import { createRequestAuthenticator, type AuthOptions } from "./auth.js";
+import { createRequestAuthenticator, createSupabaseOAuthVerifier, type AuthOptions } from "./auth.js";
 import {
   createSupabaseConnectionStoreFactory,
   type ConnectionStoreFactory,
@@ -12,6 +13,7 @@ import { registerConnectionRoutes } from "./connections/routes.js";
 import { registerConnectionSessionRoutes } from "./connections/session-routes.js";
 import type { WealthsimpleSessionService } from "./sessions/wealthsimple-service.js";
 export interface AppOptions extends AuthOptions {
+  mcpOAuth?: McpOAuthConfig;
   createConnectionStore?: ConnectionStoreFactory;
   connectionSessions?: WealthsimpleSessionService;
 }
@@ -23,6 +25,7 @@ export function createApp(
   providers: readonly Provider[] = [],
   options: AppOptions = {},
 ) {
+  if (options.mcpOAuth && !options.auth) throw new Error("OAuth MCP requires Supabase Auth.");
   const registry = createProviderRegistry(providers);
   const app = Fastify({
     logger: true,
@@ -33,7 +36,9 @@ export function createApp(
 
   app.addHook(
     "onRequest",
-    hostHeaderValidation(["127.0.0.1", "localhost", "[::1]", "finsight"]),
+    hostHeaderValidation(["127.0.0.1", "localhost", "[::1]", "finsight",
+      ...(options.mcpOAuth ? [new URL(options.mcpOAuth.resource).hostname] : []),
+    ]),
   );
   registerBrowserAccess(app, options.auth?.webOrigins ?? []);
   app.setErrorHandler((error, _req, reply) => {
@@ -56,6 +61,15 @@ export function createApp(
   registerConnectionRoutes(app, { authenticate, registry, createStore, sessions: options.connectionSessions });
   registerConnectionSessionRoutes(app, { authenticate, createStore, sessions: options.connectionSessions });
   if (options.connectionSessions) app.addHook("preClose", async () => { await options.connectionSessions!.close(); });
+
+  if (options.mcpOAuth && options.auth) {
+    registerMcpOAuth(app, {
+      config: options.mcpOAuth, verify: options.verifyAccessToken ?? createSupabaseOAuthVerifier(options.auth),
+      providers: registry,
+      createStore, sessions: options.connectionSessions,
+    });
+    return app;
+  }
 
   app.get("/providers", async () => ({
     providers: registry.map(({ metadata }) => metadata),
