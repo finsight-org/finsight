@@ -206,8 +206,9 @@ export function Connections({ apiUrl, authorized, getAccessToken, onAuthRejected
         <ul className="space-y-2">
           {records.map(record => {
             const supported = record.providerId === 'wealthsimple';
-            const status = list.statuses[record.id]?.value ?? 'checking';
-            const message = list.statuses[record.id]?.message;
+            const session = list.statuses[record.id];
+            const status = session?.value ?? 'checking';
+            const canRemove = status === 'disconnected' || (session?.value === 'unavailable' && session.canRemove);
             const provider = providerName(record);
             return (
               <li key={record.id} className="space-y-3 rounded-lg border p-4">
@@ -224,7 +225,7 @@ export function Connections({ apiUrl, authorized, getAccessToken, onAuthRejected
                     {supported ? statusLabel[status] : 'Provider unavailable'}
                   </span>
                 </div>
-                {message && <p className="text-sm text-muted-foreground">{message}</p>}
+                {session?.value === 'unavailable' && <p className="text-sm text-muted-foreground">{session.message}</p>}
                 <div className="flex flex-wrap gap-2">
                   {supported && (status === 'disconnected' || status === 'expired' || status === 'mfa_required') && (
                     <Button variant="outline" size="sm" disabled={disabled || reviewRequired}
@@ -241,7 +242,7 @@ export function Connections({ apiUrl, authorized, getAccessToken, onAuthRejected
                     <Button variant="outline" size="sm" disabled={disabled || reviewRequired}
                       onClick={event => open({ kind: 'disconnect', id: record.id }, event.currentTarget)}>Disconnect</Button>
                   )}
-                  {supported && status === 'disconnected' && (
+                  {supported && canRemove && (
                     <Button variant="ghost" size="sm" disabled={disabled || reviewRequired}
                       onClick={event => open({ kind: 'remove', id: record.id }, event.currentTarget)}>Remove</Button>
                   )}

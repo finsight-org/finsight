@@ -6,8 +6,9 @@ import {
 
 type Api = ReturnType<typeof createConnectionsApi>;
 type Page = Awaited<ReturnType<Api['list']>>;
-type Status = SessionStatus | 'checking' | 'unavailable';
-interface ConnectionStatus { value: Status; message?: string }
+type ConnectionStatus =
+  | { value: SessionStatus | 'checking' }
+  | { value: 'unavailable'; message: string; canRemove: boolean };
 
 function mergeConnections(current: Connection[], incoming: Connection[]): Connection[] {
   const byId = new Map(current.map(connection => [connection.id, connection]));
@@ -77,13 +78,18 @@ export function useConnectionList(
     } catch (error) {
       if (!isCurrent()) return;
       activeStatus.current.delete(id);
-      if (errorCode(error) === 'CONNECTION_NOT_FOUND') {
+      const code = errorCode(error);
+      if (code === 'CONNECTION_NOT_FOUND') {
         forget(id);
         return;
       }
       setStatuses(current => ({
         ...current,
-        [id]: { value: 'unavailable', message: connectionErrorMessage(error, 'Could not check this connection. Try again.') },
+        [id]: {
+          value: 'unavailable',
+          message: connectionErrorMessage(error, 'Could not check this connection. Try again.'),
+          canRemove: code === 'SESSION_STATE_UNAVAILABLE' || code === 'SESSION_NOT_CONFIGURED',
+        },
       }));
     }
   }, [forget, openApi, updateStatus]);

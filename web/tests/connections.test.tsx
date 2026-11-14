@@ -137,6 +137,7 @@ test('loads saved records independently of status and follows the cursor', async
   expect(screen.getByText('Checking status…')).toBeVisible();
   await act(async () => slow.resolve(error(502, 'WEALTHSIMPLE_UPSTREAM_FAILURE')));
   expect(await screen.findByText('Status unavailable')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull();
   await user.click(await button('Retry status'));
   expect(await screen.findByText('Expired')).toBeVisible();
   await user.click(await button('Load more'));
@@ -145,6 +146,32 @@ test('loads saved records independently of status and follows the cursor', async
   expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
   expect(screen.queryByText('PRIVATE_DIAGNOSTIC')).toBeNull();
 });
+
+test.each(['SESSION_STATE_UNAVAILABLE', 'SESSION_NOT_CONFIGURED'])(
+  'can remove a saved record after confirmation when status returns %s',
+  async code => {
+    let removals = 0;
+    const { user } = show(({ pathname }, method) => {
+      if (pathname === '/api/me') return verified();
+      if (pathname === collection && method === 'GET') return page();
+      if (pathname === sessionPath() && method === 'GET') return error(503, code);
+      if (pathname === recordPath() && method === 'DELETE') {
+        removals++;
+        return new Response(null, { status: 204 });
+      }
+      throw Error(`Unexpected request ${method} ${pathname}`);
+    });
+
+    expect(await screen.findByText('Status unavailable')).toBeVisible();
+    await user.click(await button('Remove'));
+    const confirmation = screen.getByRole('dialog', { name: 'Remove saved connection' });
+    expect(confirmation).toHaveTextContent(/clear any active session/i);
+    expect(removals).toBe(0);
+    await user.click(within(confirmation).getByRole('button', { name: 'Remove' }));
+    expect(await screen.findByText('No saved connections yet.')).toBeVisible();
+    expect(removals).toBe(1);
+  },
+);
 
 test('reconnects an expired session, clears its label, disconnects it, and confirms removal', async () => {
   let saved = record();
