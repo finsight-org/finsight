@@ -293,8 +293,8 @@ JS
 ```
 
 Only connection metadata is returned. Use the scoped session API below to log
-in to Wealthsimple; browser management and per-user agent authorization remain
-separate work.
+in to Wealthsimple. With scoped sessions configured, the web app also supports
+connection management and Wealthsimple verification.
 
 ## Provider session integration tests
 

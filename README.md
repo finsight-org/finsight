@@ -33,8 +33,9 @@ the two projects. The optional Compose `web` profile serves the built frontend
 from its own container. Fastify serves only the API and MCP.
 
 User-owned provider connection records are available through the application API.
-Each owned record can hold an independent encrypted Wealthsimple session through
-the scoped API. ChatGPT OAuth remains follow-up work. Web login does not grant
+Once scoped sessions are configured, sign in to the web app to connect Wealthsimple,
+complete verification, and manage your saved connections. Per-user ChatGPT
+authorization remains follow-up work. Web login does not grant
 access to the existing shared Wealthsimple session. The private provider
 and MCP endpoints retain their trusted local deployment boundary.
 
@@ -332,8 +333,8 @@ failures are not automatically retried: after an uncertain create, list existing
 records before trying again.
 
 Records contain metadata only; the scoped session routes below authenticate
-Wealthsimple and query its native API. Browser connection management and per-user
-agent authorization remain separate follow-up work. The existing private
+Wealthsimple and query its native API. The web app uses these routes to manage
+saved connections. The existing private
 provider and MCP endpoints retain their trusted-local boundary.
 
 See [local development](docs/local-auth-development.md#connection-record-integration-tests)
