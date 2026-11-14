@@ -1,0 +1,49 @@
+# Hosted mode. Layer after compose.yaml and compose.sessions.yaml.
+services:
+  finsight:
+    ports: !reset []
+    environment:
+      FINSIGHT_PUBLIC_HOST: ${FINSIGHT_PUBLIC_HOST:?Set the public FinSight DNS host}
+      SUPABASE_URL: ${SUPABASE_DOCKER_URL:?Set the hosted Supabase HTTPS origin}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set the Supabase publishable key}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Set the server-only Supabase secret key}
+      WEB_ORIGINS: https://${FINSIGHT_PUBLIC_HOST:?Set the public FinSight DNS host}
+
+  web:
+    profiles: !reset []
+    ports: !reset []
+    build:
+      args:
+        VITE_SUPABASE_URL: ${SUPABASE_DOCKER_URL:?Set the hosted Supabase HTTPS origin}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set the Supabase publishable key}
+        VITE_FINSIGHT_API_URL: https://${FINSIGHT_PUBLIC_HOST:?Set the public FinSight DNS host}
+        VITE_FINSIGHT_MCP_CLIENT_IDS: ${VITE_FINSIGHT_MCP_CLIENT_IDS:?Set the registered OAuth client IDs}
+
+  caddy:
+    image: caddy:2-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    environment:
+      FINSIGHT_PUBLIC_HOST: ${FINSIGHT_PUBLIC_HOST:?Set the public FinSight DNS host}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [finsight]
+    depends_on:
+      finsight:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -4,7 +4,8 @@ PR 1 uses one Supabase Auth project for the React application and the Fastify
 backend. Users live in Supabase's built-in `auth.users`. PR 2 adds the
 `public.provider_connections` table and its ownership policies through a tracked
 migration. Encrypted provider sessions use `public.provider_sessions`, accessible
-only through the backend privileged adapter. ChatGPT OAuth remains follow-up work.
+only through the backend privileged adapter. See the
+[HTTPS deployment guide](mcp-oauth-deployment.md) for per-user ChatGPT OAuth.
 
 ## Start local Supabase
 
@@ -180,12 +181,9 @@ docker compose -p finsight-pr1 -f compose.yaml -f compose.local-auth.yaml --prof
 docker compose -p finsight-pr1 -f compose.yaml -f compose.local-auth.yaml --profile web down
 ```
 
-The optional `tunnel` profile remains dedicated to the trusted private MCP
-endpoint. Keep its existing secret file/configuration separate. Neither frontend
-sign-in nor enabling the web profile turns that endpoint into a public multi-user
-service. Do not deploy this combination as public financial-account access until
-authenticated per-user MCP authorization is delivered. Scoped API sessions are
-isolated; the shared MCP session remains independent.
+The optional `tunnel` profile serves the trusted local MCP endpoint and its
+shared session. Use the [HTTPS deployment](mcp-oauth-deployment.md) for
+per-user MCP access.
 
 ## Hosted Auth configuration
 

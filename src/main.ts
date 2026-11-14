@@ -1,5 +1,6 @@
 import { createApp } from './app.js';
 import { wealthsimpleProvider } from './providers/wealthsimple/index.js';
+import { readMcpOAuthConfig } from './mcp-oauth.js';
 import { readAuthConfig } from './auth.js';
 import { readSessionConfig } from './sessions/config.js';
 import { createSessionCipher } from './sessions/crypto.js';
@@ -13,12 +14,14 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 const auth = readAuthConfig(process.env);
+const mcpOAuth = readMcpOAuthConfig(process.env, auth);
 const sessionConfig = await readSessionConfig(process.env, Boolean(auth));
 const connectionSessions = sessionConfig && auth ? new WealthsimpleSessionService({
   cipher: createSessionCipher(sessionConfig.encryptionKey),
   store: createSupabaseSessionStore({ supabaseUrl: auth.supabaseUrl, secretKey: sessionConfig.supabaseSecretKey }),
 }) : undefined;
-const app = createApp([wealthsimpleProvider()], { auth, connectionSessions });
+if (mcpOAuth && !connectionSessions) throw new Error('HTTPS MCP requires encrypted provider sessions.');
+const app = createApp([wealthsimpleProvider()], { auth, connectionSessions, mcpOAuth });
 
 async function shutdown() {
   try {

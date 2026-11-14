@@ -23,6 +23,23 @@ const instructions = {
   disconnect: { method: 'DELETE', description: 'Clear the local session. This does not revoke the remote Wealthsimple session.' },
 };
 
+export async function describeWealthsimpleGraphql() {
+  // Keep reference documents in src for both development and compiled runs.
+  const directory = new URL('../../../src/providers/wealthsimple/reference/', import.meta.url);
+  const filenames = (await readdir(directory)).filter(file => file.endsWith('.graphql')).sort();
+  const references = await Promise.all(filenames.map(async file => ({
+    file,
+    query: await readFile(new URL(file, directory), 'utf8'),
+  })));
+  return {
+    description: 'Native Wealthsimple GraphQL. Upstream introspection is disabled; these reference queries are examples, not an allowlist or operations executable by ID.',
+    request: { method: 'POST', required: ['query'], optional: ['operationName', 'variables'] },
+    identityId: 'FinSight supplies the connected identity in variables.identityId, replacing any caller value. Use $identityId in identity-scoped queries.',
+    usage: 'Construct any native GraphQL query. Wealthsimple validates fields, arguments, types, fragments and operation selection; use its errors to refine your query. Only query operations are allowed.',
+    references,
+  };
+}
+
 export function wealthsimpleProvider(options: WealthsimpleOptions = {}): Provider {
   const client = new WealthsimpleClient(options);
   return {
@@ -55,20 +72,8 @@ export function wealthsimpleProvider(options: WealthsimpleOptions = {}): Provide
         return reply.code(204).send();
       });
 
-      // Keep reference documents in src for both development and compiled runs.
-      const directory = new URL('../../../src/providers/wealthsimple/reference/', import.meta.url);
-      const filenames = (await readdir(directory)).filter(file => file.endsWith('.graphql')).sort();
-      const references = await Promise.all(filenames.map(async file => ({
-        file,
-        query: await readFile(new URL(file, directory), 'utf8'),
-      })));
-      app.get('/graphql', async () => ({
-        description: 'Native Wealthsimple GraphQL. Upstream introspection is disabled; these reference queries are examples, not an allowlist or operations executable by ID.',
-        request: { method: 'POST', required: ['query'], optional: ['operationName', 'variables'] },
-        identityId: 'FinSight supplies the connected identity in variables.identityId, replacing any caller value. Use $identityId in identity-scoped queries.',
-        usage: 'Construct any native GraphQL query. Wealthsimple validates fields, arguments, types, fragments and operation selection; use its errors to refine your query. Only query operations are allowed.',
-        references,
-      }));
+      const documentation = await describeWealthsimpleGraphql();
+      app.get('/graphql', async () => documentation);
       app.post('/graphql', async (req, reply) => {
         const input = graphqlInput(req.body);
         assertQueryOnly(input.query);

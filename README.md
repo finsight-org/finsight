@@ -34,10 +34,9 @@ from its own container. Fastify serves only the API and MCP.
 
 User-owned provider connection records are available through the application API.
 Once scoped sessions are configured, sign in to the web app to connect Wealthsimple,
-complete verification, and manage your saved connections. Per-user ChatGPT
-authorization remains follow-up work. Web login does not grant
-access to the existing shared Wealthsimple session. The private provider
-and MCP endpoints retain their trusted local deployment boundary.
+complete verification, and manage your saved connections. The
+[HTTPS deployment](docs/mcp-oauth-deployment.md) lets each user authorize
+ChatGPT to read their own saved connections through MCP.
 
 ```sh
 curl http://127.0.0.1:4000/providers
@@ -58,7 +57,7 @@ docker compose up -d --build --wait finsight
 docker compose exec finsight node dist/cli/wealthsimple.js login
 ```
 
-Stateless Streamable HTTP at `/mcp` exposes exactly three provider-agnostic tools:
+The trusted local `/mcp` endpoint exposes three provider-agnostic tools:
 
 | Tool | Inputs | Behavior |
 | --- | --- | --- |

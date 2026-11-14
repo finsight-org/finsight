@@ -9,9 +9,10 @@ try {
   const config = readWebConfig({
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
     VITE_SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    VITE_FINSIGHT_MCP_CLIENT_IDS: import.meta.env.VITE_FINSIGHT_MCP_CLIENT_IDS,
     VITE_FINSIGHT_API_URL: import.meta.env.VITE_FINSIGHT_API_URL,
   });
-  root.render(<App client={createBrowserAuthClient(config)} apiUrl={config.apiUrl} />);
+  root.render(<App client={createBrowserAuthClient(config)} apiUrl={config.apiUrl} mcpClientIds={config.mcpClientIds} />);
 } catch {
   root.render(<main className="mx-auto max-w-md p-8"><AuthStatus error message="Complete the public frontend configuration in web/.env, then restart or rebuild the application." /></main>);
 }

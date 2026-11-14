@@ -10,7 +10,7 @@ export interface AuthConfig {
   webOrigins: readonly string[];
 }
 export type AuthVerification =
-  | { status: "authenticated"; user: VerifiedUser }
+  | { status: "authenticated"; user: VerifiedUser; claims?: Readonly<Record<string, unknown>> }
   | { status: "unauthenticated" }
   | { status: "unavailable" };
 export type VerifyAccessToken = (token: string) => Promise<AuthVerification>;
@@ -57,6 +57,19 @@ export function readAuthConfig(env: NodeJS.ProcessEnv): AuthConfig | undefined {
   };
 }
 
+// Read claims only after GoTrue verifies the exact token and its live session.
+function verifiedClaims(token: string): Readonly<Record<string, unknown>> | undefined {
+  try {
+    const payload: unknown = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+    if (payload && typeof payload === "object" && !Array.isArray(payload))
+      return payload as Record<string, unknown>;
+  } catch { /* GoTrue rejects malformed JWTs before this point. */ }
+}
+
+export function bearerToken(header: unknown): string | undefined {
+  return typeof header === "string" ? /^Bearer ([^\s,]+)$/i.exec(header)?.[1] : undefined;
+}
+
 export function createSupabaseVerifier(
   config: AuthConfig,
   options: { fetch?: typeof globalThis.fetch; timeoutMs?: number } = {},
@@ -100,10 +113,37 @@ export function createSupabaseVerifier(
         };
       if (!data.user?.id || data.user.is_anonymous)
         return { status: "unauthenticated" };
+      const claims = verifiedClaims(token);
       return {
+        ...(claims ? { claims } : {}),
         status: "authenticated",
         user: { id: data.user.id, email: data.user.email ?? null },
       };
+    } catch {
+      return { status: "unavailable" };
+    }
+  };
+}
+
+export function createSupabaseOAuthVerifier(
+  config: AuthConfig,
+  options: { fetch?: typeof globalThis.fetch; timeoutMs?: number } = {},
+): VerifyAccessToken {
+  const upstream = options.fetch ?? globalThis.fetch;
+  return async token => {
+    try {
+      const response = await upstream(config.supabaseUrl + "/auth/v1/oauth/userinfo", {
+        headers: { apikey: config.publishableKey, Authorization: "Bearer " + token },
+        redirect: "error",
+        signal: AbortSignal.timeout(options.timeoutMs ?? 5000),
+      });
+      if ([400, 401, 403, 422].includes(response.status)) return { status: "unauthenticated" };
+      if (!response.ok) return { status: "unavailable" };
+      const data = await response.json() as { sub?: unknown };
+      const claims = verifiedClaims(token);
+      if (typeof data?.sub !== "string" || claims?.sub !== data.sub || claims.is_anonymous !== false)
+        return { status: "unauthenticated" };
+      return { status: "authenticated", user: { id: data.sub, email: null }, claims };
     } catch {
       return { status: "unavailable" };
     }
@@ -139,11 +179,7 @@ export function createRequestAuthenticator(
         "AUTH_NOT_CONFIGURED",
         "Authentication is not configured.",
       );
-    const header = request.headers.authorization;
-    const token =
-      typeof header === "string"
-        ? /^Bearer ([^\s,]+)$/i.exec(header)?.[1]
-        : undefined;
+    const token = bearerToken(request.headers.authorization);
     if (!token) return fail(401, "UNAUTHENTICATED", "Authentication required.");
     let result: AuthVerification;
     try {
@@ -151,7 +187,9 @@ export function createRequestAuthenticator(
     } catch {
       result = { status: "unavailable" };
     }
-    if (result.status === "unauthenticated")
+    if (result.status === "unauthenticated" ||
+      (result.status === "authenticated" &&
+        (result.claims?.client_id != null || result.claims?.finsight_mcp_read === true)))
       return fail(401, "UNAUTHENTICATED", "Authentication required.");
     if (result.status === "unavailable")
       return fail(
